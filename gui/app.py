@@ -724,7 +724,39 @@ class AtomicaDashboard(tk.Tk):
                     "Closing now will kill it mid-run without a clean stop.\n\n"
                     "Close anyway?", icon="warning", default="no"):
                 return
+        self._release_all_to_local_on_exit()
         self.destroy()
+
+    def _release_all_to_local_on_exit(self):
+        """Hand every instrument's front panel back before the window goes.
+
+        Addressing an instrument over GPIB with REN asserted puts it in
+        REMOTE and locks out its own keys, and nothing releases that on the
+        way out - so closing the app used to leave the prober's panel dead
+        until someone power-cycled it or another program addressed it. One
+        GTL per instrument (see gpib_base.go_to_local), across BOTH systems:
+        self.drivers is only the ACTIVE system's, and the other one's
+        instruments are just as locked.
+
+        Best-effort by design: this runs on the way to destroy(), so a
+        failure here must never stop the window closing.
+        """
+        released = []
+        for system, state in self._by_system.items():
+            for key, drv in (state.get("drivers") or {}).items():
+                if not drv or not getattr(drv, "inst", None):
+                    continue
+                try:
+                    if drv.go_to_local():
+                        released.append(f"{system}:{key}")
+                except Exception:
+                    pass
+        if released:
+            try:
+                self.log("[SYSTEM] Released to local on exit: "
+                         + ", ".join(released))
+            except Exception:
+                pass
 
     def _set_prober_ready(self, stb):
         self._prober_stb = stb
