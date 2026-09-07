@@ -1275,21 +1275,23 @@ class RecipePanel(ttk.Frame):
         """Accretech gets its shot origin from Wafer Builder's own Overlay
         sub-tab (its confirmed row/col offset IS the translation between
         Wafer Builder's logical die grid and real absolute die coordinates
-        - nothing to capture here, just a label to refresh). Electroglas
-        has no Overlay yet, so it still needs the manual capture button.
+        - nothing to capture or refresh here, the status label just shows
+        whatever Overlay's own Confirm button already set, live). Electroglas
+        has no Overlay yet, so it still needs the manual capture button -
+        self._shot_origin_btn stays None on Accretech, since there is no
+        action for it to take; every other reference to it is guarded
+        accordingly.
 
         Was its own bar above the step list - moved down here, next to
         Validate, so every button on this tab lives in one row instead of
         split across two."""
         if self._system == "accretech":
-            self._shot_origin_btn = ttk.Button(
-                parent, text="Refresh", state="disabled",
-                command=self._refresh_shot_origin_label)
+            self._shot_origin_btn = None
         else:
             self._shot_origin_btn = ttk.Button(
                 parent, text="📍 Set Shot Origin", state="disabled",
                 command=self._set_shot_origin)
-        self._shot_origin_btn.pack(side="left", padx=(10, 2))
+            self._shot_origin_btn.pack(side="left", padx=(10, 2))
 
         # ttk.Label (not tk.Label) - this now sits in the ttk.Frame button
         # bar, not the old bar's own tk.Frame(bg="#e2e8f0"); a plain
@@ -1305,8 +1307,9 @@ class RecipePanel(ttk.Frame):
             card = self._get_active_card()
             if card:
                 self._save_recipes(card, self._recipes)
-        self._shot_origin_btn.config(
-            state="normal" if self._minor_moves_var.get() else "disabled")
+        if self._shot_origin_btn is not None:
+            self._shot_origin_btn.config(
+                state="normal" if self._minor_moves_var.get() else "disabled")
         self._refresh_shot_origin_label()
 
     def _on_shortcut_toggle(self):
@@ -3284,8 +3287,9 @@ class RecipePanel(ttk.Frame):
         self._shortcut_var.set(bool(rec.get("shortcut")))
         self._fast_current_settle_var.set(bool(rec.get("fast_current_settle")))
         self._manual_mode_var.set(bool(rec.get("manual_mode")))
-        self._shot_origin_btn.config(
-            state="normal" if self._minor_moves_var.get() else "disabled")
+        if self._shot_origin_btn is not None:
+            self._shot_origin_btn.config(
+                state="normal" if self._minor_moves_var.get() else "disabled")
         self._refresh_shot_origin_label()
 
     def _switch_recipe(self):
@@ -3321,7 +3325,8 @@ class RecipePanel(ttk.Frame):
             self._shortcut_var.set(False)
             self._fast_current_settle_var.set(False)
             self._manual_mode_var.set(False)
-            self._shot_origin_btn.config(state="disabled")
+            if self._shot_origin_btn is not None:
+                self._shot_origin_btn.config(state="disabled")
             self._shot_origin_status_var.set("")
         self._update_default_label()
 

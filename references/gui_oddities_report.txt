@@ -587,4 +587,22 @@ worth a second look / decision later.
    label on the Accretech side (e.g. "Check Overlay Alignment") if this
    comes up again - not a bug, just an unclear name for what it does.
 
+   RESOLVED 2026-09-07: removed outright rather than relabeled, per
+   explicit request, once the user understood it did nothing the
+   existing auto-refresh triggers didn't already cover. Accretech's
+   self._shot_origin_btn is now None (no button built at all); the
+   status label next to it stays and still updates automatically on
+   the same triggers it always did (_load_form on recipe switch,
+   _on_minor_moves_toggle on the checkbox) - it just lost its own
+   manual nudge button, which only ever re-ran that same read. Every
+   other reference to _shot_origin_btn (2 more .config(state=...)
+   sites) guarded with `is not None` since it's no longer built on
+   Accretech at all; Electroglas's real "📍 Set Shot Origin" action
+   button is completely unchanged. One real, minor tradeoff worth
+   knowing: if Overlay gets confirmed on the Wafer Builder tab while
+   the Recipe tab is already open with Minor Moves already on, its
+   status label will not update until the recipe is reselected or
+   Minor Moves is retoggled - previously "Refresh" could nudge it
+   without either of those. Accepted as-is, not fixed further.
+
 ------------------------------------------------------------------------
