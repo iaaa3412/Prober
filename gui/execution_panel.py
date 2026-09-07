@@ -77,7 +77,6 @@ class ExecutionDashboard(ttk.Frame):
             self._wafer_map._last_dies if self._wafer_map else None
         )
         if not src:
-            self.log("[SIM REMOVE] No wafer map data yet.")
             return
 
         self.dies = []
@@ -108,7 +107,6 @@ class ExecutionDashboard(ttk.Frame):
         self._prev_die = None
         self._update_current_die()
         self._refresh()
-        self.log(f"[SIM REMOVE] {len(self.dies)} dies loaded from wafer map.")
         self._fire_stats()
 
     def load_recipe(self):
@@ -444,15 +442,11 @@ class ExecutionDashboard(ttk.Frame):
 
     def toggle_running(self):
         if not self.dies:
-            self.log("[SIM REMOVE] No dies loaded. Load an ATA folder first.")
             return
         self.running = not self.running
         self.aborted = False
         if self.running:
-            self.log("[SIM REMOVE] Run started.")
             self._auto_step()
-        else:
-            self.log("[SIM REMOVE] Run paused.")
         self._refresh()
 
     def start_run(self):
@@ -463,7 +457,6 @@ class ExecutionDashboard(ttk.Frame):
         if not self.running or self.aborted:
             return
         if not self.current_die:
-            self.log("[SIM REMOVE] No current die available.")
             self.running = False
             self._refresh()
             return
@@ -483,7 +476,6 @@ class ExecutionDashboard(ttk.Frame):
         total_testable = len([d for d in self.dies if d["status"] != "SKIP"])
         if self.stats["tested"] >= total_testable:
             self.running = False
-            self.log("[SIM REMOVE] Full wafer demo complete.")
             self._refresh()
             return
         self.after(700, self._auto_step)
@@ -510,10 +502,8 @@ class ExecutionDashboard(ttk.Frame):
         if not self.current_die:
             return
         if not self.in_contact:
-            self.log("[TEST REMOVE] Cannot run: probes not in contact. Press Touchdown first.")
             return
         d = self.current_die
-        self.log(f"[TEST REMOVE] Running {self.recipe} on {d['die_id']}.")
 
         leakage        = abs(random.gauss(0.45, 0.25))
         sensor_current = abs(random.gauss(0.120, 0.018))

@@ -15,7 +15,6 @@ from wafer_map_view import (WaferMapPanel, PadLayoutPanel, ProbeCardWiringFrame,
                             rebuild_wafer_map_panel)
 from execution_panel import ExecutionDashboard
 from gds_parser_panel import GdsParserPanel
-from switch_debug_panel import SwitchDebugPanel
 from switch_settings_panel import SwitchSettingsPanel
 from switchbox_test_panel import SwitchboxTestPanel
 from instruments_eg_panel import InstrumentsEgPanel

@@ -126,6 +126,12 @@ worth a second look / decision later.
    (Setup? its own Debug sub-tab?) or delete the dead file/import if the
    feature was superseded by something else (e.g. switchbox_test_panel.py).
 
+   RESOLVED 2026-09-07: confirmed superseded - SwitchboxTestPanel (a
+   different, live class) is the one actually instantiated and attached
+   to a tab (instrument_panel.py:2307, self.switch_debug =
+   SwitchboxTestPanel(...)). Deleted gui/switch_debug_panel.py entirely
+   and its dead import - nothing else in the repo referenced it.
+
 ------------------------------------------------------------------------
 
 5b. [ALIGN] log tag is ENTIRELY dead, all 13 call sites - corrects the
@@ -182,6 +188,25 @@ worth a second look / decision later.
     treatment as [ALIGN REMOVE] - both tags are entirely inside the
     orphaned ExecutionDashboard (item 6) and have no reachable trigger.
 
+    RESOLVED 2026-09-07, split decision:
+    - cassette_panel.py:825 ("(simulated — no prober connected) >> L...")
+      and accr_wafer_panel.py:257/273 ("(sim) Extracting simulated wafer
+      map...") are BOTH live, load-bearing features, not legacy
+      scaffolding - traced both triggers directly: cassette automation's
+      _advance_thread checks `if drv is None` and simulates the unload/
+      load step so the automation loop keeps running without hardware;
+      accr_wafer_panel's "Extract Wafer Map" button explicitly asks
+      "Prober not connected — run a SIMULATED map extraction?" before
+      calling _worker_sim. Left both untouched.
+    - instrument_panel.py's (sim) lines were already removed with item
+      1's dead Alignment-tab code.
+    - execution_panel.py's 9 [SIM REMOVE]/[TEST REMOVE] log lines (in
+      load_dies/toggle_running/_auto_step/_auto_next/run_test) were
+      stripped, same treatment as [ALIGN REMOVE] - left the surrounding
+      logic (dict updates, early returns, _refresh calls) in place
+      rather than gutting item 6's ExecutionDashboard wholesale, which
+      is a separate, bigger decision not asked for here.
+
 ------------------------------------------------------------------------
 
 5d. Mixed tags: some already-merged log tags still contain a dead subset
@@ -205,6 +230,15 @@ worth a second look / decision later.
     Flagging here rather than renaming, since these are the ones to
     physically delete (not just relabel) once items 1/5/6 are resolved.
 
+    PARTIALLY RESOLVED 2026-09-07: [INSTRUMENT]'s dead subset is gone -
+    it went away automatically when switch_debug_panel.py was deleted
+    whole (item 5). [PROBER]'s dead subset (execution_panel.py's own
+    separate()/touchdown()/next_die()/abort()) is UNCHANGED - those
+    methods live inside ExecutionDashboard (item 6), which was not
+    touched this pass; only its SIM/TEST-tagged log lines were stripped
+    (see item 5c), not the PROBER-tagged ones. Still needs item 6
+    resolved before this last piece can be cleaned up.
+
 ------------------------------------------------------------------------
 
 5e. [RUN] on Electroglas always refuses the native whole-wafer G/J walk -
@@ -223,6 +257,11 @@ worth a second look / decision later.
     no saved touchdowns) are effectively Accretech-only entry points -
     worth surfacing in the manual/UI rather than only discovering it via
     this refusal message.
+
+    ACKNOWLEDGED 2026-09-07: reviewed, confirmed intentional (matches
+    the code's own comment - Accretech's G/J walk genuinely has no
+    Electroglas equivalent hardware path). No code change - stays as a
+    documentation/manual gap, not a defect.
 
 ------------------------------------------------------------------------
 
