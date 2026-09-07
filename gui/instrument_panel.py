@@ -7483,10 +7483,10 @@ class MainLayout(ttk.Frame):
         ttk.Button(order_row, text="▲", command=lambda: move_col(-1)).pack(side="left")
         ttk.Button(order_row, text="▼", command=lambda: move_col(1)).pack(
             side="left", padx=(6, 0))
-        ttk.Button(order_row, text="Remove", command=lambda: remove_col()).pack(
+        ttk.Button(order_row, text="🗑 Remove", command=lambda: remove_col()).pack(
             side="left", padx=(6, 0))
-        ttk.Button(order_row, text="Edit", command=lambda: _edit_selected()).pack(
-            side="left", padx=(6, 0))
+        ttk.Button(order_row, text="✎ Update Selected",
+                  command=lambda: update_col()).pack(side="left", padx=(6, 0))
 
         add_row = ttk.Frame(frm)
         add_row.grid(row=10, column=0, columnspan=4, sticky="ew", pady=(8, 0))
@@ -7521,7 +7521,7 @@ class MainLayout(ttk.Frame):
         # Not offered alongside a constant/template column: both already
         # produce an exact, deliberately-chosen string.
         ttk.Entry(add_row2, textvariable=round_var, width=4).pack(side="left", padx=(2, 8))
-        ttk.Button(add_row2, text="+ Add Column", command=lambda: add_col()).pack(
+        ttk.Button(add_row2, text="＋ Add Column", command=lambda: add_col()).pack(
             side="left", padx=(8, 0))
 
         add_row3 = ttk.Frame(frm)
@@ -7692,7 +7692,10 @@ class MainLayout(ttk.Frame):
                 return result
             return result
 
-        def add_col():
+        def _col_from_editor():
+            """(field, source, quote, transform_txt) from the current editor
+            fields, or None if incomplete/invalid - shared by Add and Update
+            Selected so the two can never build a column differently."""
             field = field_var.get().strip()
             source = source_var.get().strip()
             constant = constant_var.get().strip()
@@ -7700,7 +7703,7 @@ class MainLayout(ttk.Frame):
             template = template_var.get().strip()
             rnd = round_var.get().strip()
             if not field or not (source or constant or template):
-                return
+                return None
             transform_txt = (template if template else
                             (f"={constant}" if constant else
                              (f"×{mult}" if mult else "")))
@@ -7710,14 +7713,32 @@ class MainLayout(ttk.Frame):
                     transform_txt = (transform_txt + f" ~{rnd}").strip()
                 except ValueError:
                     messagebox.showerror("Invalid", "Round to decimals must be a whole number.")
-                    return
-            cols_tree.insert("", "end", values=(
-                field, source, "yes" if quote_var.get() else "no", transform_txt))
+                    return None
+            return (field, source, "yes" if quote_var.get() else "no", transform_txt)
+
+        def _clear_col_editor():
             field_var.set("")
             multiply_var.set("")
             constant_var.set("")
             template_var.set("")
             round_var.set("")
+
+        def add_col():
+            row = _col_from_editor()
+            if row is None:
+                return
+            cols_tree.insert("", "end", values=row)
+            _clear_col_editor()
+
+        def update_col():
+            sel = cols_tree.selection()
+            if not sel:
+                messagebox.showinfo("No Selection", "Select a column to update.")
+                return
+            row = _col_from_editor()
+            if row is None:
+                return
+            cols_tree.item(sel[0], values=row)
 
         def remove_col():
             sel = cols_tree.selection()
@@ -7732,12 +7753,15 @@ class MainLayout(ttk.Frame):
             idx = cols_tree.index(iid)
             cols_tree.move(iid, "", idx + delta)
 
-        def _edit_selected(_evt=None):
+        def _col_to_editor(_evt=None):
+            """Load the selected row into the edit fields, same as clicking
+            a step on the Recipe tab - non-destructive. Update Selected
+            writes the (possibly changed) fields back into this same row;
+            the row itself is untouched until then."""
             sel = cols_tree.selection()
             if not sel:
                 return
-            iid = sel[0]
-            f, src, q, tr = cols_tree.item(iid, "values")
+            f, src, q, tr = cols_tree.item(sel[0], "values")
             field_var.set(f)
             # Not just the documented list - a "lookup" table's own column
             # (see the Source combobox note above) is a perfectly valid
@@ -7749,8 +7773,7 @@ class MainLayout(ttk.Frame):
             constant_var.set(parsed.get("constant", ""))
             template_var.set(parsed.get("template", ""))
             round_var.set(str(parsed["round"]) if "round" in parsed else "")
-            cols_tree.delete(iid)
-        cols_tree.bind("<Double-Button-1>", _edit_selected)
+        cols_tree.bind("<<TreeviewSelect>>", _col_to_editor)
 
         if existing_fmt:
             for c in existing_fmt.get("columns", []):
