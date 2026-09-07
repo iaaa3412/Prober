@@ -66,6 +66,20 @@ worth a second look / decision later.
    text change - needs the same "Fitted (will ping on startup)" edit for
    consistency, and its own trigger path confirmed too.
 
+   RESOLVED 2026-09-07: trigger confirmed - Setup tab's "＋ Add
+   Instrument…" / "✎ Edit Selected…" buttons (also double-click a row),
+   calling _add_instrument()/_edit_selected() in both
+   accretech_setup_panel.py and eg_setup_panel.py, both routing through
+   the same _InstrumentDialog either way (key="__new__" for Add).
+   MANDATORY_KEYS = ("prober", "switch_matrix") in
+   instruments/accretech_profiles.py - these two slots always exist per
+   bench and can still be EDITED, just never REMOVED (Remove button
+   disabled via _update_remove_state, double-guarded in
+   _remove_instrument too). eg_setup_panel.py's "Fitted" checkbox
+   already reads "Fitted (will ping on startup)", matching Accretech
+   exactly - fixed by the "GUI cleanup pass" commit that came in from
+   another session before this check, nothing left to do.
+
 ------------------------------------------------------------------------
 
 4. Accretech vs Electroglas Debug tab now inconsistent on confirm prompts
@@ -85,6 +99,16 @@ worth a second look / decision later.
    the two systems' debug tabs behaving differently for equivalent/parallel
    actions - worth a decision on whether Electroglas should match (either
    direction) for consistency.
+
+   DECIDED 2026-09-07: leave as-is, intentionally asymmetric. Reviewed
+   all 4 prompts verbatim with the user - unlike Accretech's generic
+   "are you sure" boilerplate, 3 of these 4 carry specific bench-
+   measured Z-limit/overtravel numbers baked into the text itself
+   (LaMP init sequence's "CHECK Z LIMITS FIRST" with the actual SP5Z/
+   SP7Z values; the per-motion-button text like ZU's "Measured on this
+   machine: ZU lands at Z2987..."), so removing them would lose real
+   safety information, not just a rote confirmation click. No code
+   change made.
 
 ------------------------------------------------------------------------
 
