@@ -9,3 +9,9 @@ gui/build/
 !AtomicaATA.spec
 .idea/
 gui/app_settings.json
+
+# Per-machine: which project root this PC uses (see gui/workdir.py).
+# Tracking it made every pull overwrite the local choice with whichever
+# machine committed last - the prober PC points at the \\prober share,
+# a laptop at its own local copy.
+working_dir_pref.json
