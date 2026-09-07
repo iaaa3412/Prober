@@ -220,21 +220,26 @@ class EgPmaRunPanel(ttk.Frame):
         # stops this pane's run) - see instrument_panel._tab_execution2.
         btns = ttk.Frame(lf)
         btns.pack(fill="x", pady=(6, 0))
-        # ONE Sync button. There used to be three controls here - "Sync ?P",
-        # "Sync Run map" and "Build from Wafer Builder Map" - which made
-        # the operator responsible for knowing which of them a given
-        # symptom needed. They are all one action now (see _sync_all), and
-        # the Die list half of it also happens by itself on every map load
-        # (instrument_panel._exec_seed_die_list_from_map), so this button is
-        # only ever a manual re-check rather than a required step.
+        # Two buttons, two jobs, kept apart deliberately. Sync asks the
+        # PROBER where it is (?P) and changes nothing on screen but the
+        # position; Reload Map re-reads the published Wafer Builder map and
+        # rebuilds the Die list from it. Folding the map reload into Sync
+        # made a position check silently redraw the wafer, which is a much
+        # bigger action than the button appeared to offer.
         #
-        # The old "Sync Run map" is deliberately NOT part of it: that one
-        # ran the opposite direction, rebuilding the Wafer Builder map FROM
-        # the recipe's touchdowns. The map is the source of truth for die
-        # IDs and positions now, so nothing may overwrite it from a .PMA.
-        # _sync_run_map itself is left in place but unbound, the same way
+        # Reload Map is a manual re-check, not a required step - the same
+        # rebuild already happens by itself on every map load, see
+        # instrument_panel._exec_seed_die_list_from_map.
+        #
+        # Neither is the old "Sync Run map", which ran the opposite
+        # direction: rebuilding the Wafer Builder map FROM the recipe's
+        # touchdowns. The map is the source of truth for die IDs and
+        # positions now, so nothing may overwrite it from a .PMA.
+        # _sync_run_map is left in place but unbound, the same way
         # _load_recipe/_use_loaded_pma already are.
-        ttk.Button(btns, text="↻ Sync", command=self._sync_all).pack(side="left")
+        ttk.Button(btns, text="↻ Sync", command=self._sync_position).pack(side="left")
+        ttk.Button(btns, text="🗺 Reload Map", command=self._reload_map).pack(
+            side="left", padx=(6, 0))
 
         mode = ttk.Frame(lf)
         mode.pack(fill="x", pady=(6, 0))
@@ -643,7 +648,19 @@ class EgPmaRunPanel(ttk.Frame):
         # Move to Selected's own target - self._selected would otherwise
         # outlive the touchdowns list it indexed into, and stay armed
         # pointing nowhere for a wafer the operator just left.
-        self._move_armed = False
+        #
+        # Through _disarm_move, NOT by assigning _move_armed here: arming
+        # takes the map's click handler over and suspends its picking
+        # (toggle_move_armed), and clearing the flag on its own left both
+        # of those installed forever. _on_map_click then early-returns
+        # because the flag is False, so map clicks went silently dead and
+        # Test Selected picking stayed off until the operator happened to
+        # arm and disarm again - the same symptom installing the handler
+        # was meant to fix, reached by a different route.
+        try:
+            self._disarm_move()
+        except Exception:
+            self._move_armed = False
         self._selected = None
         self._sel_rc = None
         try:
@@ -963,7 +980,17 @@ class EgPmaRunPanel(ttk.Frame):
         anchored = (self._anchored and self._index is not None
                    and 0 <= self._index < len(self._touchdowns))
         prev = self._table_position(self._touchdowns[self._index]) if anchored else None
+        # Every row's iid is its index, so an index appearing twice would
+        # raise Tk's "Item N already exists" - and because THIS loop runs
+        # first, that exception (caught two frames up, in
+        # pma_process_panel._push_to_run_tab) took the second loop with it,
+        # so one duplicate cost the entire rest of the wafer rather than one
+        # misplaced row. _pma_order/_enabled_indices dedupe upstream now;
+        # this makes the table itself unable to be destroyed that way again,
+        # whatever a future caller hands it.
         for i in run_order:
+            if self._tree.exists(str(i)):
+                continue
             t = self._touchdowns[i]
             qx, qy = self._table_position(t)
             step = f"{qx - prev[0]:+d},{qy - prev[1]:+d}" if anchored else ""
@@ -973,7 +1000,7 @@ class EgPmaRunPanel(ttk.Frame):
             prev = (qx, qy)
         n_off = 0
         for i, t in enumerate(self._touchdowns):
-            if i in in_run:
+            if i in in_run or self._tree.exists(str(i)):
                 continue
             qx, qy = self._table_position(t)
             self._tree.insert("", "end", iid=str(i), tags=("offrun",),
@@ -1972,23 +1999,26 @@ class EgPmaRunPanel(ttk.Frame):
         grid = (real[0] - ox, real[1] - oy)
         return self._grid_index_map().get(grid), grid
 
-    def _sync_all(self):
-        """Everything the operator means by "sync", in one press.
+    def _reload_map(self):
+        """Re-read the published Wafer Builder map and rebuild from it.
 
-        Re-reads the published Wafer Builder map (which rebuilds the Die
-        list from it), then reads ?P and re-locates the chuck on that map.
-        Map first, because where the chuck IS only means something in terms
-        of the map it is being located on.
+        Deliberately separate from Sync. Sync is a question put to the
+        prober; this redraws the wafer and rebuilds the Die list
+        (instrument_panel._exec_seed_die_list_from_map runs off the map
+        load), which is a far larger thing to do than checking a position -
+        large enough that it has to be its own press rather than a side
+        effect of one.
         """
-        layout = self._main_layout
-        redraw = getattr(layout, "_exec_draw_wafer_map", None)
-        if redraw is not None:
-            try:
-                redraw(quiet_if_missing=True)
-            except Exception as e:
-                self._log(f"[PMA] Sync: could not reload the wafer map — "
-                          f"{type(e).__name__}: {e}")
-        self._sync_position()
+        redraw = getattr(self._main_layout, "_exec_draw_wafer_map", None)
+        if redraw is None:
+            messagebox.showinfo("Reload Map",
+                                "The Run tab's wafer map is not available.")
+            return
+        try:
+            redraw(quiet_if_missing=True)
+        except Exception as e:
+            self._log(f"[PMA] Could not reload the wafer map — "
+                      f"{type(e).__name__}: {e}")
 
     def _sync_position(self):
         drv = self._prober()
@@ -2131,12 +2161,29 @@ class EgPmaRunPanel(ttk.Frame):
         index_of = {self._grid_xy(t): i for i, t in enumerate(self._touchdowns)}
         seen = set()
         order = []
+        dropped = []
         for k in getattr(self, "_pma_order_keys", []):
             i = index_of.get(k)
-            if i is None or i in seen:
+            if i is None:
+                continue
+            if i in seen:
+                dropped.append(i)
                 continue
             seen.add(i)
             order.append(i)
+        # Say so. A dropped index is a touchdown this run will NOT probe -
+        # the collision is resolved in favour of not corrupting the table,
+        # but silently losing a die from the route is exactly the kind of
+        # thing that has to be visible when the results come up short.
+        if dropped and dropped != getattr(self, "_pma_order_dropped", None):
+            self._pma_order_dropped = dropped
+            seqs = ", ".join(f"#{self._touchdowns[i]['seq']}" for i in dropped[:8])
+            more = f" (+{len(dropped) - 8} more)" if len(dropped) > 8 else ""
+            self._log(
+                f"[PMA] {len(dropped)} touchdown(s) share a grid position with "
+                f"an earlier one and were dropped from the run order: {seqs}"
+                f"{more}. This is the ambiguous-shot-corner case "
+                "_builder_grid_xy warns about — those dies will NOT be probed.")
         return order
 
     def _enabled_indices(self):
@@ -2975,6 +3022,9 @@ class EgPmaRunPanel(ttk.Frame):
                 # while armed silently did nothing.
                 self._prev_click_handler = wmap._click_handler
                 self._prev_picking_enabled = wmap._picking_enabled
+                # Only what was actually saved may be restored - see
+                # _disarm_move.
+                self._click_state_saved = True
                 wmap._picking_enabled = False
                 wmap.set_click_handler(self._on_map_click)
             self._select(None)
@@ -2985,10 +3035,20 @@ class EgPmaRunPanel(ttk.Frame):
         self._goto_selected()
 
     def _disarm_move(self):
+        """Idle the Move to Selected toggle and give the map back.
+
+        The restore is gated on this pane having actually taken the map
+        over. Restoring unconditionally meant a _disarm_move that ran
+        without a matching arm (which _clear now does, deliberately) would
+        install None as the click handler and force picking back on -
+        clobbering whatever another feature had set up, on the strength of
+        a getattr default rather than anything that was ever saved.
+        """
         wmap = self._run_map()
-        if wmap is not None:
-            wmap.set_click_handler(getattr(self, "_prev_click_handler", None))
-            wmap._picking_enabled = getattr(self, "_prev_picking_enabled", True)
+        if wmap is not None and getattr(self, "_click_state_saved", False):
+            wmap.set_click_handler(self._prev_click_handler)
+            wmap._picking_enabled = self._prev_picking_enabled
+        self._click_state_saved = False
         self._move_armed = False
         self._select(None)
 
