@@ -2639,8 +2639,7 @@ class NanoZPanel(ttk.Frame):
         self._cst_stop_btn.config(state="normal" if locked else "disabled")
 
     def _cst_log_event(self, slot_num, lot_id: str, event: str):
-        self._log_main(f"[CASSETTE] Slot {slot_num}: {event}" if slot_num
-                       else f"[CASSETTE] {event}")
+        self._log_main(f"Slot {slot_num}: {event}" if slot_num else event)
         ts = time.strftime("%Y-%m-%d %H:%M:%S")
         def _ui():
             self._cst_log_tree.insert("", "end", values=(ts, slot_num, lot_id, event))
@@ -2833,15 +2832,13 @@ class NanoZPanel(ttk.Frame):
         try:
             if drv is None:
                 self.after(0, lambda: self._log_main(
-                    "[CASSETTE] (simulated — no prober connected) "
-                    ">> L  (Unload / Load Next Wafer)"))
-                time.sleep(0.2)
-                next_ready = True
+                    "Unload/load-next error: prober not connected"))
+                next_ready = False
             else:
-                self.after(0, lambda: self._log_main("[CASSETTE] >> L  (Unload / Load Next Wafer)"))
+                self.after(0, lambda: self._log_main(">> L  (Unload / Load Next Wafer)"))
                 next_ready = drv.cassette_unload_and_load_next(timeout_s=180) == 70
         except Exception as e:
-            self.after(0, lambda e=e: self._log_main(f"[CASSETTE] Unload/load-next error: {e}"))
+            self.after(0, lambda e=e: self._log_main(f"Unload/load-next error: {e}"))
             next_ready = False
 
         if not next_ready:

@@ -314,6 +314,12 @@ worth a second look / decision later.
     stay as a permanent debug aid (in which case it's fine as-is, just
     mislabeled as "temporary").
 
+    RESOLVED 2026-09-07: removed per explicit request ("just remove the
+    log"). Deleted the [SHOT WINDOW] log call and the diag_key/
+    _exec2_shot_window_last_diag dedup state that existed only to gate
+    it (confirmed via grep it had no other reader/writer) - the box-
+    drawing logic itself is untouched.
+
 ------------------------------------------------------------------------
 
 5h. [MEASURE]'s REAL per-die measurement loop silently falls back to fake
@@ -339,6 +345,28 @@ worth a second look / decision later.
     since a user skimming mid-log could otherwise mistake fabricated data
     for a real measurement.
 
+    RESOLVED 2026-09-07: per explicit request ("if stuff isnt connected,
+    it should just give the error that not connected, not start a
+    simulation"), confirmed as a large/deliberate decision first (44
+    `sim` sites across the whole run engine, not just the one log line)
+    before touching anything - user confirmed remove it everywhere.
+    Converted every fake-data fallback in _exec2_run_steps_once AND the
+    3 prober-motion thread starters (_exec2_full_die_thread/
+    _exec2_minor_move_thread/_exec2_test_die_thread) to abort the run
+    with a clear [RUN]/[MEASURE] "ERROR - X not connected" log line and
+    `return False` instead. Removed the now-unused `sim: bool` parameter
+    from _exec2_ensure_separated/_exec2_zup_measure_zdown/
+    _exec2_refresh_xy_blocking/_exec2_apply_terminals/_exec2_reset_output
+    (all had exactly zero other callers - confirmed by grep before
+    removing). The switch-matrix connectivity flag itself (`sim = not
+    (switch and switch.inst)`) stays, but now only gates two "abort with
+    an error" checks (for a switch-routed step that needs a channel
+    closed/opened) instead of a simulate-vs-real branch - a direct-wired
+    step still runs fine with no switch matrix connected, exactly as
+    before. Verified: syntax-checked, grepped the whole file for zero
+    remaining `sim`-as-fallback sites (only the 3 intentional switch-
+    connectivity checks remain), and a clean headless launch.
+
 ------------------------------------------------------------------------
 
 5i. NanoZ's _log_main() double-tags 3 messages as "[NANOZ] [CASSETTE] ..."
@@ -360,6 +388,18 @@ worth a second look / decision later.
     intentional (e.g. to distinguish NanoZ's own cassette automation from
     the non-NanoZ cassette_panel.py's identically-tagged [CASSETTE]
     messages, which land in the Main App Log untagged by [NANOZ]).
+
+    RESOLVED 2026-09-07: stripped the embedded [CASSETTE] tag from all 4
+    actual call sites (_cst_log_event's two branches,
+    _cst_advance_thread's "L" line and its error line - one more site
+    than originally counted) for consistency with the other ~98
+    _log_main sites - Main App Log now shows a single clean
+    "[NANOZ] ..." line, same as everywhere else in this file. While
+    here, also found and fixed a live sim-fallback in
+    _cst_advance_thread - a near-duplicate of cassette_panel.py's own
+    "(simulated — no prober connected)" pattern (already removed this
+    session, item 5c) - now errors instead of faking a successful
+    unload/load.
 
 ------------------------------------------------------------------------
 

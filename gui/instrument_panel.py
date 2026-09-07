@@ -3376,13 +3376,13 @@ class MainLayout(ttk.Frame):
                     total, aborted, finished_mode)
             self._exec2_safe_after(_call_hook)
 
-    def _exec2_ensure_separated(self, prober, stb: int, sim: bool):
-        if sim or stb != 67:
+    def _exec2_ensure_separated(self, prober, stb: int):
+        if stb != 67:
             return
         self._exec2_log("[RUN] finished chuck UP (STB=67 — contact) >> D  (Separate)")
         prober.z_down()
 
-    def _exec2_zup_measure_zdown(self, sim: bool, prober, die_label: str,
+    def _exec2_zup_measure_zdown(self, prober, die_label: str,
                                  steps: list = None, row: int = None, col: int = None,
                                  shot_geom=None) -> bool:
         """row/col: the touchdown's own real (row, col) - always needed,
@@ -3398,12 +3398,11 @@ class MainLayout(ttk.Frame):
         self._exec2_safe_after(lambda: self._exec2_step_var.set("Step: Contact"))
         try:
             self._exec2_log("[RUN] >> Z  (Contact)")
-            if not sim:
-                stb = prober.z_up()
-                if stb == 67:
-                    self._exec2_log("[RUN] << STB=67  (Z Up confirmed — CONTACT)")
-                else:
-                    self._exec2_log(f"[RUN] Z Up returned STB={stb} (expected 67)")
+            stb = prober.z_up()
+            if stb == 67:
+                self._exec2_log("[RUN] << STB=67  (Z Up confirmed — CONTACT)")
+            else:
+                self._exec2_log(f"[RUN] Z Up returned STB={stb} (expected 67)")
         except Exception as e:
             self._exec2_log(f"[RUN] Touchdown error: {e} — measuring anyway")
 
@@ -3444,21 +3443,20 @@ class MainLayout(ttk.Frame):
         z_down_confirmed = True
         try:
             self._exec2_log("[RUN] >> D  (Separate)")
-            if not sim:
-                stb = prober.z_down()
-                if stb == 68:
-                    self._exec2_log("[RUN] << STB=68  (Z Down confirmed — separated)")
-                else:
-                    self._exec2_log(f"[RUN] Z Down returned STB={stb} (expected 68)")
-                    z_down_confirmed = False
+            stb = prober.z_down()
+            if stb == 68:
+                self._exec2_log("[RUN] << STB=68  (Z Down confirmed — separated)")
+            else:
+                self._exec2_log(f"[RUN] Z Down returned STB={stb} (expected 68)")
+                z_down_confirmed = False
         except Exception as e:
             self._exec2_log(f"[RUN] Separate error: {e}")
             z_down_confirmed = False
 
-        if not sim and not z_down_confirmed:
+        if not z_down_confirmed:
             self._exec2_log("[RUN] Aborting/rejected")
             self._exec2_abort()
-        elif not sim:
+        else:
             self._exec2_maybe_read_state()
         return ok
 
@@ -3613,37 +3611,29 @@ class MainLayout(ttk.Frame):
 
     def _exec2_full_die_thread(self, my_token: int, shot_geom=None):
         prober = self.controller.drivers.get("prober")
-        sim = not (prober and prober.inst)
+        if not (prober and prober.inst):
+            self._exec2_log("[RUN] ERROR: prober not connected")
+            self._exec2_finish_run(my_token, "ERROR: prober not connected", "#dc2626")
+            return
         error_msg = None
         try:
-            self._exec2_refresh_xy_blocking(prober, sim)
+            self._exec2_refresh_xy_blocking(prober)
             self._exec2_log("[RUN] >> D  (Separate)")
-            if sim:
-                time.sleep(0.15)
-            else:
-                prober.z_down()
+            prober.z_down()
 
             self._exec2_log("[RUN] >> G  (Position start die)")
-            if sim:
-                stb = 70
-                time.sleep(0.2)
-            else:
-                # move_to_start_die() raises if the prober answers with a GPIB
-                # error (STB=76) instead of 67/70 — e.g. it wasn't sitting on
-                # the probing menu when G was sent. Caught below so the GUI
-                # reflects the real outcome instead of claiming a clean finish.
-                stb = prober.move_to_start_die()
+            # move_to_start_die() raises if the prober answers with a GPIB
+            # error (STB=76) instead of 67/70 — e.g. it wasn't sitting on
+            # the probing menu when G was sent. Caught below so the GUI
+            # reflects the real outcome instead of claiming a clean finish.
+            stb = prober.move_to_start_die()
             self._exec2_log(f"[RUN] << STB={stb}")
-            self._exec2_ensure_separated(prober, stb, sim)
+            self._exec2_ensure_separated(prober, stb)
 
-            sim_dies_remaining = 12
             while (self._exec2_running and not self._exec2_aborted
                    and self._exec2_run_token == my_token):
-                if sim:
-                    x, y = float(self._exec2_die_num % 5), float(self._exec2_die_num // 5)
-                else:
-                    raw = prober.get_xy_position()
-                    x, y = _parse_q_response(raw)
+                raw = prober.get_xy_position()
+                x, y = _parse_q_response(raw)
                 self._exec2_die_num += 1
                 die_label = f"Die #{self._exec2_die_num}  (X{x:.0f} Y{y:.0f})"
                 self.after(0, lambda d=die_label: self._exec2_die_var.set(f"Die: {d}"))
@@ -3653,7 +3643,7 @@ class MainLayout(ttk.Frame):
                 self._exec2_log(f"[RUN] << Q  die X={x:.0f} Y={y:.0f}")
 
                 ok = self._exec2_zup_measure_zdown(
-                    sim, prober, die_label, row=int(y), col=int(x), shot_geom=shot_geom)
+                    prober, die_label, row=int(y), col=int(x), shot_geom=shot_geom)
                 # Pass/Fail counters are updated inside _exec2_zup_measure_zdown
                 # itself now (see _exec2_tally_shot_result) - once per real
                 # die in the shot, not once per touchdown.
@@ -3663,12 +3653,7 @@ class MainLayout(ttk.Frame):
                     break
 
                 self._exec2_log("[RUN] >> J  (Next die)")
-                if sim:
-                    time.sleep(0.15)
-                    sim_dies_remaining -= 1
-                    stb = 81 if sim_dies_remaining <= 0 else 66
-                else:
-                    stb = prober.next_die()
+                stb = prober.next_die()
                 if stb == 81:
                     self._exec2_log("[RUN] << STB=81  (wafer end)")
                     break
@@ -3676,7 +3661,7 @@ class MainLayout(ttk.Frame):
                     self._exec2_log("[RUN] << STB=90  (probing stop — <STOP> pushed)")
                     break
                 self._exec2_log(f"[RUN] << STB={stb}")
-                self._exec2_ensure_separated(prober, stb, sim)
+                self._exec2_ensure_separated(prober, stb)
         except Exception as e:
             error_msg = str(e)
             self._exec2_log(f"[RUN] ERROR: {e}")
@@ -3953,7 +3938,10 @@ class MainLayout(ttk.Frame):
         landing on the next square.
         """
         prober = self.controller.drivers.get("prober")
-        sim = not (prober and prober.inst)
+        if not (prober and prober.inst):
+            self._exec2_log("[RUN] ERROR: prober not connected")
+            self._exec2_finish_run(my_token, "ERROR: prober not connected", "#dc2626")
+            return
         error_msg = None
         row_offset, col_offset = overlay_offset
 
@@ -4013,18 +4001,11 @@ class MainLayout(ttk.Frame):
             self._exec2_die_num += 1
 
             self._exec2_log(f"[RUN] >> D  (Separate before move)")
-            if sim:
-                time.sleep(0.05)
-            else:
-                prober.z_down()
+            prober.z_down()
 
             self._exec2_log(f"[RUN] >> J  (Position die X={die_x:.0f} Y={die_y:.0f}, "
                             f"die #{die_num})")
-            if sim:
-                stb = 66
-                time.sleep(0.1)
-            else:
-                stb = prober.move_to_die_xy(die_x, die_y)
+            stb = prober.move_to_die_xy(die_x, die_y)
             self._exec2_log(f"[RUN] << STB={stb}")
             if stb == 81:
                 self._exec2_log("[RUN] << (wafer end)")
@@ -4034,16 +4015,15 @@ class MainLayout(ttk.Frame):
                 self._exec2_log("[RUN] << (probing stop — <STOP> pushed)")
                 self._exec2_running = False
                 raise _Stop()
-            self._exec2_ensure_separated(prober, stb, sim)
+            self._exec2_ensure_separated(prober, stb)
 
             self._exec2_log("[RUN] >> Z  (Contact)")
-            if not sim:
-                stb = prober.z_up()
-                if stb != 67:
-                    self._exec2_log(f"[RUN] Z Up returned STB={stb} (expected 67)")
+            stb = prober.z_up()
+            if stb != 67:
+                self._exec2_log(f"[RUN] Z Up returned STB={stb} (expected 67)")
 
         try:
-            self._exec2_refresh_xy_blocking(prober, sim)
+            self._exec2_refresh_xy_blocking(prober)
             for land_row, land_col in shots:
                 if (not self._exec2_running or self._exec2_aborted
                         or self._exec2_run_token != my_token):
@@ -4069,8 +4049,7 @@ class MainLayout(ttk.Frame):
                     self._exec2_die_shotpos_by_slot = []
 
                 self._exec2_log("[RUN] >> D  (Separate)")
-                if not sim:
-                    prober.z_down()
+                prober.z_down()
 
                 # Each die in the shot passes or fails on its OWN square,
                 # not the shot's landing square for all of them - a shot's
@@ -4962,23 +4941,19 @@ class MainLayout(ttk.Frame):
 
     def _exec2_test_die_thread(self, sites, my_token: int, shot_geom=None):
         prober = self.controller.drivers.get("prober")
-        sim = not (prober and prober.inst)
+        if not (prober and prober.inst):
+            self._exec2_log("[RUN] ERROR: prober not connected")
+            self._exec2_finish_run(my_token, "ERROR: prober not connected", "#dc2626")
+            return
         error_msg = None
         try:
-            self._exec2_refresh_xy_blocking(prober, sim)
+            self._exec2_refresh_xy_blocking(prober)
             self._exec2_log("[RUN] >> D  (Separate)")
-            if sim:
-                time.sleep(0.15)
-            else:
-                prober.z_down()
+            prober.z_down()
 
             row, col = sites[0]
             self._exec2_log(f"[RUN] >> J  (Position die X={col} Y={row})")
-            if sim:
-                stb = 66
-                time.sleep(0.2)
-            else:
-                stb = prober.move_to_die_xy(col, row)
+            stb = prober.move_to_die_xy(col, row)
             if stb == 81:
                 self._exec2_log("[RUN] << STB=81  (wafer end)")
                 return
@@ -4986,7 +4961,7 @@ class MainLayout(ttk.Frame):
                 self._exec2_log("[RUN] << STB=90  (probing stop — <STOP> pushed)")
                 return
             self._exec2_log(f"[RUN] << STB={stb}")
-            self._exec2_ensure_separated(prober, stb, sim)
+            self._exec2_ensure_separated(prober, stb)
 
             idx = 0
             while (self._exec2_running and not self._exec2_aborted
@@ -5000,7 +4975,7 @@ class MainLayout(ttk.Frame):
                 self._exec2_die_num += 1
 
                 ok = self._exec2_zup_measure_zdown(
-                    sim, prober, die_label, row=row, col=col, shot_geom=shot_geom)
+                    prober, die_label, row=row, col=col, shot_geom=shot_geom)
                 # Pass/Fail counters are updated inside _exec2_zup_measure_zdown
                 # itself now (see _exec2_tally_shot_result) - once per real
                 # die in the shot, not once per touchdown.
@@ -5012,11 +4987,7 @@ class MainLayout(ttk.Frame):
 
                 row, col = sites[idx]
                 self._exec2_log(f"[RUN] >> J  (Position die X={col} Y={row})")
-                if sim:
-                    time.sleep(0.15)
-                    stb = 66
-                else:
-                    stb = prober.move_to_die_xy(col, row)
+                stb = prober.move_to_die_xy(col, row)
                 if stb == 81:
                     self._exec2_log("[RUN] << STB=81  (wafer end)")
                     break
@@ -5024,7 +4995,7 @@ class MainLayout(ttk.Frame):
                     self._exec2_log("[RUN] << STB=90  (probing stop — <STOP> pushed)")
                     break
                 self._exec2_log(f"[RUN] << STB={stb}")
-                self._exec2_ensure_separated(prober, stb, sim)
+                self._exec2_ensure_separated(prober, stb)
         except Exception as e:
             error_msg = str(e)
             self._exec2_log(f"[RUN] ERROR: {e}")
@@ -5193,17 +5164,17 @@ class MainLayout(ttk.Frame):
                 return s
         return None
 
-    def _exec2_reset_output(self, ref, smu, wgen, sim: bool):
+    def _exec2_reset_output(self, ref, smu, wgen):
         if ref is None:
             return ""
         if ref.get("type") == "wave":
             wch = 2 if ref.get("chan") == "CH2" else 1
-            if not sim and wgen and wgen.inst:
+            if wgen and wgen.inst:
                 wgen.turn_output_off_ch(wch)
             return f"reset WGEN CH{wch}"
         if ref.get("mode") == "apply":
             smu_ch = "smub" if ref.get("chan") == "B" else "smua"
-            if not sim and smu and smu.inst:
+            if smu and smu.inst:
                 smu.turn_output_off(smu_ch)
             return f"reset SMU {ref.get('chan') or 'A'}"
         return ""
@@ -5483,7 +5454,7 @@ class MainLayout(ttk.Frame):
         drv = self.controller.drivers.get(key)
         return drv if drv is not None else fallback_driver
 
-    def _exec2_apply_terminals(self, s: dict, drv, sim: bool):
+    def _exec2_apply_terminals(self, s: dict, drv):
         """s["terminals"] ("FRONT"/"REAR", set on the Recipe tab only when
         the step is direct-wired - see recipe_panel._apply_route_state)
         applied once at the top of this step, before it sources or
@@ -5495,7 +5466,7 @@ class MainLayout(ttk.Frame):
         instruments that support it, not a requirement every driver has
         to implement."""
         which = (s.get("terminals") or "").strip().upper()
-        if not which or sim or not drv or not drv.inst:
+        if not which or not drv or not drv.inst:
             return
         if not hasattr(drv, "set_terminals"):
             return
@@ -5578,8 +5549,7 @@ class MainLayout(ttk.Frame):
         last_reading = None
         readings_by_name = {}
 
-        self._exec2_log(f"[MEASURE] One iteration — {len(steps)} step(s)"
-                        + ("  [SIM — no switch matrix connected]" if sim else ""))
+        self._exec2_log(f"[MEASURE] One iteration — {len(steps)} step(s)")
         for i, s in enumerate(steps, 1):
             # Checked per STEP, not per touchdown: ⏹ Stop means stop, and a
             # shot's recipe is a dozen steps across four dies - finishing it
@@ -5666,29 +5636,35 @@ class MainLayout(ttk.Frame):
 
                 if t == "open":
                     if conn.lower() == "all" or (s.get("target") or "").strip().lower() == "all":
+                        if sim:
+                            self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — "
+                                            "switch matrix not connected")
+                            return False
                         self._exec2_log(f"[MEASURE] {i}. {name}: open ALL")
-                        if not sim:
-                            switch.open_all()
-                            if smu and smu.inst:
-                                smu.turn_output_off("smua")
-                                smu.turn_output_off("smub")
-                            if wgen and wgen.inst:
-                                wgen.turn_output_off_ch(1)
-                                wgen.turn_output_off_ch(2)
+                        switch.open_all()
+                        if smu and smu.inst:
+                            smu.turn_output_off("smua")
+                            smu.turn_output_off("smub")
+                        if wgen and wgen.inst:
+                            wgen.turn_output_off_ch(1)
+                            wgen.turn_output_off_ch(2)
                         self._exec2_mark_all_open()
                         continue
+                    if not direct and chans and sim:
+                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — "
+                                        "switch matrix not connected")
+                        return False
                     ref = self._exec2_find_loaded_step(s.get("target", ""))
-                    note = self._exec2_reset_output(ref, smu, wgen, sim)
+                    note = self._exec2_reset_output(ref, smu, wgen)
                     self._exec2_log(f"[MEASURE] {i}. {name}: open {conn or '—'}"
                                     + (f"  ({note})" if note else ""))
-                    if not sim:
-                        for ch in chans:
-                            # A 707B addresses a crosspoint (row, column); a
-                            # switchbox card addresses a plain channel number.
-                            if hasattr(switch, "open_crosspoint"):
-                                switch.open_crosspoint(ch[:2], ch[2:])
-                            else:
-                                switch.open_channel(ch)
+                    for ch in chans:
+                        # A 707B addresses a crosspoint (row, column); a
+                        # switchbox card addresses a plain channel number.
+                        if hasattr(switch, "open_crosspoint"):
+                            switch.open_crosspoint(ch[:2], ch[2:])
+                        else:
+                            switch.open_channel(ch)
                     self._exec2_mark_open(chans)
                     continue
 
@@ -5739,12 +5715,15 @@ class MainLayout(ttk.Frame):
                 instrument = s.get("instrument") or ""
                 label = f"{i}. {name} [{t}{('/' + mode) if mode else ''} " \
                         f"via {instrument}]"
+                if not direct and chans and sim:
+                    self._exec2_log(f"[MEASURE] {label}: ERROR — "
+                                    "switch matrix not connected")
+                    return False
                 self._exec2_log(f"[MEASURE] {label}: "
                                 + ("direct wiring — no switchbox" if direct
                                    else f"close {conn or '—'}"))
-                if not sim:
-                    for ch in chans:
-                        switch.close_channel(ch)
+                for ch in chans:
+                    switch.close_channel(ch)
                 self._exec2_mark_closed(chans)
                 smu_ch = "smub" if s.get("chan") == "B" else "smua"
                 wch    = 2 if s.get("chan") == "CH2" else 1
@@ -5760,11 +5739,14 @@ class MainLayout(ttk.Frame):
                     drv = self._exec2_resolve_instrument(
                         s, "smu" if instrument == "SMU" else "dmm",
                         smu if instrument == "SMU" else dmm)
-                    self._exec2_apply_terminals(s, drv, sim)
+                    if not (drv and drv.inst):
+                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — "
+                                        f"{instrument} not connected")
+                        return False
+                    self._exec2_apply_terminals(s, drv)
                     if instrument == "SMU":
-                        if not sim and drv and drv.inst:
-                            if do_cfg and nplc is not None:
-                                drv.set_nplc(smu_ch, nplc)
+                        if do_cfg and nplc is not None:
+                            drv.set_nplc(smu_ch, nplc)
                         # Manual mode (Recipe tab checkbox, off by default -
                         # see recipe_panel.is_manual_mode): only the
                         # Keithley 2400 has an AUTO/MANUAL ohms distinction
@@ -5779,13 +5761,9 @@ class MainLayout(ttk.Frame):
                             if hasattr(_drv, "set_terminals"):
                                 return _drv.measure_resistance(_ch, manual=_manual)
                             return _drv.measure_resistance(_ch)
-                        read_one = ((lambda: abs(random.gauss(50, 15)))
-                                   if sim or not (drv and drv.inst)
-                                   else _read_smu_r)
+                        read_one = _read_smu_r
                     else:
-                        read_one = ((lambda: abs(random.gauss(50, 15)))
-                                   if sim or not (drv and drv.inst)
-                                   else (lambda: drv.measure_resistance()))
+                        read_one = lambda: drv.measure_resistance()
                     self._exec2_settle(s, name, i)
                     r_raw = self._exec2_maybe_abs(s, self._exec2_measure_averaged(
                         drv, smu_ch,
@@ -5819,18 +5797,17 @@ class MainLayout(ttk.Frame):
                     drv = self._exec2_resolve_instrument(
                         s, "smu" if instrument == "SMU" else "dmm",
                         smu if instrument == "SMU" else dmm)
-                    self._exec2_apply_terminals(s, drv, sim)
+                    if not (drv and drv.inst):
+                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — "
+                                        f"{instrument} not connected")
+                        return False
+                    self._exec2_apply_terminals(s, drv)
                     if instrument == "SMU":
-                        if not sim and drv and drv.inst:
-                            if do_cfg and nplc is not None:
-                                drv.set_nplc(smu_ch, nplc)
-                        read_one = ((lambda: random.gauss(3.3, 0.1))
-                                   if sim or not (drv and drv.inst)
-                                   else (lambda: drv.measure_voltage(smu_ch)))
+                        if do_cfg and nplc is not None:
+                            drv.set_nplc(smu_ch, nplc)
+                        read_one = lambda: drv.measure_voltage(smu_ch)
                     else:
-                        read_one = ((lambda: random.gauss(3.3, 0.1))
-                                   if sim or not (drv and drv.inst)
-                                   else (lambda: drv.measure_voltage_dc()))
+                        read_one = lambda: drv.measure_voltage_dc()
                     self._exec2_settle(s, name, i)
                     v_raw = self._exec2_maybe_abs(s, self._exec2_measure_averaged(
                         drv, smu_ch,
@@ -5852,19 +5829,21 @@ class MainLayout(ttk.Frame):
                     last_reading = (name, v, v_unit)
                     readings_by_name[name] = (v, v_unit)
                 elif t == "voltage":
+                    if not (smu and smu.inst):
+                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — SMU not connected")
+                        return False
                     do_cfg = self._exec2_should_configure(
                         s, ("voltage_apply", smu_ch, lvl, limit))
-                    if not sim and smu and smu.inst:
-                        if do_cfg:
-                            smu.set_voltage(smu_ch, float(lvl or 0))
-                            if limit:
-                                smu.set_current_limit(smu_ch, float(limit))
-                        # Not gated - this step's whole point is "output ON
-                        # until an open step", so it has to be reasserted
-                        # every time in case an earlier open step (or the
-                        # previous touchdown's own close-out) left it off.
-                        # Idempotent/cheap when it was already on.
-                        smu.turn_output_on(smu_ch)
+                    if do_cfg:
+                        smu.set_voltage(smu_ch, float(lvl or 0))
+                        if limit:
+                            smu.set_current_limit(smu_ch, float(limit))
+                    # Not gated - this step's whole point is "output ON
+                    # until an open step", so it has to be reasserted
+                    # every time in case an earlier open step (or the
+                    # previous touchdown's own close-out) left it off.
+                    # Idempotent/cheap when it was already on.
+                    smu.turn_output_on(smu_ch)
                     last_set_voltage_by_ch[smu_ch] = float(lvl or 0)
                     lim_txt = f", current limit {limit} A" if limit else ""
                     self._exec2_log(f"[MEASURE]    forcing {lvl or 0} V on SMU "
@@ -5872,81 +5851,84 @@ class MainLayout(ttk.Frame):
                     last_reading = (name, float(lvl or 0), "V")
                     readings_by_name[name] = (float(lvl or 0), "V")
                 elif t == "current" and mode == "apply":
+                    if not (smu and smu.inst):
+                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — SMU not connected")
+                        return False
                     actual_current = None
                     actual_voltage = None
                     do_cfg = self._exec2_should_configure(
                         s, ("current_apply", smu_ch, lvl, limit))
-                    if not sim and smu and smu.inst:
-                        # Force a known OFF state before reconfiguring - part
-                        # of the exact per-die command sequence confirmed on
-                        # the bench for this step (Maddy TL's "Force
-                        # Current"). NOT gated by Shortcut - cheap, and this
-                        # is the one call the bench trace showed has to
-                        # happen every single die regardless.
-                        smu.turn_output_off(smu_ch)
-                        if do_cfg:
-                            smu.set_current(smu_ch, float(lvl or 0))
-                            if limit:
-                                smu.set_voltage_limit(smu_ch, float(limit))
-                        # Not gated - same "must stay/become ON regardless"
-                        # reasoning as the plain "voltage" apply step above.
-                        smu.turn_output_on(smu_ch)
-                        # Skip auto-clear on Force Current (Recipe tab
-                        # checkbox, off by default - see recipe_panel.
-                        # is_fast_current_settle): the Keithley 2400's
-                        # sour:clear:auto drops the output and re-applies the
-                        # bias fresh on every :READ?, including the readback
-                        # just below that exists purely to log the actual
-                        # delivered current/voltage. Confirmed on the bench
-                        # (Cenfire, a marginal contact) that transient alone
-                        # was enough to collapse a dependent sense step's
-                        # reading a moment later.
-                        #
-                        # Actively asserted BOTH ways, not just written when
-                        # the checkbox is on - the SMU driver instance is
-                        # built once at Connect Instruments and reused for
-                        # every recipe run after that (gui/app.py), and
-                        # _FIXED_SETUP only runs from __init__/reset(), never
-                        # again between runs. Only ever writing "off" left
-                        # clear:auto silently off for whatever ran NEXT in
-                        # the same session (e.g. Cenfire with this box
-                        # checked, then LaMP without reconnecting) - exactly
-                        # the cross-project leak this checkbox exists to
-                        # prevent. Asserting it every Force Current step,
-                        # either direction, makes it self-correcting instead
-                        # of dependent on what the previous recipe left
-                        # behind. hasattr-gated - the 2636B has no such
-                        # method and doesn't need one, this is a 2400-only
-                        # transient.
-                        if hasattr(smu, "set_source_clear_auto"):
-                            fast_settle = bool(getattr(self, "recipe_panel", None)
-                                              and self.recipe_panel.is_fast_current_settle())
-                            smu.set_source_clear_auto(not fast_settle)
-                        # One combined acquisition instead of two separate
-                        # ones where the driver supports it (confirmed on
-                        # the bench for the Keithley 2400: identical values,
-                        # in the time of ONE call, not two - see
-                        # Keithley2400.measure_current_and_voltage). Falls
-                        # back to the original two-call sequence for any
-                        # driver that doesn't have it yet.
-                        if hasattr(smu, "measure_current_and_voltage"):
-                            try:
-                                actual_current, actual_voltage = \
-                                    smu.measure_current_and_voltage(smu_ch)
-                            except Exception:
-                                actual_current = actual_voltage = None
-                        else:
-                            try:
-                                actual_current = smu.measure_current(smu_ch)
-                            except Exception:
-                                actual_current = None
-                            try:
-                                actual_voltage = smu.measure_voltage(smu_ch)
-                            except Exception:
-                                actual_voltage = None
+                    # Force a known OFF state before reconfiguring - part
+                    # of the exact per-die command sequence confirmed on
+                    # the bench for this step (Maddy TL's "Force
+                    # Current"). NOT gated by Shortcut - cheap, and this
+                    # is the one call the bench trace showed has to
+                    # happen every single die regardless.
+                    smu.turn_output_off(smu_ch)
+                    if do_cfg:
+                        smu.set_current(smu_ch, float(lvl or 0))
+                        if limit:
+                            smu.set_voltage_limit(smu_ch, float(limit))
+                    # Not gated - same "must stay/become ON regardless"
+                    # reasoning as the plain "voltage" apply step above.
+                    smu.turn_output_on(smu_ch)
+                    # Skip auto-clear on Force Current (Recipe tab
+                    # checkbox, off by default - see recipe_panel.
+                    # is_fast_current_settle): the Keithley 2400's
+                    # sour:clear:auto drops the output and re-applies the
+                    # bias fresh on every :READ?, including the readback
+                    # just below that exists purely to log the actual
+                    # delivered current/voltage. Confirmed on the bench
+                    # (Cenfire, a marginal contact) that transient alone
+                    # was enough to collapse a dependent sense step's
+                    # reading a moment later.
+                    #
+                    # Actively asserted BOTH ways, not just written when
+                    # the checkbox is on - the SMU driver instance is
+                    # built once at Connect Instruments and reused for
+                    # every recipe run after that (gui/app.py), and
+                    # _FIXED_SETUP only runs from __init__/reset(), never
+                    # again between runs. Only ever writing "off" left
+                    # clear:auto silently off for whatever ran NEXT in
+                    # the same session (e.g. Cenfire with this box
+                    # checked, then LaMP without reconnecting) - exactly
+                    # the cross-project leak this checkbox exists to
+                    # prevent. Asserting it every Force Current step,
+                    # either direction, makes it self-correcting instead
+                    # of dependent on what the previous recipe left
+                    # behind. hasattr-gated - the 2636B has no such
+                    # method and doesn't need one, this is a 2400-only
+                    # transient.
+                    if hasattr(smu, "set_source_clear_auto"):
+                        fast_settle = bool(getattr(self, "recipe_panel", None)
+                                          and self.recipe_panel.is_fast_current_settle())
+                        smu.set_source_clear_auto(not fast_settle)
+                    # One combined acquisition instead of two separate
+                    # ones where the driver supports it (confirmed on
+                    # the bench for the Keithley 2400: identical values,
+                    # in the time of ONE call, not two - see
+                    # Keithley2400.measure_current_and_voltage). Falls
+                    # back to the original two-call sequence for any
+                    # driver that doesn't have it yet.
+                    if hasattr(smu, "measure_current_and_voltage"):
+                        try:
+                            actual_current, actual_voltage = \
+                                smu.measure_current_and_voltage(smu_ch)
+                        except Exception:
+                            actual_current = actual_voltage = None
+                    else:
+                        try:
+                            actual_current = smu.measure_current(smu_ch)
+                        except Exception:
+                            actual_current = None
+                        try:
+                            actual_voltage = smu.measure_voltage(smu_ch)
+                        except Exception:
+                            actual_voltage = None
                     if actual_current is None:
-                        actual_current = abs(random.gauss(
-                            float(lvl or 0), abs(float(lvl or 0)) * 0.0005 + 1e-12))
+                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — "
+                                        "SMU readback failed")
+                        return False
                     lim_txt = f", voltage limit {limit} V" if limit else ""
                     readback_txt = (f"  readback I={actual_current:.6g} A"
                                     + (f", V={actual_voltage:.6g} V"
@@ -5987,109 +5969,108 @@ class MainLayout(ttk.Frame):
                     drv = self._exec2_resolve_instrument(
                         s, "smu" if instrument == "SMU" else "dmm",
                         smu if instrument == "SMU" else dmm)
-                    self._exec2_apply_terminals(s, drv, sim)
+                    if not (drv and drv.inst):
+                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — "
+                                        f"{instrument} not connected")
+                        return False
+                    self._exec2_apply_terminals(s, drv)
                     if instrument == "SMU":
-                        if not sim and drv and drv.inst:
-                            nplc = self._exec2_nplc_spec(s)
-                            mrange = (s.get("mrange") or "").strip()
-                            # See _exec2_should_configure's own docstring -
-                            # this is the "resend setup once per wafer, not
-                            # once per die" fix. lvl/limit/nplc/mrange/
-                            # avg_delay together are everything below
-                            # actually configures on the instrument; the
-                            # bias/output-on/read/off sequence itself still
-                            # runs every touchdown regardless.
-                            do_cfg = self._exec2_should_configure(
-                                s, ("current_measure", smu_ch, lvl, limit,
-                                   s.get("nplc"), mrange, avg_delay))
-                            if lvl:
-                                if do_cfg:
-                                    drv.set_voltage(smu_ch, float(lvl))
-                                    if limit:
-                                        drv.set_current_limit(smu_ch, float(limit))
-                                        # NOT reading the limit back here anymore -
-                                        # see references/HANDOFF_lampaccr_
-                                        # compliance_investigation.md's "GPIB
-                                        # response-desync" finding. This readback
-                                        # query, immediately before the real
-                                        # measure.i() query for the same step, is
-                                        # exactly what a persistent one-query GPIB
-                                        # lag (confirmed real on this bench, does
-                                        # not self-correct) turns into silent data
-                                        # corruption: once desynced, every
-                                        # measure.i() call receives THIS query's
-                                        # answer instead of its own - which is
-                                        # always exactly limiti, explaining a real
-                                        # run's results freezing at a constant
-                                        # 1e-06 for every die for the rest of the
-                                        # run. get_current_limit() is still on the
-                                        # driver for manual/on-demand checks (the
-                                        # SCPI/TSP row on the Instruments tab), just
-                                        # not auto-called in this hot path anymore.
-                                # Not gated - every touchdown closes a
-                                # DIFFERENT relay path, so the output has to
-                                # actually be (re)asserted on it every time
-                                # even when the LEVEL it's set to hasn't
-                                # changed since the last touchdown.
-                                drv.turn_output_on(smu_ch)
-                                last_set_voltage_by_ch[smu_ch] = float(lvl)
-                                did_bias = True
+                        nplc = self._exec2_nplc_spec(s)
+                        mrange = (s.get("mrange") or "").strip()
+                        # See _exec2_should_configure's own docstring -
+                        # this is the "resend setup once per wafer, not
+                        # once per die" fix. lvl/limit/nplc/mrange/
+                        # avg_delay together are everything below
+                        # actually configures on the instrument; the
+                        # bias/output-on/read/off sequence itself still
+                        # runs every touchdown regardless.
+                        do_cfg = self._exec2_should_configure(
+                            s, ("current_measure", smu_ch, lvl, limit,
+                               s.get("nplc"), mrange, avg_delay))
+                        if lvl:
                             if do_cfg:
-                                if nplc is not None:
-                                    drv.set_nplc(smu_ch, nplc)
-                                # Confirmed on the bench: the single biggest
-                                # remaining per-touchdown cost after the
-                                # combined-read fix (~1644ms -> ~931ms at
-                                # NPLC=1/avg=20). LaMP-only opt-in - see
-                                # Keithley2400.set_auto_zero's own docstring
-                                # for the drift tradeoff this accepts; Maddy
-                                # and Cenfire share this driver and have not
-                                # been evaluated with auto-zero off, and a
-                                # 2636B-backed recipe has no such method at
-                                # all.
-                                if hasattr(drv, "set_auto_zero"):
-                                    drv.set_auto_zero(False)
-                                # LaMP's MeterRange, carried from the .PMA. Pinned
-                                # rather than autoranged, so a different PMA
-                                # reconfigures the meter on LOAD ALL instead of
-                                # inheriting whatever the last recipe left set.
-                                if mrange and hasattr(drv, "set_current_range"):
-                                    try:
-                                        drv.set_current_range(smu_ch, float(mrange))
-                                    except (TypeError, ValueError) as e:
-                                        self._exec2_log(f"[MEASURE]    ignoring bad "
-                                                        f"meter range {mrange!r}: {e}")
-                                # sour:clear:auto on drops the output after every
-                                # :READ?, so each of the averaged readings
-                                # re-applies the bias to a discharged path. With no
-                                # source delay the integration starts on the
-                                # charging transient - a good die read ~90 nA where
-                                # the original LaMP data shows sub-nanoamp. This is
-                                # LaMP's MeterDelay, carried on the step as
-                                # avg_delay (ms).
-                                if avg_delay and hasattr(drv, "set_source_delay"):
-                                    drv.set_source_delay(avg_delay / 1000.0)
-                            if hasattr(drv, "measure_current_and_voltage"):
-                                def read_one():
-                                    i_val, v_val = drv.measure_current_and_voltage(smu_ch)
-                                    _combined_reading["v"] = v_val
-                                    return i_val
-                            else:
-                                read_one = lambda: drv.measure_current(smu_ch)
+                                drv.set_voltage(smu_ch, float(lvl))
+                                if limit:
+                                    drv.set_current_limit(smu_ch, float(limit))
+                                    # NOT reading the limit back here anymore -
+                                    # see references/HANDOFF_lampaccr_
+                                    # compliance_investigation.md's "GPIB
+                                    # response-desync" finding. This readback
+                                    # query, immediately before the real
+                                    # measure.i() query for the same step, is
+                                    # exactly what a persistent one-query GPIB
+                                    # lag (confirmed real on this bench, does
+                                    # not self-correct) turns into silent data
+                                    # corruption: once desynced, every
+                                    # measure.i() call receives THIS query's
+                                    # answer instead of its own - which is
+                                    # always exactly limiti, explaining a real
+                                    # run's results freezing at a constant
+                                    # 1e-06 for every die for the rest of the
+                                    # run. get_current_limit() is still on the
+                                    # driver for manual/on-demand checks (the
+                                    # SCPI/TSP row on the Instruments tab), just
+                                    # not auto-called in this hot path anymore.
+                            # Not gated - every touchdown closes a
+                            # DIFFERENT relay path, so the output has to
+                            # actually be (re)asserted on it every time
+                            # even when the LEVEL it's set to hasn't
+                            # changed since the last touchdown.
+                            drv.turn_output_on(smu_ch)
+                            last_set_voltage_by_ch[smu_ch] = float(lvl)
+                            did_bias = True
+                        if do_cfg:
+                            if nplc is not None:
+                                drv.set_nplc(smu_ch, nplc)
+                            # Confirmed on the bench: the single biggest
+                            # remaining per-touchdown cost after the
+                            # combined-read fix (~1644ms -> ~931ms at
+                            # NPLC=1/avg=20). LaMP-only opt-in - see
+                            # Keithley2400.set_auto_zero's own docstring
+                            # for the drift tradeoff this accepts; Maddy
+                            # and Cenfire share this driver and have not
+                            # been evaluated with auto-zero off, and a
+                            # 2636B-backed recipe has no such method at
+                            # all.
+                            if hasattr(drv, "set_auto_zero"):
+                                drv.set_auto_zero(False)
+                            # LaMP's MeterRange, carried from the .PMA. Pinned
+                            # rather than autoranged, so a different PMA
+                            # reconfigures the meter on LOAD ALL instead of
+                            # inheriting whatever the last recipe left set.
+                            if mrange and hasattr(drv, "set_current_range"):
+                                try:
+                                    drv.set_current_range(smu_ch, float(mrange))
+                                except (TypeError, ValueError) as e:
+                                    self._exec2_log(f"[MEASURE]    ignoring bad "
+                                                    f"meter range {mrange!r}: {e}")
+                            # sour:clear:auto on drops the output after every
+                            # :READ?, so each of the averaged readings
+                            # re-applies the bias to a discharged path. With no
+                            # source delay the integration starts on the
+                            # charging transient - a good die read ~90 nA where
+                            # the original LaMP data shows sub-nanoamp. This is
+                            # LaMP's MeterDelay, carried on the step as
+                            # avg_delay (ms).
+                            if avg_delay and hasattr(drv, "set_source_delay"):
+                                drv.set_source_delay(avg_delay / 1000.0)
+                        if hasattr(drv, "measure_current_and_voltage"):
+                            def read_one():
+                                i_val, v_val = drv.measure_current_and_voltage(smu_ch)
+                                _combined_reading["v"] = v_val
+                                return i_val
                         else:
-                            read_one = lambda: abs(random.gauss(4e-7, 2e-7))
+                            read_one = lambda: drv.measure_current(smu_ch)
                         bias_txt = f"  (bias {lvl} V via SMU)" if lvl else "  (via SMU)"
                         set_voltage = last_set_voltage_by_ch.get(smu_ch)
                     else:
-                        read_one = ((lambda: abs(random.gauss(4e-7, 2e-7)))
-                                   if sim or not (drv and drv.inst)
-                                   else (lambda: drv.measure_current_dc()))
+                        read_one = lambda: drv.measure_current_dc()
                         bias_txt = "  (via DMM)"
                     self._exec2_settle(s, name, i)
                     i_raw = self._exec2_maybe_abs(s, self._exec2_measure_averaged(
                         drv, smu_ch,
                         read_one, avg_count, avg_delay, "A"))
-                    if instrument == "SMU" and not sim and drv and drv.inst:
+                    if instrument == "SMU" and drv and drv.inst:
                         if "v" in _combined_reading:
                             # read_one() above already captured this as part
                             # of the same acquisition that produced i_raw -
@@ -6110,7 +6091,7 @@ class MainLayout(ttk.Frame):
                     # this asks the instrument directly instead of guessing
                     # from the number.
                     in_compliance = False
-                    if instrument == "SMU" and not sim and drv and drv.inst \
+                    if instrument == "SMU" and drv and drv.inst \
                             and hasattr(drv, "in_compliance"):
                         try:
                             in_compliance = drv.in_compliance(smu_ch)
@@ -6145,13 +6126,16 @@ class MainLayout(ttk.Frame):
                     last_reading = (name, i_a, i_unit)
                     readings_by_name[name] = (i_a, i_unit)
                 elif t == "wave":
+                    if not (wgen and wgen.inst):
+                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — "
+                                        "wave generator not connected")
+                        return False
                     shape = s.get("shape") or "SIN"
                     freq = float(s.get("freq") or 1000)
-                    if not sim and wgen and wgen.inst:
-                        wgen.set_waveform_ch(wch, shape, freq, float(lvl or 1.0))
-                        if limit:
-                            wgen.set_voltage_limit_ch(wch, float(limit))
-                        wgen.turn_output_on_ch(wch)
+                    wgen.set_waveform_ch(wch, shape, freq, float(lvl or 1.0))
+                    if limit:
+                        wgen.set_voltage_limit_ch(wch, float(limit))
+                    wgen.turn_output_on_ch(wch)
                     lim_txt = f", clamp ±{limit} V" if limit else ""
                     self._exec2_log(f"[MEASURE]    WGEN CH{wch} ON — {shape} "
                                     f"{lvl or 1.0} Vpp @ {freq:.4g} Hz{lim_txt}")
@@ -6552,7 +6536,7 @@ class MainLayout(ttk.Frame):
                     f"[RUN] Move to Selected error: {e}"))
         threading.Thread(target=_run, daemon=True).start()
 
-    def _exec2_refresh_xy_blocking(self, prober, sim: bool):
+    def _exec2_refresh_xy_blocking(self, prober):
         """The automatic, run-thread version of the ↻ Refresh XY button -
         called right before a run's first move (Full Die/Test Die/Test
         Selected/Minor Moves), so the displayed X/Y, the highlighted die,
@@ -6563,8 +6547,6 @@ class MainLayout(ttk.Frame):
         here is the point, unlike the ↻ Refresh XY button's own fire-and-
         forget _exec2_get_xy.
         """
-        if sim:
-            return
         try:
             raw = prober.get_xy_position()
             x, y = _parse_q_response(raw)
@@ -6678,19 +6660,6 @@ class MainLayout(ttk.Frame):
                 for r in range(shot_rows) for c in range(shot_cols)]
         boxes = [wm.canvas.coords(wm.dies[rc]) for rc in cells if rc in wm.dies]
         boxes = [b for b in boxes if len(b) >= 4]
-        # Diagnostic (temporary) - if the box turns out misaligned with the
-        # overlay's own die-ID labels, this line has everything needed to
-        # tell whether it's the offset, the shot dims, or the current
-        # position that's wrong. Deduped against the last logged inputs so
-        # a zoom/pan burst (which also calls this) doesn't flood the log.
-        diag_key = (cur_row, cur_col, row_off, col_off, shot_rows, shot_cols)
-        if getattr(self, "_exec2_shot_window_last_diag", None) != diag_key:
-            self._exec2_shot_window_last_diag = diag_key
-            self._exec2_log(
-                f"[SHOT WINDOW] die R{cur_row}C{cur_col} -> WB R{wb_row}C{wb_col} "
-                f"-> shot block R{shot_r0}..{shot_r0 + shot_rows - 1}"
-                f"C{shot_c0}..{shot_c0 + shot_cols - 1} (real, offset row{row_off:+d} "
-                f"col{col_off:+d}) — {len(boxes)}/{len(cells)} cells on screen")
         if not boxes:
             return
         box = (min(b[0] for b in boxes), min(b[1] for b in boxes),

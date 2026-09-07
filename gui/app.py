@@ -1121,7 +1121,7 @@ class AtomicaDashboard(tk.Tk):
             try:
                 driver = build_driver()
                 if not driver.is_present():
-                    raise Exception("no answer to serial poll — powered off or not on the bus?")
+                    raise Exception("no answer to serial poll")
                 response = driver.get_id()
                 if response:
                     drivers[key] = driver
