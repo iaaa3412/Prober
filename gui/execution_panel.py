@@ -493,12 +493,6 @@ class ExecutionDashboard(ttk.Frame):
         self.alignment["offset_y_um"] = random.uniform(-3.0, 3.0)
         self.alignment["theta_deg"]   = random.uniform(-0.025, 0.025)
         self.alignment["confidence"]  = random.uniform(98.2, 99.9)
-        self.log(
-            f"[ALIGN REMOVE] dX={self.alignment['offset_x_um']:.2f} µm, "
-            f"dY={self.alignment['offset_y_um']:.2f} µm, "
-            f"θ={self.alignment['theta_deg']:.4f}°, "
-            f"conf={self.alignment['confidence']:.2f}%."
-        )
         self._refresh()
 
     def toggle_touchdown(self):

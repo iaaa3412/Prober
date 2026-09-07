@@ -1897,14 +1897,6 @@ class AtomicaDashboard(tk.Tk):
         folder_name = os.path.basename(folder)
         self.ui.exec_panel.log(f"[SYSTEM] Pad layout loaded from '{folder_name}' — {n_pads} pads.")
 
-    def cmd_load_alignment(self):
-        folder = self.ui._ata_folder or filedialog.askdirectory(title="Select ATA Output Folder")
-        if not folder:
-            return
-        self.ui.load_alignment_marks(folder)
-        folder_name = os.path.basename(folder)
-        self.ui.exec_panel.log(f"[SYSTEM] Alignment marks loaded from '{folder_name}'.")
-
     def cmd_browse_export(self):
         selected_dir = filedialog.askdirectory(initialdir=self.ui.export_path_var.get(), title="Select Export Directory")
         if selected_dir:
@@ -2283,10 +2275,6 @@ class AtomicaDashboard(tk.Tk):
         except Exception as e:
             self.ui.exec_panel.log(f"[ERROR] Failed to save {ext.upper()} file: {e}")
             return None
-
-    def cmd_align(self):
-        self.ui.align_panel.lock_alignment()
-        self.ui.exec_panel.log("[ALIGN REMOVE] Alignment locked by operator.")
 
     def cmd_buzzer_clear(self):
         if self.active_system == "electroglas":

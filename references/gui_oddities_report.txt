@@ -25,6 +25,19 @@ worth a second look / decision later.
    (_build_alignment_panel, _run_alignment_handshake, _show_jog_popup,
    AlignmentPanel usage here) if the feature is no longer wanted.
 
+   RESOLVED 2026-09-07: confirmed genuinely unreachable (not gds_parser
+   leftovers as first guessed - it's its own self-contained stage-
+   alignment-handshake feature reading ata_alignment_marks.csv/
+   alignment_marks.csv, unrelated to gds_parser_panel.py). Deleted:
+   AlignmentPanel class, _build_alignment_panel/load_alignment_marks/
+   _run_alignment_handshake/_show_jog_popup (instrument_panel.py),
+   _compute_alignment_transform helper, the self._build_alignment_panel()
+   call in MainLayout.__init__, and app.py's cmd_align/cmd_load_alignment
+   (both were themselves unreachable - no button/menu called either).
+   _parse_q_response was kept - it's also used by live, unrelated code
+   (instrument_panel.py:4052/6976/7013, nanoz_panel.py) despite living in
+   the same file as the dead handshake code.
+
 ------------------------------------------------------------------------
 
 2. Export Format editor - trigger/wiring not yet confirmed
@@ -106,6 +119,16 @@ worth a second look / decision later.
     - so there is no way to click it either. All 13 [ALIGN] call sites are
     unreachable. Renamed to [ALIGN REMOVE] during the log-tag cleanup pass
     to flag the whole tag for deletion alongside item 1's dead code.
+
+    RESOLVED 2026-09-07: all [ALIGN REMOVE] log lines removed alongside
+    item 1's dead code (app.py/instrument_panel.py sites went away with
+    their methods). One exception: execution_panel.py's run_alignment()
+    is wired to a real "Align" button inside ExecutionDashboard's own
+    frame (self.exec_panel) - that whole dashboard is itself unreachable
+    (item 6, a separate/bigger dead-code item, out of scope here), so
+    only the log() call was stripped from run_alignment(), leaving its
+    dict-population + _refresh() call alone rather than gutting item 6's
+    scope unprompted.
 
 ------------------------------------------------------------------------
 
