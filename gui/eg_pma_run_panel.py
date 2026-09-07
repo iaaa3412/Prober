@@ -46,9 +46,11 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from electroglas_pma import (align_site_info,
-                             format_quad, expand_touchdowns_to_dies, die_grid_index,
-                             measurement_plan, workbook_touchdowns, QUAD_ORDER,
+# align_site_info/measurement_plan/workbook_touchdowns are deliberately
+# NOT imported: they read a .PMA header or a recipe-generator workbook,
+# and this panel's only source of truth is the published Wafer Builder map.
+from electroglas_pma import (format_quad, expand_touchdowns_to_dies,
+                             die_grid_index, QUAD_ORDER,
                              shot_geometry, slot_names, slot_grid,
                              quad_positions, serpentine_order)
 from recipe_gen_panel import shot_die_rc
@@ -230,9 +232,9 @@ class EgPmaRunPanel(ttk.Frame):
         # direction: rebuilding the Wafer Builder map FROM the recipe's
         # touchdowns. The map is the source of truth for die IDs and
         # positions now, so nothing may overwrite it from a .PMA.
-        # _sync_run_map is left in place but unbound - the .PMA-driven
-        # _load_recipe/adopt_from_process it used to pair with are gone
-        # entirely now (a .PMA only ever seeds the Wafer Builder tab, see
+        # _sync_run_map has been deleted outright, along with the
+        # .PMA-driven _load_recipe/adopt_from_process it used to pair with
+        # (a .PMA only ever seeds the Wafer Builder tab now, see
         # pma_process_panel.load_all).
         ttk.Button(btns, text="↻ Sync", command=self._sync_position).pack(side="left")
         ttk.Button(btns, text="🗺 Reload Map", command=self._reload_map).pack(
@@ -347,19 +349,14 @@ class EgPmaRunPanel(ttk.Frame):
         identical positioning the moment a map is published, they just
         differ in where the touchdown LIST itself comes from.
 
-        The synthetic `fields` passed to _adopt() only ever carries
-        DieSizeX/Y (the shot pitch, matching what a real .PMA's own header
-        field means - see electroglas_pma.load_touchdowns) - nothing here
-        claims an align site, a measurement plan, or anything else a real
-        .PMA states. Confirmed by reading both directly before relying on
-        this: measurement_plan({}) returns style="none" (a real, valid
-        answer, not an error) and align_site_info({}, ...) catches the
-        missing keys and returns its neutral "no align site" dict - an
-        Electroglas project built entirely in this software, with no .PMA
-        anywhere, still gets a working recipe out of this, just with no
-        align-site shortcut (the operator picks any real die as the
-        anchor instead - see _set_anchor/_resolve_anchor, which never
-        required an align site to begin with).
+        The `fields` passed to _adopt() carries DieSizeX/Y - the shot
+        pitch - and nothing else, because nothing else is needed. The
+        align site, the measurement plan and the move structure were all
+        read out of a .PMA header, and none of them is consulted any more:
+        the operator anchors by picking any real die off the map
+        (_set_anchor/_resolve_anchor, which never required an align site),
+        and the recipe on the Recipe tab says what to measure, exactly as
+        it does on Accretech.
 
         `quiet` suppresses the "nothing to build from" dialogs, so this can
         run automatically (e.g. on an ATA folder load) without interrupting
@@ -367,6 +364,15 @@ class EgPmaRunPanel(ttk.Frame):
         panel now; a .PMA is a one-time import onto the Wafer Builder tab
         (pma_process_panel.load_all), never adopted here directly anymore.
         """
+        # Drop the map-derived caches FIRST. This runs on every map load,
+        # and it reads the shot dims and the die pitch below - both cached,
+        # and both cleared further down the chain in _build_rc_index, which
+        # is too late: switching ATA folders would have measured the new
+        # map with the previous one's geometry.
+        self._builder_shot_cache = None
+        self._builder_pitch_cache = None
+        self._builder_grid_cache = None
+        self._builder_offset_cache = None
         wm = self._run_map()
         dies = list(getattr(wm, "_last_dies", None) or [])
         if not dies:
@@ -375,27 +381,48 @@ class EgPmaRunPanel(ttk.Frame):
                     "Wafer Builder", "No wafer map published yet - build "
                     "the Die Map on the Wafer Builder tab first.")
             return False
+        # Geometry off the MAP, not off the Wafer Builder tab's entry
+        # boxes. Those boxes read "1"/"1" and 1.0 until that particular
+        # project is actually opened on that tab, and a run does not
+        # require opening it - so reading them collapsed EVERY project to a
+        # 1x1 shot with a 1 um pitch whenever it was not. The published map
+        # is the one thing guaranteed to be loaded, and it carries both:
+        # quad_pos names each die's slot in its shot, and the die
+        # coordinates carry the pitch. Verified against every map on the
+        # share - LaMP 2x2 3521x1642, Cenfire 7x9 1000x1000, flamen 2x4
+        # 20x200, the rest 1x1 - each matching that project's own saved
+        # Wafer Builder project exactly.
+        #
+        # The tab is consulted only where the map cannot answer (a map with
+        # a single distinct coordinate on an axis has no spacing to read),
+        # and it is the BUILDER - never a .PMA or .xls, which have no say
+        # in any of this any more.
+        shot_rows, shot_cols = self._builder_shot_layout()
+        dx, dy = self._builder_die_pitch()
         gen = getattr(self._main_layout, "recipe_gen", None)
-        if gen is None:
-            if not quiet:
-                messagebox.showinfo("Wafer Builder", "The Wafer Builder tab "
-                                    "is not available.")
-            return False
-        try:
-            shot_rows, shot_cols = gen._shot_dims()
-            dx, dy = gen._die_pitch()
-            spx, spy = gen._shot_pitch()
-        except Exception as e:
-            if not quiet:
-                messagebox.showerror("Wafer Builder", f"Could not read the "
-                                     f"Shot tab's dims/pitch: {e}")
-            return False
-        if dx <= 0 or dy <= 0:
+        if (shot_rows <= 0 or shot_cols <= 0 or dx <= 0 or dy <= 0) and gen is not None:
+            try:
+                if shot_rows <= 0 or shot_cols <= 0:
+                    shot_rows, shot_cols = gen._shot_dims()
+                if dx <= 0 or dy <= 0:
+                    dx, dy = gen._die_pitch()
+            except Exception as e:
+                if not quiet:
+                    messagebox.showerror("Wafer Builder", f"Could not read the "
+                                         f"Shot tab's dims/pitch: {e}")
+                return False
+        if shot_rows <= 0 or shot_cols <= 0 or dx <= 0 or dy <= 0:
             if not quiet:
                 messagebox.showinfo(
-                    "Wafer Builder", "Set a real die pitch on the Wafer "
-                    "Builder Shot tab first.")
+                    "Wafer Builder", "The published map does not say what "
+                    "shape a shot is or how far apart the dies are, and the "
+                    "Wafer Builder tab has no project open to ask instead.")
             return False
+        # A shot's pitch is its own size in dies times the die pitch. Read
+        # from the same two map-derived numbers rather than from the tab's
+        # shot-pitch boxes, which are blank on every real project here and
+        # fall back to this product anyway.
+        spx, spy = shot_cols * dx, shot_rows * dy
 
         die_id_by_rc = {
             (d["row"], d["col"]): (d.get("die_id") or "").strip()
@@ -474,17 +501,6 @@ class EgPmaRunPanel(ttk.Frame):
             f"{dx:.0f} x {dy:.0f} um) - no .PMA file used.")
         return True
 
-    def _align_die_from_wafer_tab(self):
-        """The align die named by the recipe-generator workbook, if one is loaded.
-
-        Better than inferring it from XMoveFirstFromAlignSite, because it is
-        stated rather than derived - so it is preferred when present.
-        """
-        data = self.wafer_definition_data()
-        if isinstance(data, dict) and data.get("align_die"):
-            return str(data["align_die"])
-        return None
-
     def _adopt(self, path: str, fields: dict, touchdowns: list):
         # First thing: _pma_order_keys below calls _grid_xy, which reads the
         # published-map lookup. Clearing the cache further down (with the
@@ -497,51 +513,30 @@ class EgPmaRunPanel(ttk.Frame):
         self._recipe_path = path
         self._fields = fields
         self._touchdowns = touchdowns
-        # The WAFER's pitch, not the .PMA header's. Measured on LaMP
-        # 2026-08-21: the 21PCM .PMA carries DieSizeX/Y = 2785 x 1585 while
-        # the wafer it probes is on a 3521 x 1642 grid (every touchdown x is
-        # an exact multiple of 3521, the wafer definition says 3521/1642, and
-        # the prober's own SP1 measured 3521 x 1642). Dividing a 3521-spaced
-        # grid by 2785 does not merely shift the result, it makes it
-        # NON-LINEAR - the index drifts and skips (...19, 20, 21, 23, 24...) -
-        # so touchdowns land on the wrong die by an amount that grows across
-        # the wafer, which is exactly the reported symptom. The .PMA header
-        # stays the fallback for a folder with no wafer definition loaded.
-        wd = self.wafer_definition_data() or {}
-        try:
-            wafer_pitch = (float(wd.get("die_size_x") or 0),
-                           float(wd.get("die_size_y") or 0))
-        except (TypeError, ValueError):
-            wafer_pitch = (0.0, 0.0)
-        pma_pitch = (float(fields["DieSizeX"]), float(fields["DieSizeY"]))
-        if wafer_pitch[0] > 0 and wafer_pitch[1] > 0:
-            self._die_um = wafer_pitch
-            if wafer_pitch != pma_pitch:
-                self._log(
-                    f"[PMA] die pitch {wafer_pitch[0]:.0f} x {wafer_pitch[1]:.0f} um "
-                    f"taken from the wafer map; the .PMA header says "
-                    f"{pma_pitch[0]:.0f} x {pma_pitch[1]:.0f}. The map wins - it is "
-                    "what the die positions and the prober's own die size agree with.")
-        else:
-            self._die_um = pma_pitch
-        # The chuck can be parked on - and driven to - ANY die on the wafer,
-        # not only the ones this recipe probes. So the position list becomes
-        # the whole wafer whenever a workbook is loaded, and the .PMA stops
-        # being that list: it is now an ORDER over it, applied by
-        # _enabled_indices. Keyed on quad coordinates rather than seq, because
-        # the workbook and the .PMA number their shots independently.
+        # The pitch the caller measured off the published map, full stop.
+        # This used to be overridden from pma_wafer's .xls/.csv wafer
+        # definition (ata_wafer_map_pma.csv), which the ATA folder load
+        # still autoloads - so on LaMP the builder's real SHOT pitch
+        # (7042 x 3284, the quad) was silently replaced by that file's
+        # single-DIE pitch (3521 x 1642). quad_die_offsets halves this
+        # value to place a shot's corners, so the substitution put every
+        # corner at half the right offset.
+        self._die_um = (float(fields["DieSizeX"]), float(fields["DieSizeY"]))
+        # The order this list is probed in. It is simply the caller's own
+        # order now - the map IS the wafer, so there is no second, wider
+        # list for this to be an "order over" any more. Keyed on grid
+        # coordinates rather than seq for _pma_order's benefit.
         self._pma_order_keys = [self._grid_xy(t) for t in touchdowns]
-        # Kept separately from self._touchdowns (about to be widened to the
-        # whole wafer below) - this is the .PMA's own touchdown list, one
-        # entry per real physical landing, each with its own device_id/x/y.
-        # Nothing reads this anymore (the recipe-attachment path that used
-        # to - pma_process_panel._push_touchdowns_to_recipe - is gone; a
-        # recipe's touchdown list is built by hand on the Recipe tab
-        # against the published map now, same as Accretech), kept only so
-        # a caller that still hands _adopt a real .PMA's touchdowns has
-        # somewhere to put them.
+        # WAS: self._touchdowns = self._map_source_touchdowns(), which threw
+        # the caller's touchdowns away and re-read them from the .xls wafer
+        # definition. Measured on LaMP: the map's 634 real 2x2 shots
+        # ('A3-01/93-71/A3-02/93-72', ...) were replaced by that file's 2422
+        # single dies ('A3-01', 'A3-02', ...), so a run would have landed
+        # 2422 times instead of measuring four dies through switch routing
+        # at each of 634 landings. It also defeated
+        # adopt_from_wafer_builder's no-op guard - 634 never equals 2422 -
+        # so every map load re-adopted and reset the anchor.
         self._pma_raw_touchdowns = touchdowns
-        self._touchdowns = self._map_source_touchdowns()
         self._index = None
         self._anchored = False
         self._origin_offset = (0, 0)
@@ -627,38 +622,35 @@ class EgPmaRunPanel(ttk.Frame):
                   "previous wafer's touchdowns no longer apply.")
 
     def _fill_info(self):
-        f, dx, dy = self._fields, *self._die_um
+        """Describe the loaded wafer, entirely from the map.
+
+        The align-site line and the structure/measurement lines are gone
+        with the .PMA header they were read out of (CountMovesMajor/Minor,
+        measurement_plan(fields)). Nothing displays _info_var anyway - see
+        _build_anchor - so this exists to keep it truthful rather than to
+        put anything on screen.
+        """
+        dx, dy = self._die_um
         n = len(self._touchdowns)
-        align = self._align_grid_xy()
+        rows, cols = self.shot_layout()
         lines = [
-            f"die size (grid pitch)  {dx:.0f} x {dy:.0f} um   "
+            f"shot pitch             {dx:.0f} x {dy:.0f} um   "
             f"= {dx / 1000:.3f} x {dy / 1000:.3f} mm",
+            f"shot                   {rows} x {cols} dies",
             f"touchdowns this run    {len(self._enabled_indices())}",
         ]
         if len(self._enabled_indices()) != n:
             lines.append(f"wafer positions        {n}  (the chuck can be set "
                          "to, or moved to, any of them)")
-        if align:
-            lines.append(f"align site             grid ({align[0]:.0f},{align[1]:.0f})")
-        n_minor = int(f.get("CountMovesMinor") or 1)
-        lines.append(
-            f"structure              {f.get('CountMovesMajor', '?')} major"
-            + (f" x {n_minor} minor sub-sites per touchdown" if n_minor > 1
-               else " moves, ONE die per touchdown (no minor moves)"))
-        plan = measurement_plan(f)
-        lines.append(f"measurement            {plan['summary']}")
-        if plan["wires"]:
-            lines.append(f"probe pins needed      {plan['wires']}")
         self._info_var.set("\n".join(lines))
 
-    def _align_info(self):
-        """Shared with the PMA Process tab, so the two tabs cannot disagree."""
-        return align_site_info(self._fields, self._touchdowns,
-                               self._align_die_from_wafer_tab() or "")
-
-    def _align_grid_xy(self):
-        """Die-grid coords of the align site, from the ...FromAlignSite fields."""
-        return self._align_info()["quad"]
+    # _align_info/_align_grid_xy/_align_index are gone. Both of their inputs
+    # were files this panel no longer reads: the .PMA header's
+    # ...FromAlignSite fields, and the .xls wafer definition's align_die.
+    # They only ever added two convenience entries to the top of the anchor
+    # dropdown; every real entry in it comes from the map, and the operator
+    # anchors by picking or typing a die ID either way (_set_anchor/
+    # _resolve_anchor never needed an align site to begin with).
 
     def _builder_grid_lookup(self) -> dict:
         """die_id -> (col, row) from the Wafer Builder-published map.
@@ -820,30 +812,14 @@ class EgPmaRunPanel(ttk.Frame):
         ox, oy = self._origin_offset
         return (qx + ox, qy + oy)
 
-    def _align_index(self):
-        """Index of the touchdown sitting on the align site, if there is one."""
-        td = self._align_info()["quad_touchdown"]
-        if td is None:
-            return None
-        return next((i for i, t in enumerate(self._touchdowns)
-                     if t["seq"] == td["seq"]), None)
-
     def _fill_anchor_choices(self):
-        choices = []
-        info = self._align_info()
-        named = self._align_die_from_wafer_tab()
-        if named and info["named_touchdown"] is not None:
-            hit = info["named_touchdown"]
-            choices.append(f"align die — #{hit['seq']} {hit['device_id']}")
-        ai = self._align_index()
-        if ai is not None:
-            t = self._touchdowns[ai]
-            label = f"align site — #{t['seq']} {t['device_id']}"
-            if label not in choices and not any(f"#{t['seq']} " in c for c in choices):
-                choices.append(label)
         # Every site, not the first 40 - the chuck can legitimately be parked
         # anywhere on the wafer, and a truncated list silently made most of
-        # them unpickable.
+        # them unpickable. Straight off self._touchdowns, which is the
+        # published map; the two "align die"/"align site" entries that used
+        # to be prepended came from the .PMA header and the .xls wafer
+        # definition, and are gone with them.
+        choices = []
         for t in self._touchdowns:
             choices.append(f"#{t['seq']} {t['device_id']}")
         self._anchor_choices = choices
@@ -1208,8 +1184,6 @@ class EgPmaRunPanel(ttk.Frame):
     # is currently DISPLAYING, so with the view set to "PMA" it holds the
     # touchdown list. Reading it here redrew the whole wafer as just the
     # touchdowns and took every row/col index with it.
-    _WAFER_SOURCE_ATTRS = ("_xls_shot_data", "_csv_shot_data")
-
     def _builder_shot_layout(self) -> tuple:
         """(rows, cols) of one shot, read from the Wafer Builder-published map.
 
@@ -1254,22 +1228,57 @@ class EgPmaRunPanel(ttk.Frame):
         self._builder_shot_cache = out
         return out
 
+    def _builder_die_pitch(self) -> tuple:
+        """(x, y) die pitch in microns, read from the published map itself.
+
+        The map draws every die at its real coordinate, so the spacing
+        between adjacent distinct coordinates IS the pitch - no file and no
+        entry box needed. The most common gap is taken rather than the
+        smallest, so a map with missing dies, a wafer edge, or a stray
+        duplicate coordinate still reports the pitch of the grid rather
+        than of its largest hole.
+
+        Returns (0, 0) when an axis has fewer than two distinct
+        coordinates, which is the only case the map genuinely cannot
+        answer - the caller falls back to the Wafer Builder tab there.
+        """
+        cached = getattr(self, "_builder_pitch_cache", None)
+        if cached is not None:
+            return cached
+        wm = self._run_map()
+        dies = getattr(wm, "_last_dies", None) or []
+
+        def spacing(key):
+            vals = sorted({round(float(d[key])) for d in dies
+                           if d.get(key) is not None})
+            gaps = {}
+            for a, b in zip(vals, vals[1:]):
+                if b > a:
+                    gaps[b - a] = gaps.get(b - a, 0) + 1
+            return max(gaps, key=gaps.get) if gaps else 0
+
+        try:
+            out = (float(spacing("x_um")), float(spacing("y_um")))
+        except (TypeError, ValueError):
+            out = (0.0, 0.0)
+        self._builder_pitch_cache = out
+        return out
+
     def shot_layout(self) -> tuple:
         """(rows, cols) of the die block one touchdown covers.
 
         The Wafer Builder-published map wins outright - it is the wafer, and
         it records the shot per die (see _builder_shot_layout). Only if it
-        carries no slot names at all do the older sources get a turn: the
-        loaded wafer definition, which carries the dims for a project that
-        stated them (so a 1x5 strip is not expanded as a 2x2 LaMP quad),
-        then the Wafer Builder tab's own live Shot-tab dims, then
-        shot_geometry's inference from the widest device-ID list.
+        carries no slot names at all does the Wafer Builder TAB's own live
+        Shot dims get a turn, and then shot_geometry's inference from the
+        widest device-ID list.
+
+        The loaded .xls/.csv wafer definition used to sit between those two
+        and no longer does. A .PMA or a recipe-generator workbook has no
+        say in the shape of a shot, or in anything else here - the map is
+        the wafer, at all times.
         """
         rows, cols = self._builder_shot_layout()
-        if rows <= 0 or cols <= 0:
-            data = self.wafer_definition_data() or {}
-            rows = int(data.get("shot_rows") or 0)
-            cols = int(data.get("shot_cols") or 0)
         if rows <= 0 or cols <= 0:
             gen = getattr(self._main_layout, "recipe_gen", None)
             if gen is not None:
@@ -1289,37 +1298,13 @@ class EgPmaRunPanel(ttk.Frame):
              for t in (self._touchdowns or [])), default=1)
         return shot_geometry(widest, rows, cols)
 
-    def wafer_definition_data(self):
-        """The loaded source that defines the whole wafer, or None."""
-        wafer = getattr(self._main_layout, "pma_wafer", None)
-        if wafer is None:
-            return None
-        for attr in self._WAFER_SOURCE_ATTRS:
-            data = getattr(wafer, attr, None)
-            if isinstance(data, dict) and data.get("shots"):
-                return data
-        return None
-
-    def _map_source_touchdowns(self) -> list:
-        """Every shot the MAP shows - the workbook's, not this recipe's.
-
-        The recipe generator .xls is the wafer; the .PMA is the subset this
-        recipe visits. Deriving the grid from self._touchdowns made a
-        15-touchdown gauge recipe index a 15-shot grid, so its dies landed on
-        cells 0..7 of a wafer that has hundreds - the map drew only the
-        touchdowns, and every row/col was wrong for the real map.
-        """
-        data = self.wafer_definition_data()
-        if data:
-            try:
-                shots = workbook_touchdowns(data)
-                if shots:
-                    return shots
-            except Exception as e:
-                self._log(f"[PMA] Could not read the wafer map from the recipe "
-                          f"generator workbook ({type(e).__name__}: {e}) — "
-                          "falling back to the PMA's touchdowns.")
-        return self._touchdowns
+    # wafer_definition_data() and _map_source_touchdowns() are gone. They
+    # read pma_wafer's .xls/.csv wafer definition (ata_wafer_map_pma.csv,
+    # which the ATA folder load still autoloads), and every one of their
+    # callers has been moved onto the published map: the touchdown list,
+    # the die pitch, the shot dims and the align site. The map is the only
+    # source of truth for this panel now, at all times - nothing here
+    # reads a .PMA or a recipe-generator workbook, ever.
 
     def _wafer_builder_rc_lookup(self) -> dict:
         """(x, y) in THIS module's own touchdown x/y sign convention ->
@@ -1369,6 +1354,7 @@ class EgPmaRunPanel(ttk.Frame):
         # Rebuilt from the published map on next use, same lifecycle as
         # _builder_grid_cache below - cleared before shot_layout() reads it.
         self._builder_shot_cache = None
+        self._builder_pitch_cache = None
         # grid (x, y) -> touchdown index, what _locate_real turns a ?P
         # reading into. Depends on both the touchdown list and the map, so
         # it is dropped here with the rest of them.
@@ -1785,64 +1771,10 @@ class EgPmaRunPanel(ttk.Frame):
         self._last_seq = seq
         self.update_shot_window()
 
-    def _sync_run_map(self):
-        """Point the Run tab's map at this recipe so highlighting has squares.
-
-        Builds a Wafer Builder map (Shot/Shot Map/Die Map) from the loaded
-        recipe's own touchdowns and publishes it as the Run tab's map -
-        same path LOAD ALL's own map step uses (pma_process_panel._write_
-        wafer_map). The old ata_wafer_map_electroglas.csv this used to
-        write predates Wafer Builder entirely and is retired: Electroglas
-        has no separate hardware-extracted map to fall back on, so Wafer
-        Builder IS the wafer here, not a second parallel copy of it.
-        """
-        layout = self._main_layout
-        wmap = self._run_map()
-        if wmap is None or layout is None:
-            messagebox.showinfo("Run map", "The Run tab's wafer map is not available.")
-            return
-        if not self._touchdowns:
-            messagebox.showinfo("Run map", "Load a recipe first.")
-            return
-        folder = getattr(layout, "_exec_map_folder", None) or \
-            getattr(layout, "_ata_folder", None)
-        if not folder or not os.path.isdir(folder):
-            messagebox.showinfo("Run map", "Load an ATA folder on the Run tab first.")
-            return
-        gen = getattr(layout, "recipe_gen", None)
-        if gen is None or not hasattr(gen, "load_touchdowns_as_map"):
-            messagebox.showinfo("Run map", "The Wafer Builder tab is not available.")
-            return
-        if not messagebox.askokcancel(
-                "Run map",
-                "Rebuild the Wafer Builder map from this recipe's touchdowns, "
-                "and make it the Run tab's active map?"):
-            return
-        shots = self._map_source_touchdowns()
-        try:
-            gen.load_touchdowns_as_map(
-                shots, "Sync Run Map", "the loaded recipe's touchdowns",
-                save_as=os.path.splitext(os.path.basename(self._pma_path))[0]
-                        if getattr(self, "_pma_path", "") else None)
-        except Exception as exc:
-            self._log(f"[PMA] Could not build a Wafer Builder map from these "
-                      f"shots — {type(exc).__name__}: {exc}")
-            return
-        try:
-            gen._sync_views(folder)
-        except Exception as e:
-            self._log(f"[PMA] Could not redraw the Run map: {type(e).__name__}: {e}")
-            return
-        self._build_rc_index()
-        self._last_seq = None
-        try:
-            wmap.set_click_handler(self._on_map_click)
-        except AttributeError:
-            self._log("[PMA] This wafer map build has no click handler — "
-                      "select dies from the table instead")
-        if self._index is not None:
-            self._highlight(self._index)
-        self._log(f"[PMA] Run map synced — {len(self._rc)} shots, click a die to select it")
+    # _sync_run_map is gone. It rebuilt the Wafer Builder MAP from a
+    # recipe's touchdowns - the opposite direction to everything else
+    # here, and the one thing that could overwrite the source of truth
+    # with .PMA-derived data. Its button was already unbound.
 
     def _mark_on_wafer_map(self, touchdown):
         """Ring the current shot on the PMA Wafer tab's map.
@@ -2104,12 +2036,16 @@ class EgPmaRunPanel(ttk.Frame):
         # thing that has to be visible when the results come up short.
         if dropped and dropped != getattr(self, "_pma_order_dropped", None):
             self._pma_order_dropped = dropped
-            seqs = ", ".join(f"#{self._touchdowns[i]['seq']}" for i in dropped[:8])
-            more = f" (+{len(dropped) - 8} more)" if len(dropped) > 8 else ""
+            # Distinct positions, not raw hits: index_of is last-wins, so
+            # several colliding keys resolve to the SAME index and listing
+            # them straight printed one seq over and over.
+            uniq = sorted({self._touchdowns[i]["seq"] for i in dropped})
+            seqs = ", ".join(f"#{s}" for s in uniq[:8])
+            more = f" (+{len(uniq) - 8} more)" if len(uniq) > 8 else ""
             self._log(
-                f"[PMA] {len(dropped)} touchdown(s) share a grid position with "
-                f"an earlier one and were dropped from the run order: {seqs}"
-                f"{more}. This is the ambiguous-shot-corner case "
+                f"[PMA] {len(dropped)} entr(ies) in the run order resolved to a "
+                f"grid position already taken, at {len(uniq)} position(s): "
+                f"{seqs}{more}. This is the ambiguous-shot-corner case "
                 "_builder_grid_xy warns about — those dies will NOT be probed.")
         return order
 
@@ -2941,11 +2877,10 @@ class EgPmaRunPanel(ttk.Frame):
                 # Accretech's own _exec_move_selected_button: a real Test
                 # Selected pick set must survive arming/disarming this,
                 # untouched. Without installing this handler here, a click
-                # only ever reached _on_map_click if _sync_run_map (now an
-                # unbound, dead button - see its own docstring) had happened
-                # to run first and left it wired from a previous session -
-                # normally it was never wired at all, so clicking a die
-                # while armed silently did nothing.
+                # only ever reached _on_map_click if the old _sync_run_map
+                # (since deleted) had happened to run first and left it wired
+                # from a previous session - normally it was never wired at
+                # all, so clicking a die while armed silently did nothing.
                 self._prev_click_handler = wmap._click_handler
                 self._prev_picking_enabled = wmap._picking_enabled
                 # Only what was actually saved may be restored - see
