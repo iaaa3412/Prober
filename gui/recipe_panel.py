@@ -3947,7 +3947,10 @@ class RecipePanel(ttk.Frame):
             # disk came back untagged, so _visible_recipe_names() could
             # never actually filter anything and every recipe showed on
             # every bench regardless of what it was saved with.
-            self._recipes = {name: {"steps": [dict(s) for s in rec.get("steps", [])],
+            # {**rec, ...}: see WaferMapPanel.get_recipes for why this
+            # copies the whole recipe instead of naming fields.
+            self._recipes = {name: {**rec,
+                                    "steps": [dict(s) for s in rec.get("steps", [])],
                                     "sites": [dict(s) for s in rec.get("sites", [])],
                                     "bench": rec.get("bench", ""),
                                     "minor_moves": bool(rec.get("minor_moves")),

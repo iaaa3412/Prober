@@ -4338,43 +4338,24 @@ class MainLayout(ttk.Frame):
         return resolved
 
     def _exec_preselect_align_die(self):
-        """Point the Run tab's "Chuck is on" box at the recipe's align die.
+        """Re-sort the Run tab's "Chuck is on" list for the loaded recipe.
 
-        Purely a convenience, and deliberately a weak one: it selects an
-        entry in a dropdown and nothing more. It does not anchor, does not
-        move the chuck, and takes no part in the run - the operator still
-        presses Set. The point is only that a whole-wafer map has thousands
-        of entries, and the die a given recipe always starts from should
-        not have to be scrolled to every time.
-
-        Skipped entirely once the chuck IS set: an anchored position is
-        real information about where the hardware is, and overwriting the
-        box under it would invite pressing Set on the wrong die.
+        The work is EgPmaRunPanel._fill_anchor_choices', which moves the
+        recipe's align die to the front of that list; this just asks it to
+        rebuild now that a different recipe is loaded. Rebuilding rather
+        than setting the box directly means the hoist survives every later
+        rebuild of the list (a map reload, a folder change) instead of
+        being a one-shot assignment that the next rebuild undoes.
         """
         run = getattr(self, "eg_pma_run", None)
-        var = getattr(run, "_anchor_var", None)
-        if var is None or getattr(run, "_anchored", False):
+        refill = getattr(run, "_fill_anchor_choices", None)
+        if refill is None or getattr(run, "_anchored", False):
             return
         try:
-            want = (self.recipe_panel.get_align_die() or "").strip()
-        except Exception:
-            return
-        if not want:
-            return
-        choices = list(getattr(run, "_anchor_choices", None) or [])
-        # The saved value is normally one of these entries verbatim (the
-        # box is filled from this same list). A bare die ID typed straight
-        # in is matched against the "#seq die_id" entries too, so either
-        # form works.
-        match = next((c for c in choices if c == want), None)
-        if match is None:
-            match = next((c for c in choices
-                          if c.split(" ", 1)[-1].strip() == want), None)
-        if match is None:
-            self._exec_log(f"[RUN] Align die '{want}' is not on the loaded "
-                           "map — leaving the chuck box as it is.")
-            return
-        var.set(match)
+            refill()
+        except Exception as e:
+            self._exec_log(f"[RUN] Could not apply the recipe's align die — "
+                           f"{type(e).__name__}: {e}")
 
     def _exec_loaded_recipe_name(self) -> str:
         """The recipe the Run tab currently has loaded, if any."""

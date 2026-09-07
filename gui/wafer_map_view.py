@@ -1920,7 +1920,14 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         # tab, so every recipe opened with a blank touchdown table. The Run tab
         # looked right only by accident: with no sites, _probe_seqs() returns
         # None and the run falls back to the .PMA's own list.
-        return {name: {"steps": [dict(s) for s in rec.get("steps", [])],
+        # {**rec, ...} - copy the WHOLE recipe, then normalise the fields
+        # that need a type or a default. Listing fields by hand here is
+        # what silently dropped 'sites', then 'shortcut', then
+        # 'fast_current_settle', then 'align_die', each time invisibly and
+        # each time found only after someone noticed their setting had
+        # reset. A field added anywhere now rides along on its own.
+        return {name: {**rec,
+                       "steps": [dict(s) for s in rec.get("steps", [])],
                        "sites": [dict(s) for s in rec.get("sites", [])],
                        "bench": rec.get("bench", ""),
                        "minor_moves": bool(rec.get("minor_moves")),
@@ -1942,7 +1949,8 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         # none - and the SITE rows recipes_to_rows would have emitted never
         # existed to be written.
         self._card_recipes[card] = {
-            name: {"steps": [dict(s) for s in rec.get("steps", [])],
+            name: {**rec,
+                   "steps": [dict(s) for s in rec.get("steps", [])],
                    "sites": [dict(s) for s in rec.get("sites", [])],
                    "bench": rec.get("bench", ""),
                    "minor_moves": bool(rec.get("minor_moves")),

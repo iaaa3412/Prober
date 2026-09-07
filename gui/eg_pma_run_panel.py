@@ -878,9 +878,45 @@ class EgPmaRunPanel(ttk.Frame):
         choices = []
         for t in self._touchdowns:
             choices.append(f"#{t['seq']} {t['device_id']}")
+        # The loaded recipe's align die, if it named one, moved to the
+        # front. That is all the align die does: it does not anchor, does
+        # not move the chuck and takes no part in the run - it just saves
+        # scrolling a list of thousands to reach the die this recipe always
+        # starts from. Not applied once the chuck is anchored, since the
+        # list is then describing a position the hardware really has.
+        if not self._anchored:
+            want = self._recipe_align_die()
+            if want:
+                # Match on the DIE ID, not on the whole entry. The saved
+                # value is normally a full "#seq die_id" picked out of this
+                # same list, but seq is assigned when the Die list is built
+                # (adopt_from_wafer_builder) and renumbers whenever the map
+                # does - so a saved "#1121 53-41" would silently stop
+                # matching the day that die became #1122. The ID is what
+                # the operator actually chose.
+                want_id = want.split(" ", 1)[-1].strip() if want.startswith("#") else want
+                hit = next((c for c in choices
+                            if c == want
+                            or c.split(" ", 1)[-1].strip() in (want, want_id)),
+                           None)
+                if hit is not None:
+                    choices.remove(hit)
+                    choices.insert(0, hit)
         self._anchor_choices = choices
         self._anchor_cb.config(values=choices)
         self._anchor_var.set(choices[0] if choices else "")
+
+    def _recipe_align_die(self) -> str:
+        """The loaded recipe's align die, or "". See RecipePanel's own
+        Align die box - saved with the recipe, read only here."""
+        panel = getattr(self._main_layout, "recipe_panel", None)
+        getter = getattr(panel, "get_align_die", None)
+        if getter is None:
+            return ""
+        try:
+            return (getter() or "").strip()
+        except Exception:
+            return ""
 
     _ANCHOR_MAX_LISTED = 300
 
