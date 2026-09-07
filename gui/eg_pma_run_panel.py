@@ -914,6 +914,24 @@ class EgPmaRunPanel(ttk.Frame):
             return (round(t["x"]), round(t["y"]))
         return self._grid_xy(t)
 
+    def _display_run_order(self):
+        """_enabled_indices(), but empty whenever no recipe is actually
+        loaded on the Run tab.
+
+        _enabled_indices() itself stays recipe-agnostic on purpose -
+        Next/Back stepping and Run read it to tour a .PMA-adopted wafer
+        before a recipe is ever picked, and that has to keep working. The
+        Die list's own "probed by this recipe" checkmarks/count are a
+        different question: with no recipe loaded, nothing is actually
+        going to be probed, so nothing should show as probed here even
+        though _enabled_indices() itself still returns the .PMA's full
+        touring order for stepping's sake.
+        """
+        loaded_name = getattr(self._main_layout, "_exec_loaded_recipe_name", None)
+        if not (loaded_name and loaded_name()):
+            return []
+        return self._enabled_indices()
+
     def _fill_table(self):
         """Every wafer position, the run's own first and in run order.
 
@@ -930,7 +948,7 @@ class EgPmaRunPanel(ttk.Frame):
         um_mode = self._motion_var.get() == MOTION_UM
         self._tree.heading("grid", text="µm x,y" if um_mode else "grid x,y")
         self._tree.heading("step", text="MM (µm)" if um_mode else "MD")
-        run_order = self._enabled_indices()
+        run_order = self._display_run_order()
         in_run = set(run_order)
         # The first run-order row's step is the delta from wherever the
         # chuck is actually anchored (Set Initial, or a re-anchor after a
@@ -2122,7 +2140,15 @@ class EgPmaRunPanel(ttk.Frame):
         return order
 
     def _enabled_indices(self):
-        """Positions this run probes, in the order it probes them."""
+        """Positions this run probes, in the order it probes them.
+
+        Deliberately unaware of whether a RECIPE (Run tab's Recipe
+        dropdown) is loaded - Next/Back stepping and Run all read this to
+        tour a .PMA-adopted wafer, and that has to keep working before the
+        operator has picked a recipe at all. The Die list's own "probed by
+        this recipe" checkmarks/count are a separate, display-only question
+        - see _display_run_order.
+        """
         order = self._pma_order() or list(range(len(self._touchdowns)))
         seqs = self._probe_seqs()
         if seqs is None:
