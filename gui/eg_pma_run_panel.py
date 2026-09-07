@@ -2097,10 +2097,29 @@ class EgPmaRunPanel(ttk.Frame):
         _touchdowns is the whole wafer in map order, so probing it in index
         order would abandon the route the .PMA lays out. This maps the .PMA's
         sequence onto the position list by quad coordinate.
+
+        Deduplicated, keeping the first occurrence: two DIFFERENT .PMA
+        touchdowns can legitimately compute the same _grid_xy (an ambiguous
+        shot corner - see _builder_grid_xy's own "does not sit on the map
+        as one block" warning, e.g. LaMP's NA/92-74/NA/93-70), which used to
+        make index_of collapse them onto the SAME position index. That put
+        the same index into this order twice, and _fill_table inserts one
+        Treeview row per index with iid=str(index) - the second insert of
+        the same iid raised "Item N already exists", which aborted the
+        whole Die list build partway through (only whatever had already
+        been inserted survived) rather than just misplacing the one
+        ambiguous touchdown.
         """
         index_of = {self._grid_xy(t): i for i, t in enumerate(self._touchdowns)}
-        return [index_of[k] for k in getattr(self, "_pma_order_keys", [])
-                if k in index_of]
+        seen = set()
+        order = []
+        for k in getattr(self, "_pma_order_keys", []):
+            i = index_of.get(k)
+            if i is None or i in seen:
+                continue
+            seen.add(i)
+            order.append(i)
+        return order
 
     def _enabled_indices(self):
         """Positions this run probes, in the order it probes them."""
@@ -2917,6 +2936,21 @@ class EgPmaRunPanel(ttk.Frame):
         """
         if not self._move_armed:
             self._move_armed = True
+            wmap = self._run_map()
+            if wmap is not None:
+                # Same suspend-picking-instead-of-clearing-it approach as
+                # Accretech's own _exec_move_selected_button: a real Test
+                # Selected pick set must survive arming/disarming this,
+                # untouched. Without installing this handler here, a click
+                # only ever reached _on_map_click if _sync_run_map (now an
+                # unbound, dead button - see its own docstring) had happened
+                # to run first and left it wired from a previous session -
+                # normally it was never wired at all, so clicking a die
+                # while armed silently did nothing.
+                self._prev_click_handler = wmap._click_handler
+                self._prev_picking_enabled = wmap._picking_enabled
+                wmap._picking_enabled = False
+                wmap.set_click_handler(self._on_map_click)
             self._select(None)
             return
         if self._selected is None:
@@ -2925,6 +2959,10 @@ class EgPmaRunPanel(ttk.Frame):
         self._goto_selected()
 
     def _disarm_move(self):
+        wmap = self._run_map()
+        if wmap is not None:
+            wmap.set_click_handler(getattr(self, "_prev_click_handler", None))
+            wmap._picking_enabled = getattr(self, "_prev_picking_enabled", True)
         self._move_armed = False
         self._select(None)
 

@@ -5180,6 +5180,15 @@ class MainLayout(ttk.Frame):
                 i, s.get("name", ""), s.get("type", ""), s.get("conn", "")))
         self._exec_steps_var.set(f"{name} — {len(self._exec_steps)} step(s)")
         self._exec_apply_recipe_sites(name)
+        # _exec_apply_recipe_sites only updates the map highlight - the
+        # EG Run tab's own Die list marks which rows are "probed by this
+        # recipe" from a SEPARATE read of the same recipe (_probe_seqs),
+        # and nothing told it to re-read that on a recipe switch, so the
+        # list kept showing the previous recipe's checkmarks even though
+        # the map highlight (and everything else) had already moved on.
+        run = getattr(self, "eg_pma_run", None)
+        if run is not None and hasattr(run, "_fill_table"):
+            run._fill_table()
 
         self._exec_log(f"[RUN] Loaded recipe '{name}' with "
                         f"{len(self._exec_steps)} step(s):")
