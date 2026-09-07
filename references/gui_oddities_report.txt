@@ -538,6 +538,32 @@ worth a second look / decision later.
    the missing execution branch (real 4-wire DMM resistance read), or
    remove "ohmf" from the Type list until it's implemented.
 
+   RESOLVED 2026-09-07: implemented the real execution branch (user is
+   testing it live on Electroglas the same day). Added `elif t ==
+   "ohmf":` to _exec_run_steps_once, modeled closely on the existing
+   "resistance" branch: DMM-only (errors clearly if instrument != "DMM"
+   - no SMU driver in this codebase exposes a real 4-wire method, so a
+   hand-edited recipe with instrument=SMU gets a real error instead of
+   a guess), errors if the resolved DMM isn't connected, then picks the
+   actual read call by hasattr: measure_resistance_4w() if the driver
+   has it (both hp3458a.py and hp_e1326b.py do - confirmed by reading
+   both drivers directly, not assumed), else measure_resistance(wire_
+   mode=4) (also present on both), else a clear "no 4-wire resistance
+   method" error rather than silently falling back to 2-wire. Verified
+   the hasattr branch selection against both real driver shapes with a
+   standalone test before trusting it. his/los needed no new connection-
+   closing logic - confirmed via recipe_panel.py's own validate_recipe
+   (the "no switch row assigned DMM SHI/SLO" check) that Compute
+   Connection/manual conn entry already fold the sense pins into the
+   step's "conn" field, which the generic pre-dispatch channel-closing
+   already handles for every step type. Also confirmed (reading
+   export_formats.py's group_results_by_die) that ohmf readings flow
+   into the existing resistance CSV column for free - it already
+   detects a resistance reading by unit=="ohm", not just type==
+   "resistance", specifically to also catch Target-derived resistance,
+   and an ohmf reading's recorded unit is "ohm" too. Verified: syntax-
+   checked, clean headless launch.
+
 ------------------------------------------------------------------------
 
 9. Recipe tab - Accretech's "Refresh" button (next to Validate) is a vague

@@ -5792,6 +5792,59 @@ class MainLayout(ttk.Frame):
                                        **_shotpos_kwargs(slot_shotpos))
                     last_reading = (name, r, r_unit)
                     readings_by_name[name] = (r, r_unit)
+                elif t == "ohmf":
+                    # 4-wire (Kelvin) resistance - recipe_panel.py's
+                    # FOUR_WIRE_TYPE. Restricted to DMM by the Recipe tab's
+                    # own Instrument dropdown (_instrument_options) - no SMU
+                    # driver in this codebase exposes a real 4-wire method,
+                    # so an ohmf step with instrument=SMU is a malformed/
+                    # hand-edited recipe, not something to guess at.
+                    if instrument != "DMM":
+                        self._exec_log(f"[MEASURE] {i}. {name}: ERROR — "
+                                        "4-wire (ohmf) is DMM-only")
+                        return False
+                    drv = self._exec_resolve_instrument(s, "dmm", dmm)
+                    if not (drv and drv.inst):
+                        self._exec_log(f"[MEASURE] {i}. {name}: ERROR — "
+                                        "DMM not connected")
+                        return False
+                    self._exec_apply_terminals(s, drv)
+                    # Not every DMM driver shares one method name for this:
+                    # the E1326B (Electroglas's stand-alone VXI meter) only
+                    # ever has 4-wire at all and calls it measure_resistance_
+                    # 4w(); the 3458A has the same method name too. A driver
+                    # with neither (2-wire-only) genuinely cannot take this
+                    # reading - errors instead of silently measuring 2-wire
+                    # and mislabeling it as Kelvin.
+                    if hasattr(drv, "measure_resistance_4w"):
+                        read_one = lambda: drv.measure_resistance_4w()
+                    elif hasattr(drv, "measure_resistance"):
+                        read_one = lambda: drv.measure_resistance(wire_mode=4)
+                    else:
+                        self._exec_log(f"[MEASURE] {i}. {name}: ERROR — "
+                                        f"{type(drv).__name__} has no 4-wire "
+                                        "resistance method")
+                        return False
+                    self._exec_settle(s, name, i)
+                    r_raw = self._exec_maybe_abs(s, self._exec_measure_averaged(
+                        drv, smu_ch,
+                        read_one, avg_count, avg_delay, "Ω"))
+                    r, r_unit, note = self._exec_apply_target(s, r_raw, "ohm", readings_by_name)
+                    self._exec_log(f"[MEASURE]    R(4W) = {r_raw:.4g} Ω  (via DMM)"
+                                    f"{avg_txt}{note}")
+                    slot_die, slot_row, slot_col, slot_sw, slot_shotpos = self._exec_slot_identity(
+                        s.get("die"), die_label, (cur_row, cur_col))
+                    # See the resistance-step case above for why slot_die (not
+                    # the shot-level die_id) is preferred here.
+                    slot_die_id = slot_die if slot_sw is not None else (die_id or None)
+                    self.record_result(timestamp=ts, recipe=recipe_name, die=slot_die,
+                                       step=name, type=t, mode=mode, value=f"{r:.6g}",
+                                       unit=r_unit, die_id=slot_die_id, switch=slot_sw,
+                                       connection=conn_str, instrument=instrument,
+                                       die_row=slot_row, die_col=slot_col,
+                                       **_shotpos_kwargs(slot_shotpos))
+                    last_reading = (name, r, r_unit)
+                    readings_by_name[name] = (r, r_unit)
                 elif t == "voltage" and mode == "measure":
                     nplc = self._exec_nplc_spec(s)
                     do_cfg = self._exec_should_configure(
