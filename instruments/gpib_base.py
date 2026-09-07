@@ -245,7 +245,14 @@ class GPIBInstrument:
         if not self.inst:
             return False
         try:
-            self.inst.control_ren(pyvisa.constants.VI_GPIB_REN_DEASSERT_GTL)
+            # ADDRESS_GTL (6), not DEASSERT_GTL (2). Both send Go To Local,
+            # but DEASSERT_GTL then drops the REN line for the WHOLE BUS -
+            # which is exactly what the docstring above and
+            # instrument_panel._release_all_to_local both promise not to do.
+            # On this bench that would pull the 3458A, the Keithley 2400 and
+            # all three switchboxes out of remote alongside the prober,
+            # including mid-run. ADDRESS_GTL addresses only this instrument.
+            self.inst.control_ren(pyvisa.constants.VI_GPIB_REN_ADDRESS_GTL)
             return True
         except Exception:
             pass

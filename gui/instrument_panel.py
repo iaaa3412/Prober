@@ -2660,6 +2660,15 @@ class MainLayout(ttk.Frame):
             # is now a real stop - see _exec_abort.
             ("⏸  Pause",       self._exec_pause, "_exec_pause_btn"),
             ("⏹  Stop Run",       self._exec_abort, "_exec_stop_btn"),
+            # Same action as the Instruments tab's "Release All To Local",
+            # repeated here because this is where an operator is standing
+            # when they find the prober's own keys dead: connecting over
+            # GPIB puts it in REMOTE and locks the panel out, and nothing
+            # gives it back until this is pressed or the app exits.
+            # Momentary, not a mode - the next command the GUI sends
+            # re-asserts remote, exactly like any other instrument.
+            ("↩  Release To Local", self._release_all_to_local,
+             "_exec_local_btn"),
         ]:
             btn = ttk.Button(ctrl, text=label, command=cmd)
             btn.pack(side="left", padx=3, pady=5)
