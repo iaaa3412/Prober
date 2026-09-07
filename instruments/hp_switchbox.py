@@ -328,6 +328,46 @@ BENCH_WIRING = {
         "die_pins": {1: ("A32", "A33"), 2: ("A34", "A36"),
                      3: ("A13", "A12"), 4: ("A11", "A9")},
     },
+    # probe02's measurement chain physically moved onto probe03. Confirmed on
+    # the bus 2026-09-07: VXI:CONF:DLAD? returns +0,+24,+72,+112,+120 - byte
+    # for byte probe02's recorded backplane - while probe03's own LADDR 80
+    # (its wired E1364A) and 56 (its failed E1326B) are gone, and the Keithley
+    # 2400 at GPIB 24 answers again. So the RELAY MODEL below is probe02's,
+    # not probe03's form-C one: a mux channel switching a HI/LO pair, one
+    # channel per die, NOT two.
+    #
+    # The harness itself was not re-measured on this bench - the operator
+    # confirmed 2026-09-07 that it is wired the same as probe02, and that is
+    # the whole basis for die_sets/die_pins here. If a needle is ever found on
+    # the wrong die, this assumption is the first thing to re-check: nothing
+    # downstream can detect it, because a wrong-but-valid channel closes
+    # silently and measures a real die, just not the intended one.
+    "Probe03New": {
+        "driver_key": "relay1_eg",
+        "card_type": "E1345A",
+        "family": FAMILY_MUX,
+        "wires_per_die": 1,
+        "die_sets": {1: (0,), 2: (1,), 3: (2,), 4: (3,)},
+        "coax_of_channel": {},
+        "node_of_channel": {},
+        "conflict_groups": (),
+        "ground_channel": None,
+        "uses_analog_bus": False,
+        "instrument": ("Keithley 2400 SMU, rear IN/OUT HI/LO into the card's "
+                       "DIRECT voltage-sense terminals, 2-wire "
+                       "(SYST:RSEN OFF) - as probe02"),
+        "summary": ("16-channel relay multiplexer, 4 wired channels: CH00-CH03, "
+                    "one per die of a 2x2 shot, each switching a HI/LO pair. "
+                    "CH04-CH15 unwired."),
+        "evidence": ("instrument ADDRESSES measured on this bench 2026-09-07 "
+                     "(*IDN? on every one, plus VXI:CONF:DLAD?); the WIRING is "
+                     "assumed identical to probe02 on the operator's word, not "
+                     "measured here. Card type per address is likewise carried "
+                     "over from probe02 - *IDN? reports only 'SWITCHBOX' for "
+                     "all three cards and SYST:CTYP? did not answer."),
+        "die_pins": {1: ("A32", "A33"), 2: ("A34", "A36"),
+                     3: ("A13", "A12"), 4: ("A11", "A9")},
+    },
 }
 
 # Same numbering the original LaMP executable logged in fldSwitch.

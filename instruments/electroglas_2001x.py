@@ -1424,12 +1424,43 @@ class Electroglas2001X(GPIBInstrument):
         self.set_die_size(probe_x, probe_y)
         after = self._parse_die_position(self.get_xy_position())
         if after is None:
-            raise RuntimeError("infer_die_size: cannot read ?P after probing - "
-                               f"die size was left at the probe value "
-                               f"X{probe_x}Y{probe_y}, NOT restored.")
-        size_x = round(probe_x * after[0] / before[0])
-        size_y = round(probe_y * after[1] / before[1])
+            raise RuntimeError(
+                "infer_die_size: cannot read ?P after probing. The die size is "
+                f"now the probe value X{probe_x}Y{probe_y} and CANNOT be put "
+                "back automatically - nothing can read what it was. Set it "
+                "manually from SET PRMTR before running.")
+
+        # ?P counts WHOLE dies, so probe*after/before recovers the true size
+        # only when it divides exactly. Near the origin it does not: at
+        # ?P X-5Y-1 with a real 3521x1642 this infers 2817 and 0. The result
+        # is WRITTEN BACK, so a bad inference does not merely misreport - it
+        # reconfigures the prober. Hence the round-trip check below.
+        exact = all((probe * a) % b == 0 and a != 0
+                    for probe, b, a in ((probe_x, before[0], after[0]),
+                                        (probe_y, before[1], after[1])))
+        size_x = round(probe_x * after[0] / before[0]) if after[0] else 0
+        size_y = round(probe_y * after[1] / before[1]) if after[1] else 0
+
+        if not exact or size_x <= 0 or size_y <= 0:
+            raise RuntimeError(
+                f"infer_die_size: ?P {before} -> {after} against probe "
+                f"X{probe_x}Y{probe_y} does not divide exactly, so the answer "
+                f"would be a guess (it computes X{size_x}Y{size_y}). The die "
+                f"size is now the probe value X{probe_x}Y{probe_y} and cannot "
+                "be restored automatically - set it from SET PRMTR, or move "
+                "the chuck further from the origin on both axes and re-run.")
+
+        # Necessary condition for the answer to be right: putting it back must
+        # reproduce the reading we started from. Catches a plausible-looking
+        # but wrong inference instead of leaving the machine quietly misset.
         self.set_die_size(size_x, size_y)
+        back = self._parse_die_position(self.get_xy_position())
+        if back != before:
+            raise RuntimeError(
+                f"infer_die_size: inferred X{size_x}Y{size_y}, but restoring it "
+                f"made ?P read {back} instead of the original {before} - so that "
+                "is NOT the size that was set. The die size is now "
+                f"X{size_x}Y{size_y}; set the correct one from SET PRMTR.")
         return (size_x, size_y)
 
     def set_wafer_diameter(self, diameter):

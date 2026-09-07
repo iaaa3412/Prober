@@ -49,7 +49,8 @@ from tkinter import filedialog, messagebox, ttk
 from electroglas_pma import (parse_pma_file, load_touchdowns, align_site_info,
                              format_quad, expand_touchdowns_to_dies, die_grid_index,
                              measurement_plan, workbook_touchdowns, QUAD_ORDER,
-                             shot_geometry, slot_names)
+                             shot_geometry, slot_names, slot_grid,
+                             quad_positions)
 from recipe_gen_panel import shot_die_rc
 
 # Where LaMP kept its recipes, then the repo's own copies.
@@ -366,10 +367,44 @@ class EgPmaRunPanel(ttk.Frame):
         self._adopt(path, fields, touchdowns)
 
     def _adopt(self, path: str, fields: dict, touchdowns: list):
+        # First thing: _pma_order_keys below calls _grid_xy, which reads the
+        # published-map lookup. Clearing the cache further down (with the
+        # rest of the per-recipe state) left those keys built from the
+        # PREVIOUS recipe's map on every adopt after the first.
+        self._builder_grid_cache = None
+        self._builder_offset_cache = None
+        self._grid_fallback_warned = False
+        self._shot_corner_warned = False
         self._recipe_path = path
         self._fields = fields
         self._touchdowns = touchdowns
-        self._die_um = (float(fields["DieSizeX"]), float(fields["DieSizeY"]))
+        # The WAFER's pitch, not the .PMA header's. Measured on LaMP
+        # 2026-08-21: the 21PCM .PMA carries DieSizeX/Y = 2785 x 1585 while
+        # the wafer it probes is on a 3521 x 1642 grid (every touchdown x is
+        # an exact multiple of 3521, the wafer definition says 3521/1642, and
+        # the prober's own SP1 measured 3521 x 1642). Dividing a 3521-spaced
+        # grid by 2785 does not merely shift the result, it makes it
+        # NON-LINEAR - the index drifts and skips (...19, 20, 21, 23, 24...) -
+        # so touchdowns land on the wrong die by an amount that grows across
+        # the wafer, which is exactly the reported symptom. The .PMA header
+        # stays the fallback for a folder with no wafer definition loaded.
+        wd = self.wafer_definition_data() or {}
+        try:
+            wafer_pitch = (float(wd.get("die_size_x") or 0),
+                           float(wd.get("die_size_y") or 0))
+        except (TypeError, ValueError):
+            wafer_pitch = (0.0, 0.0)
+        pma_pitch = (float(fields["DieSizeX"]), float(fields["DieSizeY"]))
+        if wafer_pitch[0] > 0 and wafer_pitch[1] > 0:
+            self._die_um = wafer_pitch
+            if wafer_pitch != pma_pitch:
+                self._log(
+                    f"[PMA] die pitch {wafer_pitch[0]:.0f} x {wafer_pitch[1]:.0f} um "
+                    f"taken from the wafer map; the .PMA header says "
+                    f"{pma_pitch[0]:.0f} x {pma_pitch[1]:.0f}. The map wins - it is "
+                    "what the die positions and the prober's own die size agree with.")
+        else:
+            self._die_um = pma_pitch
         # The chuck can be parked on - and driven to - ANY die on the wafer,
         # not only the ones this recipe probes. So the position list becomes
         # the whole wafer whenever a workbook is loaded, and the .PMA stops
@@ -393,6 +428,10 @@ class EgPmaRunPanel(ttk.Frame):
         self._size_confirmed = False
         self._rc = {}
         self._cells = {}
+        # Rebuilt from the published map on next use - it changes
+        # whenever the folder, recipe or map does.
+        self._builder_grid_cache = None
+        self._builder_offset_cache = None
         self._results = {}
         self._die_results = {}
         self._last_seq = None
@@ -425,6 +464,10 @@ class EgPmaRunPanel(ttk.Frame):
         self._size_confirmed = False
         self._rc = {}
         self._cells = {}
+        # Rebuilt from the published map on next use - it changes
+        # whenever the folder, recipe or map does.
+        self._builder_grid_cache = None
+        self._builder_offset_cache = None
         self._slot_rc = {}
         self._results = {}
         self._die_results = {}
@@ -485,11 +528,146 @@ class EgPmaRunPanel(ttk.Frame):
         """Die-grid coords of the align site, from the ...FromAlignSite fields."""
         return self._align_info()["quad"]
 
+    def _builder_grid_lookup(self) -> dict:
+        """die_id -> (col, row) from the Wafer Builder-published map.
+
+        Built once per rc-index rebuild: _grid_xy is called per touchdown
+        (634 of them on LaMP) and rebuilding this dict each time turned an
+        O(n) pass into O(n^2).
+        """
+        cached = getattr(self, "_builder_grid_cache", None)
+        if cached is not None:
+            return cached
+        wm = self._run_map()
+        dies = getattr(wm, "_last_dies", None) or []
+        cached = {}
+        for d in dies:
+            die_id = (d.get("die_id") or "").strip()
+            if die_id and d.get("row") is not None and d.get("col") is not None:
+                cached.setdefault(die_id, (int(d["col"]), int(d["row"])))
+        self._builder_grid_cache = cached
+        return cached
+
+    def _builder_grid_xy(self, t):
+        """This touchdown's top-left cell as (col, row) on the PUBLISHED map,
+        or None if none of its dies are on it.
+
+        MEASURED on the machine (2026-08-21): from 54-00, MD +1,0 landed on
+        54-01 and MD 0,+1 landed on 44-71 - one die right and one die DOWN.
+        The published map's own (col, row) reproduces exactly that, on all
+        four dies of the quad, so col/row ARE the MD grid and no micron
+        division or sign convention is involved. That matters because the
+        map stores y NEGATED for its own drawing (recipe_gen_panel writes
+        "y_um": -d["y"]), so deriving the grid from its microns instead
+        would invert every Y move.
+
+        Normalised to the shot's TOP-LEFT via each die's slot offset inside
+        the shot, not simply "the first die found": a shot whose top-left
+        corner is NA (LaMP has many, e.g. NA/NA/NA/81-10) would otherwise
+        report the corner that happens to be populated, and shots would sit
+        one slot apart from each other in the grid.
+        """
+        lut = self._builder_grid_lookup()
+        if not lut:
+            return None
+        rows, cols = self.shot_layout()
+        grid = slot_grid(rows, cols)
+        corners = []
+        for ent in quad_positions(t["device_id"], rows, cols):
+            cell = lut.get((ent["device"] or "").strip())
+            if cell is None:
+                continue
+            slot_c, slot_r = grid.get(ent["pos"], (0, 0)) if ent["pos"] else (0, 0)
+            corners.append(((cell[0] - slot_c, cell[1] - slot_r), ent["device"]))
+        if not corners:
+            return None
+        # Every die of a shot must agree on where the shot's top-left is.
+        # When they do not, the recipe's idea of which dies form one shot
+        # disagrees with how the published map lays those dies out - e.g.
+        # the gauge's quad "NA/92-74/NA/93-70" calls those two adjacent,
+        # while a map published from the 21PCM definition has 92-75 sitting
+        # between them. Take the majority so the answer is at least
+        # deterministic, and say so once: silently picking one would put
+        # this shot a slot away from all its neighbours.
+        distinct = {c for c, _ in corners}
+        if len(distinct) > 1 and not getattr(self, "_shot_corner_warned", False):
+            self._shot_corner_warned = True
+            detail = ", ".join(f"{d}->{c}" for c, d in corners)
+            self._log(
+                f"[PMA] ⚠ shot '{t.get('device_id')}' does not sit on the Wafer "
+                f"Builder map as one block ({detail}). The recipe groups those "
+                "dies into one touchdown but the published map spaces them "
+                "differently, so this shot's position is a best guess. Republish "
+                "the map from the definition this recipe was built for.")
+        best = max(distinct, key=lambda c: sum(1 for x, _ in corners if x == c))
+        return best
+
     def _grid_xy(self, t) -> tuple:
         """This touchdown's position in die-grid units (die-pitch steps from
         the origin) - not specific to a 2x2 shot. A single-die probe card's
-        touchdowns get exactly the same coordinate, one die-grid step each."""
-        return (round(t["x"] / self._die_um[0]), round(t["y"] / self._die_um[1]))
+        touchdowns get exactly the same coordinate, one die-grid step each.
+
+        Read off the Wafer Builder map wherever that map knows this
+        touchdown (see _builder_grid_xy). The .xls/.PMA microns below are a
+        FALLBACK for a wafer that has no published map yet - they describe
+        a different frame from the published map (measured on LaMP: 1 die
+        out in X, 9 in Y), and mixing the two is what sent moves to the
+        wrong die while the map showed something else. A constant frame
+        offset is harmless on its own, because _finish_anchor derives
+        origin_offset from a real ?P read and every MD move is a delta -
+        what is not harmless is taking positions from one frame and
+        row/col/die IDs from the other.
+        """
+        cell = self._builder_grid_xy(t)
+        if cell is not None:
+            return cell
+        # Not on the published map. The .xls frame is self-consistent, so with
+        # NO map loaded this is simply the answer. With a map loaded the two
+        # frames are offset from each other (measured on LaMP: 1 column in X),
+        # so returning a raw .xls grid here would leave this one touchdown a
+        # die away from every other - the exact mixing this method exists to
+        # stop. Shift it into the map's frame by the offset the two agree on.
+        raw = (round(t["x"] / self._die_um[0]), round(t["y"] / self._die_um[1]))
+        ox, oy = self._builder_frame_offset()
+        if (ox, oy) != (0, 0) and not getattr(self, "_grid_fallback_warned", False):
+            self._grid_fallback_warned = True
+            self._log(
+                f"[PMA] '{t.get('device_id')}' (and possibly others) is not on the "
+                f"Wafer Builder map; placing it from the .xls, shifted by "
+                f"({ox:+d},{oy:+d}) into the map's frame. Republish the map to "
+                "include those dies rather than relying on this.")
+        return (raw[0] + ox, raw[1] + oy)
+
+    def _builder_frame_offset(self) -> tuple:
+        """(dcol, drow) to add to an .xls-derived grid to land in the published
+        map's frame.
+
+        The two describe the same wafer from different origins - measured on
+        LaMP, the map sits one column right of the .xls - so a touchdown the
+        map does not carry cannot simply use its .xls coordinate: it would be
+        the only one in the wrong frame. Derived from the touchdowns the two
+        DO agree on (majority, so a handful of relabelled dies cannot skew
+        it) rather than hard-coded, since it is a property of how that
+        particular map was published. (0, 0) when there is no map, which
+        makes the shift a no-op on the .xls-only path.
+        """
+        cached = getattr(self, "_builder_offset_cache", None)
+        if cached is not None:
+            return cached
+        offset, votes = (0, 0), {}
+        if self._builder_grid_lookup():
+            for t in self._touchdowns or []:
+                cell = self._builder_grid_xy(t)
+                if cell is None:
+                    continue
+                raw = (round(t["x"] / self._die_um[0]),
+                       round(t["y"] / self._die_um[1]))
+                d = (cell[0] - raw[0], cell[1] - raw[1])
+                votes[d] = votes.get(d, 0) + 1
+            if votes:
+                offset = max(votes, key=votes.get)
+        self._builder_offset_cache = offset
+        return offset
 
     def _expected_position(self, t) -> tuple:
         """What ?P SHOULD report right now if the chuck is really at
@@ -907,6 +1085,10 @@ class EgPmaRunPanel(ttk.Frame):
                                          rows=rows, cols=cols)
 
         self._cells = {}
+        # Rebuilt from the published map on next use - it changes
+        # whenever the folder, recipe or map does.
+        self._builder_grid_cache = None
+        self._builder_offset_cache = None
         self._rc = {}
         self._seq_at_rc = {}
         self._die_at_rc = {}
@@ -917,8 +1099,20 @@ class EgPmaRunPanel(ttk.Frame):
         # taken on rather than against the shot's anchor cell.
         self._slot_rc = {}
         missing = 0
+        # die_id -> (row, col), the same published map _grid_xy now reads.
+        # Matching on the ID rather than on microns is what makes this
+        # immune to the two files describing the wafer in different frames
+        # (measured on LaMP: the .xls sits 1 die out in X and 9 in Y from
+        # the published map). The micron lookup stays as the fallback for
+        # dies the map carries no ID for.
+        by_id = {}
+        for rc_key, wb_id in die_id_lookup.items():
+            if wb_id:
+                by_id.setdefault(wb_id.strip(), rc_key)
         for d in dies:
-            rc = rc_lookup.get((round(d["x"]), round(d["y"])))
+            rc = by_id.get((d.get("device_id") or "").strip())
+            if rc is None:
+                rc = rc_lookup.get((round(d["x"]), round(d["y"])))
             if rc is None:
                 # A .PMA touchdown at coordinates the Wafer Builder map has
                 # no die for - the two are for different wafers, or the map
