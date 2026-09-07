@@ -2732,12 +2732,7 @@ class MainLayout(ttk.Frame):
         self._exec_die_var = tk.StringVar(value="Die: —")
         ttk.Label(pos_lf, textvariable=self._exec_die_var,
                   font=("Consolas", 9), foreground="#374151",
-                  justify="center").grid(row=1, column=0, columnspan=2)
-
-        self._exec_step_var = tk.StringVar(value="Step: —")
-        ttk.Label(pos_lf, textvariable=self._exec_step_var,
-                  font=("Consolas", 9), foreground="#6b7280",
-                  justify="center").grid(row=2, column=0, columnspan=2, pady=(0, 4))
+                  justify="center").grid(row=1, column=0, columnspan=2, pady=(0, 4))
 
         ttk.Separator(pos_lf, orient="horizontal").grid(
             row=3, column=0, columnspan=2, sticky="ew", pady=3)
@@ -3370,7 +3365,6 @@ class MainLayout(ttk.Frame):
         self._exec_running  = False
         self._exec_run_mode = None
         self._exec_safe_after(lambda: self._exec_set_running_buttons(False))
-        self._exec_safe_after(lambda: self._exec_step_var.set("Step: —"))
         self._exec_safe_after(lambda: self._exec_wafer_map.enable_picking(
             on_change=self._exec_on_sites_changed))
         if not self._exec_aborted:
@@ -3406,7 +3400,6 @@ class MainLayout(ttk.Frame):
         (only the die #s a passfail step actually tagged get a verdict;
         the rest are simply never touched, still whatever colour they
         were) - see _exec_color_shot_squares."""
-        self._exec_safe_after(lambda: self._exec_step_var.set("Step: Contact"))
         try:
             self._exec_log("[RUN] >> Z  (Contact)")
             stb = prober.z_up()
@@ -3421,7 +3414,6 @@ class MainLayout(ttk.Frame):
         if shot_geom is not None and row is not None and col is not None:
             shot_row, shot_col = self._exec_publish_die_slots_at(shot_geom, row, col)
 
-        self._exec_safe_after(lambda: self._exec_step_var.set("Step: Testing"))
         try:
             ok = self._exec_run_steps_once(steps)
         finally:
@@ -6777,7 +6769,6 @@ class MainLayout(ttk.Frame):
             self._exec_total_dies = total_dies
         self._exec_pct_var.set("Yield:  —")
         self._exec_die_var.set("Die: —")
-        self._exec_step_var.set("Step: —")
         self._exec_push_stats()
 
     def _exec_push_stats(self):
