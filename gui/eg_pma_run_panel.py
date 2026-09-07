@@ -50,7 +50,7 @@ from electroglas_pma import (parse_pma_file, load_touchdowns, align_site_info,
                              format_quad, expand_touchdowns_to_dies, die_grid_index,
                              measurement_plan, workbook_touchdowns, QUAD_ORDER,
                              shot_geometry, slot_names, slot_grid,
-                             quad_positions)
+                             quad_positions, serpentine_order)
 from recipe_gen_panel import shot_die_rc
 
 # Where LaMP kept its recipes, then the repo's own copies.
@@ -425,7 +425,17 @@ class EgPmaRunPanel(ttk.Frame):
                                     "present on the Wafer Builder map yet.")
             return False
 
-        shots = sorted({(r // shot_rows, c // shot_cols) for r, c in die_id_by_rc})
+        # serpentine_order, not a plain row-major sort - this is the SAME
+        # boustrophedon scan a real .PMA's own move files were written in
+        # (WriteMovesFile, replicated here rather than re-guessed), so a
+        # Wafer-Builder-only run travels the wafer the same efficient way
+        # a real .PMA-driven one always has, not a naive left-to-right-
+        # every-row flyback.
+        shot_rc = sorted({(r // shot_rows, c // shot_cols) for r, c in die_id_by_rc})
+        max_shot_r = max((sr for sr, _ in shot_rc), default=-1) + 1
+        max_shot_c = max((sc for _, sc in shot_rc), default=-1) + 1
+        shot_cells = {rc: {} for rc in shot_rc}
+        shots = serpentine_order(max_shot_r, max_shot_c, shot_cells)
         grid = slot_grid(shot_rows, shot_cols)
         order = slot_names(shot_rows, shot_cols)
         touchdowns = []
