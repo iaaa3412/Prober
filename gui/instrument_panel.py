@@ -36,6 +36,7 @@ import export_formats as xfmt
 import mdb_export
 import app_settings
 from engineering_units import parse_engineering, format_engineering
+from instruments import accretech_profiles, eg_profiles
 
 
 def _parse_q_response(raw: str):
@@ -1817,9 +1818,24 @@ class MainLayout(ttk.Frame):
 
             _label("Prober:")
             bench_var = tk.StringVar(value="")
-            ttk.Entry(frm, textvariable=bench_var, width=16).grid(
-                row=row, column=1, sticky="w", pady=3)
+            bench_cb = ttk.Combobox(frm, textvariable=bench_var, width=18)
+            bench_cb.grid(row=row, column=1, sticky="w", pady=3)
             row += 1
+
+            def _refresh_bench_choices(*_a):
+                # Blank stays a real, first-class choice - copy_recipe's own
+                # dst_bench=None (untagged, shows on every bench) is exactly
+                # what an empty Prober field has always meant here.
+                try:
+                    if dest_system_var.get() == "electroglas":
+                        names = eg_profiles.profile_names()
+                    else:
+                        names = accretech_profiles.profile_names()
+                except Exception:
+                    names = []
+                bench_cb.config(values=[""] + list(names))
+            sys_cb.bind("<<ComboboxSelected>>", _refresh_bench_choices, add="+")
+            _refresh_bench_choices()
 
             note_var = tk.StringVar(value="")
             ttk.Label(frm, textvariable=note_var, foreground="#b45309",
