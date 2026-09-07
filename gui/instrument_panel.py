@@ -2741,7 +2741,7 @@ class MainLayout(ttk.Frame):
             # button, where the connection to the numbers was invisible.
             # There is no direct query for it - see
             # electroglas_2001x.infer_die_size and _exec_refresh_die_size.
-            self._exec_die_size_var = tk.StringVar(value="Prober die size: unknown")
+            self._exec_die_size_var = tk.StringVar(value="Prober Die size: unknown")
             ttk.Label(pos_lf, textvariable=self._exec_die_size_var,
                      font=("Consolas", 8), foreground="#6b7280",
                      justify="center").grid(row=2, column=0, columnspan=2,
@@ -6743,9 +6743,16 @@ class MainLayout(ttk.Frame):
         def _run():
             try:
                 x, y = prober.infer_die_size()
-                self.after(0, lambda: var.set(f"Prober die size: X{x} Y{y} um"))
+                self.after(0, lambda: var.set(f"Prober Die size: X{x} Y{y} um"))
             except Exception as e:
-                self.after(0, lambda: var.set(f"Prober die size: could not infer ({e})"))
+                # The label is a one-line hint in a small box, and the
+                # exception behind it is often a multi-line SCPI/VISA
+                # complaint that wrapped the whole Chuck Position section
+                # out of shape. It still goes to the log, in full, which is
+                # where anyone diagnosing it would look.
+                self._exec_log(f"[RUN] Could not infer the prober die size — "
+                               f"{type(e).__name__}: {e}")
+                self.after(0, lambda: var.set("Prober Die size: Could not infer."))
         threading.Thread(target=_run, daemon=True).start()
 
     def _exec_get_xy(self):
