@@ -219,6 +219,16 @@ class EgPmaRunPanel(ttk.Frame):
             side="left")
         ttk.Button(btns, text="Sync Run map", command=self._sync_run_map).pack(
             side="left", padx=(6, 0))
+        # No .PMA needed at all - builds one touchdown per shot straight
+        # from the published Wafer Builder map (see
+        # adopt_from_wafer_builder's own docstring). The real button for
+        # a real .PMA is pma_process_panel's "LOAD ALL" (which calls
+        # adopt_from_process) - _load_recipe/_use_loaded_pma in this file
+        # are currently unwired to anything, a separate pre-existing gap
+        # this doesn't touch.
+        ttk.Button(btns, text="🗺 Build from Wafer Builder Map",
+                  command=lambda: self.adopt_from_wafer_builder(quiet=False)
+                  ).pack(side="left", padx=(6, 0))
 
         mode = ttk.Frame(lf)
         mode.pack(fill="x", pady=(6, 0))
@@ -334,6 +344,128 @@ class EgPmaRunPanel(ttk.Frame):
         """Button handler - same as adopt_from_process, but it says so when
         there is nothing to take."""
         self.adopt_from_process(quiet=False)
+
+    def adopt_from_wafer_builder(self, quiet: bool = True) -> bool:
+        """Build a recipe directly from the published Wafer Builder map -
+        no .PMA/.xls needed at all. One touchdown per SHOT, grouped from
+        the map's own (row, col, die_id) triples by the Wafer Builder Shot
+        tab's own rows x cols - exactly the shape _adopt() already expects
+        from a real .PMA (device_id/devices/x/y/seq), so every downstream
+        method (anchor list, Die list table, _grid_xy/_builder_grid_xy
+        positioning, Minor Moves) works completely unchanged and does not
+        know or care which source built the touchdown it is looking at.
+
+        Row/col -> die_id comes from self._run_map()._last_dies - the SAME
+        published-map data _build_rc_index/_wafer_builder_die_id_lookup
+        already treat as the one true position source once a map exists
+        (see their own docstrings: the .xls/.PMA only ever SEED that map,
+        never overrule it) - so this path and the .PMA path converge on
+        identical positioning the moment a map is published, they just
+        differ in where the touchdown LIST itself comes from.
+
+        The synthetic `fields` passed to _adopt() only ever carries
+        DieSizeX/Y (the shot pitch, matching what a real .PMA's own header
+        field means - see electroglas_pma.load_touchdowns) - nothing here
+        claims an align site, a measurement plan, or anything else a real
+        .PMA states. Confirmed by reading both directly before relying on
+        this: measurement_plan({}) returns style="none" (a real, valid
+        answer, not an error) and align_site_info({}, ...) catches the
+        missing keys and returns its neutral "no align site" dict - an
+        Electroglas project built entirely in this software, with no .PMA
+        anywhere, still gets a working recipe out of this, just with no
+        align-site shortcut (the operator picks any real die as the
+        anchor instead - see _set_anchor/_resolve_anchor, which never
+        required an align site to begin with).
+
+        `quiet` suppresses the "nothing to build from" dialogs, same
+        convention as adopt_from_process, so this can run automatically
+        (e.g. on an ATA folder load with no .PMA adopted yet) without
+        interrupting a project that genuinely does use one - LaMP's own
+        flow (_load_recipe/adopt_from_process) is untouched by this
+        method entirely; it only ever gets called where a caller
+        explicitly chooses to try it.
+        """
+        wm = self._run_map()
+        dies = list(getattr(wm, "_last_dies", None) or [])
+        if not dies:
+            if not quiet:
+                messagebox.showinfo(
+                    "Wafer Builder", "No wafer map published yet - build "
+                    "the Die Map on the Wafer Builder tab first.")
+            return False
+        gen = getattr(self._main_layout, "recipe_gen", None)
+        if gen is None:
+            if not quiet:
+                messagebox.showinfo("Wafer Builder", "The Wafer Builder tab "
+                                    "is not available.")
+            return False
+        try:
+            shot_rows, shot_cols = gen._shot_dims()
+            dx, dy = gen._die_pitch()
+            spx, spy = gen._shot_pitch()
+        except Exception as e:
+            if not quiet:
+                messagebox.showerror("Wafer Builder", f"Could not read the "
+                                     f"Shot tab's dims/pitch: {e}")
+            return False
+        if dx <= 0 or dy <= 0:
+            if not quiet:
+                messagebox.showinfo(
+                    "Wafer Builder", "Set a real die pitch on the Wafer "
+                    "Builder Shot tab first.")
+            return False
+
+        die_id_by_rc = {
+            (d["row"], d["col"]): (d.get("die_id") or "").strip()
+            for d in dies
+            if d.get("row") is not None and d.get("col") is not None}
+        if not die_id_by_rc:
+            if not quiet:
+                messagebox.showinfo("Wafer Builder", "No dies are marked "
+                                    "present on the Wafer Builder map yet.")
+            return False
+
+        shots = sorted({(r // shot_rows, c // shot_cols) for r, c in die_id_by_rc})
+        grid = slot_grid(shot_rows, shot_cols)
+        order = slot_names(shot_rows, shot_cols)
+        touchdowns = []
+        seq = 1
+        for shot_r, shot_c in shots:
+            devices = []
+            for slot in order:
+                sc, sr = grid[slot]
+                rc = (shot_r * shot_rows + sr, shot_c * shot_cols + sc)
+                devices.append(die_id_by_rc.get(rc) or "NA")
+            if all(dev == "NA" for dev in devices):
+                continue
+            device_id = "/".join(devices) if len(devices) > 1 else devices[0]
+            touchdowns.append({
+                "seq": seq,
+                "major_index": seq,
+                "minor_index": 1,
+                "device_id": device_id,
+                "device_id_major": device_id,
+                "devices": devices,
+                "x": shot_c * spx,
+                "y": shot_r * spy,
+                "major_x": shot_c * spx,
+                "major_y": shot_r * spy,
+            })
+            seq += 1
+
+        if not touchdowns:
+            if not quiet:
+                messagebox.showinfo("Wafer Builder", "No dies are marked "
+                                    "present on the Wafer Builder map yet.")
+            return False
+
+        self._adopt("(Wafer Builder map — no .PMA)",
+                    {"DieSizeX": spx, "DieSizeY": spy}, touchdowns)
+        self._log(
+            f"[PMA] Built {len(touchdowns)} shot(s) directly from the Wafer "
+            f"Builder map ({shot_rows}x{shot_cols} shot, die pitch "
+            f"{dx:.0f} x {dy:.0f} um) - no .PMA file used.")
+        return True
 
     def _align_die_from_wafer_tab(self):
         """The align die named by the recipe-generator workbook, if one is loaded.
@@ -852,23 +984,17 @@ class EgPmaRunPanel(ttk.Frame):
         if idx is None:
             return
 
+        drv = self._prober()
+
         dx, dy = self._die_um
         # Only MD depends on the prober's own pitch, so only MD needs this
         # asked. In micron mode the question is meaningless and asking it
         # would train people to click through it.
         if not self._size_confirmed and self._motion_var.get() == MOTION_DIE:
-            if not messagebox.askokcancel(
-                    "Confirm die size",
-                    f"This recipe steps by {dx:.0f} x {dy:.0f} um "
-                    f"({dx / 1000:.3f} x {dy / 1000:.3f} mm).\n\n"
-                    "MD moves by the PROBER'S configured die size, not this one. "
-                    "They must match, or every step lands between quads.\n\n"
-                    "Is the prober's SET PRMTR die size set to this?\n\n"
-                    "(Switching 'Move by' to microns avoids this entirely.)"):
+            if not self._confirm_die_size(dx, dy, drv):
                 return
             self._size_confirmed = True
 
-        drv = self._prober()
         if not drv:
             messagebox.showwarning(
                 "Anchor", "Prober not connected - cannot read its real "
@@ -879,6 +1005,78 @@ class EgPmaRunPanel(ttk.Frame):
             real = self._read_position(drv)
             self._ui(lambda: self._finish_anchor(idx, real))
         threading.Thread(target=_work, daemon=True).start()
+
+    def _confirm_die_size(self, dx: float, dy: float, drv) -> bool:
+        """MD moves by the PROBER'S own configured die size (SET PRMTR),
+        not the recipe's/wafer's - previously this dialog only asked the
+        operator to confirm by hand that the two already matched, with no
+        way to actually fix a mismatch from here. Now offers to send it
+        directly (SP1, driver.set_die_size - already existed for
+        infer_die_size, just never wired to this dialog) as a third
+        choice alongside the original "trust me, it's already set" and
+        Cancel. Returns True if the operator confirmed one way or the
+        other, False on Cancel/close."""
+        result = {"ok": False}
+        dlg = tk.Toplevel(self)
+        dlg.title("Confirm die size")
+        dlg.transient(self.winfo_toplevel())
+        dlg.grab_set()
+        dlg.resizable(False, False)
+
+        body = (
+            f"This recipe steps by {dx:.0f} x {dy:.0f} um "
+            f"({dx / 1000:.3f} x {dy / 1000:.3f} mm).\n\n"
+            "MD moves by the PROBER'S configured die size, not this one. "
+            "They must match, or every step lands between quads.\n\n"
+            "(Switching 'Move by' to microns avoids this entirely.)"
+        )
+        ttk.Label(dlg, text=body, wraplength=380, justify="left").pack(
+            padx=16, pady=(16, 10))
+
+        btns = ttk.Frame(dlg)
+        btns.pack(padx=16, pady=(0, 16), fill="x")
+
+        def _send_now():
+            if not drv:
+                messagebox.showwarning(
+                    "Confirm die size",
+                    "Prober not connected - cannot send the die size.",
+                    parent=dlg)
+                return
+            try:
+                drv.set_die_size(dx, dy)
+                self._log(f"[PMA] >> SP1X{dx:.0f}Y{dy:.0f}  "
+                          "(die size sent to prober)")
+            except Exception as e:
+                messagebox.showerror(
+                    "Confirm die size", f"Could not send die size: {e}",
+                    parent=dlg)
+                return
+            result["ok"] = True
+            dlg.destroy()
+
+        def _already_set():
+            result["ok"] = True
+            dlg.destroy()
+
+        def _cancel():
+            result["ok"] = False
+            dlg.destroy()
+
+        ttk.Button(btns, text="📤 Send to Prober Now", command=_send_now).pack(
+            side="left", padx=(0, 6))
+        ttk.Button(btns, text="✓ Already Set", command=_already_set).pack(
+            side="left", padx=(0, 6))
+        ttk.Button(btns, text="Cancel", command=_cancel).pack(side="right")
+
+        dlg.protocol("WM_DELETE_WINDOW", _cancel)
+        dlg.update_idletasks()
+        pw = self.winfo_toplevel()
+        x = pw.winfo_x() + (pw.winfo_width() - dlg.winfo_width()) // 2
+        y = pw.winfo_y() + (pw.winfo_height() - dlg.winfo_height()) // 2
+        dlg.geometry(f"+{x}+{y}")
+        dlg.wait_window()
+        return result["ok"]
 
     def _finish_anchor(self, idx: int, real):
         """Second half of _set_anchor, back on the UI thread once the
@@ -991,15 +1189,25 @@ class EgPmaRunPanel(ttk.Frame):
         """(rows, cols) of the die block one touchdown covers.
 
         Taken from the loaded wafer definition, which carries it, so a 1x5
-        strip does not get expanded as though it were the 2x2 LaMP quad. Falls
-        back to shot_geometry's inference from the widest device-ID list.
+        strip does not get expanded as though it were the 2x2 LaMP quad.
+        Falls back to the Wafer Builder tab's own Shot-tab dims (real for
+        any project built there directly, PMA or not - see
+        adopt_from_wafer_builder), then to shot_geometry's inference from
+        the widest device-ID list.
         """
         data = self.wafer_definition_data() or {}
+        rows, cols = int(data.get("shot_rows") or 0), int(data.get("shot_cols") or 0)
+        if rows <= 0 or cols <= 0:
+            gen = getattr(self._main_layout, "recipe_gen", None)
+            if gen is not None:
+                try:
+                    rows, cols = gen._shot_dims()
+                except Exception:
+                    rows, cols = 0, 0
         widest = max(
             (len(str(t.get("device_id", "")).split("/"))
              for t in (self._touchdowns or [])), default=1)
-        return shot_geometry(widest, int(data.get("shot_rows") or 0),
-                             int(data.get("shot_cols") or 0))
+        return shot_geometry(widest, rows, cols)
 
     def wafer_definition_data(self):
         """The loaded source that defines the whole wafer, or None."""
