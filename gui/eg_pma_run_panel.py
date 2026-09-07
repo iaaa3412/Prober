@@ -237,7 +237,7 @@ class EgPmaRunPanel(ttk.Frame):
         # (a .PMA only ever seeds the Wafer Builder tab now, see
         # pma_process_panel.load_all).
         ttk.Button(btns, text="↻ Sync", command=self._sync_position).pack(side="left")
-        ttk.Button(btns, text="🗺 Reload Map", command=self._reload_map).pack(
+        ttk.Button(btns, text="Reload Map", command=self._reload_map).pack(
             side="left", padx=(6, 0))
 
         mode = ttk.Frame(lf)
@@ -371,6 +371,7 @@ class EgPmaRunPanel(ttk.Frame):
         # map with the previous one's geometry.
         self._builder_shot_cache = None
         self._builder_pitch_cache = None
+        self._builder_slots_cache = None
         self._builder_grid_cache = None
         self._builder_offset_cache = None
         wm = self._run_map()
@@ -418,11 +419,6 @@ class EgPmaRunPanel(ttk.Frame):
                     "shape a shot is or how far apart the dies are, and the "
                     "Wafer Builder tab has no project open to ask instead.")
             return False
-        # A shot's pitch is its own size in dies times the die pitch. Read
-        # from the same two map-derived numbers rather than from the tab's
-        # shot-pitch boxes, which are blank on every real project here and
-        # fall back to this product anyway.
-        spx, spy = shot_cols * dx, shot_rows * dy
 
         die_id_by_rc = {
             (d["row"], d["col"]): (d.get("die_id") or "").strip()
@@ -434,43 +430,82 @@ class EgPmaRunPanel(ttk.Frame):
                                     "present on the Wafer Builder map yet.")
             return False
 
-        # serpentine_order, not a plain row-major sort - this is the SAME
-        # boustrophedon scan a real .PMA's own move files were written in
-        # (WriteMovesFile, replicated here rather than re-guessed), so a
-        # Wafer-Builder-only run travels the wafer the same efficient way
-        # a real .PMA-driven one always has, not a naive left-to-right-
-        # every-row flyback.
-        shot_rc = sorted({(r // shot_rows, c // shot_cols) for r, c in die_id_by_rc})
-        max_shot_r = max((sr for sr, _ in shot_rc), default=-1) + 1
-        max_shot_c = max((sc for _, sc in shot_rc), default=-1) + 1
-        shot_cells = {rc: {} for rc in shot_rc}
-        shots = serpentine_order(max_shot_r, max_shot_c, shot_cells)
-        grid = slot_grid(shot_rows, shot_cols)
+        # Straight off the map's OWN shot grouping - every die row carries
+        # the seq of the shot it belongs to - rather than re-deriving shots
+        # by floor-dividing (row, col) by the shot dims. That derivation
+        # only lands on the same shots when the map's grouping happens to
+        # be aligned to the grid's origin: measured on Cenfire (7x9), it
+        # recovered 100 of the 410 real dies, because the map's shots are
+        # not on that boundary. The map already says it, exactly.
+        #
+        # ONE TOUCHDOWN PER DIE, not per shot - the same shape the
+        # Accretech side has always had. A touchdown is a place the chuck
+        # can be put, and the chuck can be put on any die; the SHOT is a
+        # property of the probe card, applied downstream when the reading
+        # is split up. Building one per shot made the Die list a list of
+        # quads ("A3-01/93-71/A3-02/93-72"), which is wrong twice over: the
+        # operator could only drive to one die in four, and the list
+        # described a card rather than a wafer. On Accretech, testing every
+        # die of a 2x2 wafer means picking the top-left die of each shot
+        # out of a list of every die - the list itself never mentions
+        # quads.
+        #
+        # Each touchdown still carries its whole shot in `devices`, in slot
+        # order, because that is what _measure_here hands the measurement
+        # engine as _exec_die_ids_by_slot (slot N = fldSwitch N). _slot_rc
+        # gives it the matching real map cells - see _build_rc_index.
+        by_shot, _rc_to_shot = self._builder_shot_slots()
+        die_by_rc = {(d["row"], d["col"]): d for d in dies
+                     if d.get("row") is not None and d.get("col") is not None}
         order = slot_names(shot_rows, shot_cols)
         touchdowns = []
         seq = 1
-        for shot_r, shot_c in shots:
-            devices = []
-            for slot in order:
-                sc, sr = grid[slot]
-                rc = (shot_r * shot_rows + sr, shot_c * shot_cols + sc)
-                devices.append(die_id_by_rc.get(rc) or "NA")
-            if all(dev == "NA" for dev in devices):
-                continue
-            device_id = "/".join(devices) if len(devices) > 1 else devices[0]
-            touchdowns.append({
-                "seq": seq,
-                "major_index": seq,
-                "minor_index": 1,
-                "device_id": device_id,
-                "device_id_major": device_id,
-                "devices": devices,
-                "x": shot_c * spx,
-                "y": shot_r * spy,
-                "major_x": shot_c * spx,
-                "major_y": shot_r * spy,
-            })
-            seq += 1
+        # The map's own seq order. That numbering is the serpentine the
+        # Wafer Builder laid the shots out in, so a run over every die
+        # still travels the wafer the efficient boustrophedon way rather
+        # than flying back across it every row.
+        for map_seq in sorted(by_shot):
+            slots = by_shot[map_seq]
+            devices = [die_id_by_rc.get(slots.get(q)) or "NA" for q in order]
+            for q in order:
+                rc = slots.get(q)
+                if rc is None:
+                    continue
+                die_id = die_id_by_rc.get(rc) or ""
+                # An NA or unlabelled slot is not a die: nothing to drive
+                # to and nothing to list. It stays in `devices` so slot N
+                # keeps lining up with fldSwitch N.
+                if not die_id or die_id.upper() == "NA":
+                    continue
+                d = die_by_rc[rc]
+                # The map's own coordinates, in the sign convention the
+                # rest of this module uses for a touchdown's x/y (the
+                # published CSV negates y for drawing - see
+                # _wafer_builder_rc_lookup).
+                x = float(d.get("x_um") or 0.0)
+                y = -float(d.get("y_um") or 0.0)
+                touchdowns.append({
+                    "seq": seq,
+                    "major_index": seq,
+                    "minor_index": 1,
+                    "device_id": die_id,
+                    "device_id_major": die_id,
+                    "devices": devices,
+                    "slot": q,
+                    # The map cell this touchdown IS. _grid_xy prefers it
+                    # over looking the die_id up, because a die ID is not
+                    # unique on a real map - LaMP labels 21 dies "PCM" and
+                    # 6 "TARGET", and the by-ID lookup collapsed all 21
+                    # onto one position, leaving 20 of them unreachable
+                    # and dropped from the run order.
+                    "map_row": rc[0],
+                    "map_col": rc[1],
+                    "x": x,
+                    "y": y,
+                    "major_x": x,
+                    "major_y": y,
+                })
+                seq += 1
 
         if not touchdowns:
             if not quiet:
@@ -490,13 +525,17 @@ class EgPmaRunPanel(ttk.Frame):
         if same:
             if not quiet:
                 self._log(f"[PMA] Die list already matches the Wafer Builder "
-                          f"map ({len(touchdowns)} shots) - nothing to rebuild.")
+                          f"map ({len(touchdowns)} dies) - nothing to rebuild.")
             return True
 
+        # The DIE pitch, because a touchdown is now a die and every grid
+        # step between two of them is one die. It is also what the prober's
+        # own SP1 has to be set to for MD to agree - measured on LaMP:
+        # SP1 3521 x 1642, MD +1,0 moved exactly one die (54-00 -> 54-01).
         self._adopt("(Wafer Builder map — no .PMA)",
-                    {"DieSizeX": spx, "DieSizeY": spy}, touchdowns)
+                    {"DieSizeX": dx, "DieSizeY": dy}, touchdowns)
         self._log(
-            f"[PMA] Built {len(touchdowns)} shot(s) directly from the Wafer "
+            f"[PMA] Built {len(touchdowns)} die(s) directly from the Wafer "
             f"Builder map ({shot_rows}x{shot_cols} shot, die pitch "
             f"{dx:.0f} x {dy:.0f} um) - no .PMA file used.")
         return True
@@ -691,6 +730,14 @@ class EgPmaRunPanel(ttk.Frame):
         report the corner that happens to be populated, and shots would sit
         one slot apart from each other in the grid.
         """
+        # A touchdown built from the map carries its own cell, which is
+        # both exact and unique. The die_id lookup below is not: a die ID
+        # is a label, not a key, and a real map repeats it (LaMP: "PCM" on
+        # 21 dies, "TARGET" on 6). Going through it collapsed all 21 PCM
+        # dies onto one grid position, so 20 of them could not be driven to
+        # and fell out of the run order entirely.
+        if t.get("map_row") is not None and t.get("map_col") is not None:
+            return (int(t["map_col"]), int(t["map_row"]))
         lut = self._builder_grid_lookup()
         if not lut:
             return None
@@ -1228,6 +1275,67 @@ class EgPmaRunPanel(ttk.Frame):
         self._builder_shot_cache = out
         return out
 
+    def _builder_shot_slots(self) -> tuple:
+        """How the published map groups its dies into shots.
+
+        Returns ({map_seq: {quad_pos: (row, col)}}, {(row, col): map_seq}).
+
+        This is the Electroglas equivalent of what Accretech resolves by
+        floor-dividing a die's (row, col) by the shot dims
+        (instrument_panel._exec_publish_die_slots_at). The map states it
+        outright instead of it having to be derived: every die row carries
+        the seq of the shot it belongs to and the quad_pos slot it occupies
+        inside it, so no offset or alignment has to be guessed.
+
+        A touchdown is a single die now, so this is what lets one landing
+        still measure its whole shot - _build_rc_index gives every
+        touchdown the slots of whichever shot its die falls in, exactly as
+        Accretech publishes the shot's slots for whichever die a site
+        names.
+
+        Slots come back under the CANONICAL names slot_names() produces,
+        not under the map's own quad_pos text. The map writes the generic
+        "R{r}C{c}" for every layout, while a 2x2 is named TL/BL/TR/BR
+        everywhere else in this software (QUAD_ORDER - kept that way so
+        saved recipes, pin maps and stored results still resolve). Handing
+        back the raw text made every 2x2 lookup miss: _measure_here indexes
+        _slot_rc by slot_names(), got None for "TL", and filed all four
+        readings as NA. Translating here means the map can say it whichever
+        way and everything downstream sees one naming.
+        """
+        cached = getattr(self, "_builder_slots_cache", None)
+        if cached is not None:
+            return cached
+        wm = self._run_map()
+        dies = getattr(wm, "_last_dies", None) or []
+        rows, cols = self.shot_layout()
+        names = slot_names(rows, cols)
+        grid = slot_grid(rows, cols)
+        # (col, row) inside the shot -> canonical slot name
+        by_cell = {cr: nm for nm, cr in grid.items()}
+        by_shot, rc_to_shot = {}, {}
+        for d in dies:
+            seq = d.get("seq")
+            r, c = d.get("row"), d.get("col")
+            if seq is None or r is None or c is None:
+                continue
+            pos = (d.get("quad_pos") or "").strip()
+            if pos in names:
+                slot = pos
+            else:
+                m = re.fullmatch(r"R(\d+)C(\d+)", pos, re.IGNORECASE)
+                slot = by_cell.get((int(m.group(2)), int(m.group(1)))) if m else None
+                if slot is None:
+                    # A 1x1 shot's die carries no slot text at all.
+                    slot = names[0] if len(names) == 1 else None
+                    if slot is None:
+                        continue
+            by_shot.setdefault(seq, {})[slot] = (r, c)
+            rc_to_shot[(r, c)] = seq
+        cached = (by_shot, rc_to_shot)
+        self._builder_slots_cache = cached
+        return cached
+
     def _builder_die_pitch(self) -> tuple:
         """(x, y) die pitch in microns, read from the published map itself.
 
@@ -1355,6 +1463,7 @@ class EgPmaRunPanel(ttk.Frame):
         # _builder_grid_cache below - cleared before shot_layout() reads it.
         self._builder_shot_cache = None
         self._builder_pitch_cache = None
+        self._builder_slots_cache = None
         # grid (x, y) -> touchdown index, what _locate_real turns a ?P
         # reading into. Depends on both the touchdown list and the map, so
         # it is dropped here with the rest of them.
@@ -1425,19 +1534,41 @@ class EgPmaRunPanel(ttk.Frame):
         # Kept for anything that still wants a single representative cell.
         self._rc = {seq: cells[0] for seq, cells in self._cells.items()}
 
+        # A touchdown is ONE die, so the loop above gave each one a single
+        # cell and a single slot. The measurement engine needs the whole
+        # SHOT that die falls in - slot N = fldSwitch N, each with its own
+        # real square - so fill that in from the map's own shot grouping,
+        # the same thing Accretech resolves by floor-division in
+        # _exec_publish_die_slots_at. Without this a 2x2 card would file
+        # all four readings against the one die the chuck landed on, and
+        # colour one square instead of four.
+        by_shot, rc_to_shot = self._builder_shot_slots()
+        order = slot_names(rows, cols)
+        for t in self._touchdowns:
+            rc = self._anchor_rc.get(t["seq"])
+            shot = by_shot.get(rc_to_shot.get(rc)) if rc is not None else None
+            if not shot:
+                continue
+            self._slot_rc[t["seq"]] = dict(shot)
+            # devices[i] must line up with order[i], since _measure_here
+            # indexes it by the step's own Die # - so read the IDs back off
+            # the map in the same slot order rather than trusting whatever
+            # the touchdown was built with.
+            t["devices"] = [die_id_lookup.get(shot.get(q)) or "NA" for q in order]
+
         # Correct self._touchdowns' OWN device_id too - not just the
         # per-die records above - so every consumer that reads a touchdown
         # directly (Die List table, anchor dropdown, Move MM table, log/
         # dialog text) shows the SAME label the map and recipe do, not a
-        # possibly-stale .xls/.PMA text an operator has since overridden in
-        # Wafer Builder (e.g. LAMP's PCM sites). Single-die shots only
-        # (LAMP's own shot is 1x1) - a quad's joined "A/B/C/D" string is
-        # left as its original text, since reconstructing that join
-        # correctly needs its own slot-order handling this fix does not
-        # attempt.
+        # possibly-stale text an operator has since overridden in Wafer
+        # Builder (e.g. LAMP's PCM sites). This used to be skipped unless
+        # the touchdown covered exactly one map cell, to avoid having to
+        # rebuild a quad's joined "A/B/C/D" label; a touchdown IS one die
+        # now, so it always applies and there is no join to rebuild - the
+        # shot's own IDs live in t["devices"], filled in above.
         for t in self._touchdowns:
             anchor = self._anchor_rc.get(t["seq"])
-            if anchor is None or len(self._slot_rc.get(t["seq"], {})) != 1:
+            if anchor is None:
                 continue
             wb_id = die_id_lookup.get(anchor)
             if wb_id and wb_id != t["device_id"]:
@@ -1610,26 +1741,21 @@ class EgPmaRunPanel(ttk.Frame):
     def _shot_window_cells(self, seq) -> list:
         """The map cells the chuck's shot really covers, for drawing.
 
-        A recipe may name ONE die per touchdown even where the probe card
-        lands a whole R x C shot (LaMP's whole-wafer case: single die IDs,
-        2x2 card). expand_touchdowns_to_dies can only produce the dies the
-        recipe NAMES, so self._cells holds one cell there and the window
-        drew a single square no matter what shot_layout() said.
+        A touchdown is one die, so self._cells holds one cell for it - but
+        the probe card lands a whole R x C shot around that die, and that
+        block is what the window has to outline.
 
-        The shot is a property of the probe card, not of how many dies the
-        recipe happens to name, so the rest of the block is filled in here.
-        The die the recipe names is die #1 of the shot, and die #1 is the
-        block's top-left cell for every layout slot_grid produces (slot
-        index 0 -> (col 0, row 0), the 2x2 quad's TL included), so the
-        window extends right and down from it.
+        _slot_rc already holds exactly it: _build_rc_index fills it from
+        the map's own shot grouping, so this is the real shot the landing
+        die belongs to rather than a block guessed from its position. That
+        matters at the wafer edge and wherever a shot has NA corners, where
+        assuming the landing die is the block's top-left puts the outline
+        one slot out.
         """
-        cells = self._cells.get(seq) or []
-        rows, cols = self.shot_layout()
-        if not cells or rows * cols <= len(cells):
-            return cells
-        r0 = min(r for r, _ in cells)
-        c0 = min(c for _, c in cells)
-        return [(r0 + dr, c0 + dc) for dr in range(rows) for dc in range(cols)]
+        slots = self._slot_rc.get(seq) or {}
+        if slots:
+            return list(slots.values())
+        return self._cells.get(seq) or []
 
     def _draw_shot_window(self):
         """Outline the 2x2 (or 1x1) block the chuck is currently on."""
