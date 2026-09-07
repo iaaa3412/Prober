@@ -498,8 +498,20 @@ class WaferMapPanel(ttk.LabelFrame):
                     pass
             if x_um is None and row is None:
                 continue
+            # quad_pos/seq are carried straight through when the source map
+            # has them (ata_wafer_map_builder.csv does) rather than dropped:
+            # quad_pos names which slot of its touchdown a die sits in, so
+            # across the whole map it is the only record of the shot's real
+            # rows x cols. Consumers that need the shot shape read it off
+            # _last_dies - see EgPmaRunPanel._builder_shot_layout.
+            try:
+                seq = int(float(r["seq"])) if r.get("seq") else None
+            except ValueError:
+                seq = None
             dies.append({"x_um": x_um, "y_um": y_um, "row": row, "col": col,
-                        "die_id": (r.get(id_key, "").strip() if id_key else "")})
+                        "die_id": (r.get(id_key, "").strip() if id_key else ""),
+                        "quad_pos": (r.get("quad_pos") or "").strip(),
+                        "seq": seq})
 
         if dies and dies[0]["row"] is None:
             xs = sorted(set(round(d["x_um"]) for d in dies))

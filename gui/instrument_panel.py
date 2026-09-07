@@ -2734,6 +2734,19 @@ class MainLayout(ttk.Frame):
                   font=("Consolas", 9), foreground="#374151",
                   justify="center").grid(row=1, column=0, columnspan=2, pady=(0, 4))
 
+        if self._system == "electroglas":
+            # Directly under the X/Y it qualifies: the die size is the unit
+            # those counts are IN, so reading them apart from it means
+            # nothing. It used to sit at the bottom of the box, below every
+            # button, where the connection to the numbers was invisible.
+            # There is no direct query for it - see
+            # electroglas_2001x.infer_die_size and _exec_refresh_die_size.
+            self._exec_die_size_var = tk.StringVar(value="Prober die size: unknown")
+            ttk.Label(pos_lf, textvariable=self._exec_die_size_var,
+                     font=("Consolas", 8), foreground="#6b7280",
+                     justify="center").grid(row=2, column=0, columnspan=2,
+                                            pady=(0, 4))
+
         ttk.Separator(pos_lf, orient="horizontal").grid(
             row=3, column=0, columnspan=2, sticky="ew", pady=3)
 
@@ -2779,16 +2792,14 @@ class MainLayout(ttk.Frame):
                 command=self.eg_pma_run.toggle_move_armed)
             self.eg_pma_run._goto_btn.grid(
                 row=7, column=0, columnspan=2, sticky="ew", pady=1)
-            # Read once whenever the prober connects (_connect_instruments_eg,
-            # app.py), and again whenever a Die Size write goes out from
-            # Prober Debug (eg_prober_debug_panel._send_setup) - there is no
-            # direct query for this (see electroglas_2001x.infer_die_size),
-            # so this is the only place an operator can see it without
-            # opening Prober Debug and inferring it by hand.
-            self._exec_die_size_var = tk.StringVar(value="Prober die size: unknown")
-            ttk.Label(pos_lf, textvariable=self._exec_die_size_var,
-                     font=("Consolas", 8), foreground="#6b7280",
-                     justify="center").grid(row=8, column=0, columnspan=2, pady=(2, 0))
+            # The "Prober die size" label it used to build here now sits at
+            # row 2, directly under the X/Y counts it is the unit for. It is
+            # read once whenever the prober connects
+            # (app.py._connect_instruments_eg) and again whenever a Die Size
+            # write goes out from Prober Debug
+            # (eg_prober_debug_panel._send_setup) - there is no direct query
+            # for it, so this is the only place an operator can see it
+            # without opening Prober Debug and inferring it by hand.
         else:
             # Accretech has no native "previous die" GPIB command (only "J"
             # Next Die) - Back is a plain relative die-index step backward
@@ -3038,6 +3049,37 @@ class MainLayout(ttk.Frame):
         self._sync_results_wafer_map()
         if self._system == "accretech":
             self._exec_load_selected_map(quiet_if_missing=True)
+        else:
+            self._exec_seed_die_list_from_map()
+
+    def _exec_seed_die_list_from_map(self):
+        """Build the Run tab's Die list straight from the map that just
+        loaded. Always - there is no other source and no button for it.
+
+        The Wafer Builder map IS the wafer, so every die on it is a
+        position the operator can anchor to or drive to, and the Die list
+        is meant to show exactly that set (see EgPmaRunPanel._build_table).
+        It used to be populated only by loading a .PMA or by pressing
+        "Build from Wafer Builder Map" by hand, so an operator who
+        published a map and went to the Run tab found the list empty, with
+        nothing saying a button press was what it wanted - and nothing
+        persisted the result, so the same press was needed again next
+        launch. Doing it here makes the map alone sufficient, every time,
+        and removes anything to save.
+
+        adopt_from_wafer_builder is a no-op when the map yields the same
+        touchdowns it already holds, so this cannot silently drop an
+        anchor on a redraw.
+        """
+        run = getattr(self, "eg_pma_run", None)
+        adopt = getattr(run, "adopt_from_wafer_builder", None)
+        if adopt is None:
+            return
+        try:
+            adopt(quiet=True)
+        except Exception as e:
+            self._exec_log(f"[RUN] Could not build the Die list from the map — "
+                           f"{type(e).__name__}: {e}")
 
     def _exec_rebuild_run_map(self):
         """Replace the Run tab wafer map with a fresh widget instead of

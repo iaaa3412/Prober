@@ -176,59 +176,65 @@ class EgPmaRunPanel(ttk.Frame):
         self._recipe_var = tk.StringVar(value="(none loaded)")
 
     def _build_anchor(self):
-        # self._info_var still exists (set from _fill_info/_clear) even
-        # though nothing displays it anymore - the "Recipe" text-description
-        # section (die size/quad pitch/structure/measurement plan) was
-        # removed rather than left as dead-but-visible clutter; _fill_info
-        # itself is untouched since other code still calls it for its other
-        # side effects.
+        # Folded into _build_controls's single "Run" LabelFrame below - kept
+        # as a stub so __init__'s build sequence and any external callers of
+        # _build_anchor don't need to change, and because self._info_var
+        # still has to exist: it is set from _fill_info/_clear even though
+        # nothing displays it anymore (the "Recipe" text-description section
+        # - die size/quad pitch/structure/measurement plan - was removed
+        # rather than left as dead-but-visible clutter; _fill_info itself is
+        # untouched, since other code still calls it for its other side
+        # effects).
         self._info_var = tk.StringVar(value="Load a .PMA to begin.")
 
-        lf = ttk.LabelFrame(self, text="Set Initial", padding=6)
+    def _build_controls(self):
+        # ONE box: setting where the chuck is, and running from there, are
+        # the same job done in order, and each half was only two controls
+        # tall once its grey explanatory text was gone. "Set Initial" and
+        # "Run" as separate titled frames was more chrome than content -
+        # the same reason "Selected die" was folded in before them.
+        lf = ttk.LabelFrame(self, text="Run", padding=6)
         lf.grid(row=2, column=0, sticky="ew", padx=6, pady=2)
-        lf.columnconfigure(1, weight=1)
 
-        ttk.Label(lf, text="Chuck is on:").grid(row=1, column=0, sticky="w")
+        anchor = ttk.Frame(lf)
+        anchor.pack(fill="x")
+        anchor.columnconfigure(1, weight=1)
+        ttk.Label(anchor, text="Chuck is on:").grid(row=0, column=0, sticky="w")
         self._anchor_var = tk.StringVar()
         # Editable, not readonly: a whole-wafer recipe has thousands of sites
         # and scrolling to one is hopeless, so typing filters the list. A die
         # ID can also just be typed straight in - see _set_anchor.
-        self._anchor_cb = ttk.Combobox(lf, textvariable=self._anchor_var, width=44)
-        self._anchor_cb.grid(row=1, column=1, sticky="ew", padx=6)
+        self._anchor_cb = ttk.Combobox(anchor, textvariable=self._anchor_var,
+                                       width=44)
+        self._anchor_cb.grid(row=0, column=1, sticky="ew", padx=6)
         self._anchor_cb.bind("<KeyRelease>", self._on_anchor_typed)
-        ttk.Button(lf, text="Set", command=self._set_anchor).grid(row=1, column=2)
+        ttk.Button(anchor, text="Set", command=self._set_anchor).grid(row=0, column=2)
 
         self._anchor_state_var = tk.StringVar(value="not set")
-        ttk.Label(lf, textvariable=self._anchor_state_var, font=("Consolas", 8),
-                  foreground="#b45309").grid(row=2, column=0, columnspan=3,
-                                             sticky="w", pady=(4, 0))
-
-    def _build_controls(self):
-        # Run + Selected die combined into one LabelFrame - both are small
-        # once their grey explanatory text is gone, so two titled boxes was
-        # more chrome than content.
-        lf = ttk.LabelFrame(self, text="Run", padding=6)
-        lf.grid(row=3, column=0, sticky="ew", padx=6, pady=2)
+        ttk.Label(anchor, textvariable=self._anchor_state_var,
+                  font=("Consolas", 8), foreground="#b45309").grid(
+                  row=1, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         # ◀ Back / ▶ Next moved to the Chuck Position section, ▶ Run / ⏹ Stop
         # to the top bar (▶ Run next to Test Die; ⏹ Stop Run there now also
         # stops this pane's run) - see instrument_panel._tab_execution2.
         btns = ttk.Frame(lf)
-        btns.pack(fill="x")
-        ttk.Button(btns, text="↻ Sync ?P", command=self._sync_position).pack(
-            side="left")
-        ttk.Button(btns, text="Sync Run map", command=self._sync_run_map).pack(
-            side="left", padx=(6, 0))
-        # No .PMA needed at all - builds one touchdown per shot straight
-        # from the published Wafer Builder map (see
-        # adopt_from_wafer_builder's own docstring). The real button for
-        # a real .PMA is pma_process_panel's "LOAD ALL" (which calls
-        # adopt_from_process) - _load_recipe/_use_loaded_pma in this file
-        # are currently unwired to anything, a separate pre-existing gap
-        # this doesn't touch.
-        ttk.Button(btns, text="🗺 Build from Wafer Builder Map",
-                  command=lambda: self.adopt_from_wafer_builder(quiet=False)
-                  ).pack(side="left", padx=(6, 0))
+        btns.pack(fill="x", pady=(6, 0))
+        # ONE Sync button. There used to be three controls here - "Sync ?P",
+        # "Sync Run map" and "Build from Wafer Builder Map" - which made
+        # the operator responsible for knowing which of them a given
+        # symptom needed. They are all one action now (see _sync_all), and
+        # the Die list half of it also happens by itself on every map load
+        # (instrument_panel._exec_seed_die_list_from_map), so this button is
+        # only ever a manual re-check rather than a required step.
+        #
+        # The old "Sync Run map" is deliberately NOT part of it: that one
+        # ran the opposite direction, rebuilding the Wafer Builder map FROM
+        # the recipe's touchdowns. The map is the source of truth for die
+        # IDs and positions now, so nothing may overwrite it from a .PMA.
+        # _sync_run_map itself is left in place but unbound, the same way
+        # _load_recipe/_use_loaded_pma already are.
+        ttk.Button(btns, text="↻ Sync", command=self._sync_all).pack(side="left")
 
         mode = ttk.Frame(lf)
         mode.pack(fill="x", pady=(6, 0))
@@ -248,16 +254,21 @@ class EgPmaRunPanel(ttk.Frame):
         self._um_radio.pack(side="left", padx=(8, 0))
         self._on_motion_mode()
 
+        # The three status lines that used to sit here - run status, "#seq
+        # grid (x,y) device", and the shot-window description - are no
+        # longer displayed. Each already had a better home: the run's state
+        # is on the Run tab's own status label, the position is in the
+        # Chuck Position box (fed from ?P - see _push_xy_display), and the
+        # shot window is the box drawn on the map itself. Stacked here they
+        # only pushed the Die list down the pane.
+        #
+        # The StringVars stay alive because plenty of code still .set()s
+        # them (_refresh_position, _draw_shot_window, every run/abort/finish
+        # transition) - same arrangement _info_var and _recipe_var are
+        # already in.
         self._status_var = tk.StringVar(value="idle")
-        ttk.Label(lf, textvariable=self._status_var, font=("Consolas", 9)
-                  ).pack(anchor="w", pady=(6, 0))
         self._pos_var = tk.StringVar(value="—")
-        ttk.Label(lf, textvariable=self._pos_var, font=("Consolas", 9),
-                  foreground="#0077cc").pack(anchor="w")
         self._shot_window_var = tk.StringVar(value="Shot window: chuck not set")
-        ttk.Label(lf, textvariable=self._shot_window_var, font=("Consolas", 8),
-                  foreground="#2563eb", wraplength=430, justify="left").pack(
-                  anchor="w", pady=(2, 0))
         # "Selected die" (heading/help text/status line/➤ Move to selected
         # button) used to live here - moved to the Chuck Position section
         # instead (instrument_panel._tab_execution2 builds the actual
@@ -286,10 +297,9 @@ class EgPmaRunPanel(ttk.Frame):
 
         bar = ttk.Frame(lf)
         bar.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 2))
-        self._table_all_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(bar, text="show every die on the wafer",
-                        variable=self._table_all_var,
-                        command=self._fill_table).pack(side="left")
+        # No "show every die on the wafer" checkbox: showing every die IS
+        # what this table is for (see the note above), so the option only
+        # ever offered a way to make it wrong.
         self._table_count_var = tk.StringVar(value="")
         ttk.Label(bar, textvariable=self._table_count_var, foreground="#6b7280",
                   font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
@@ -468,6 +478,21 @@ class EgPmaRunPanel(ttk.Frame):
                 messagebox.showinfo("Wafer Builder", "No dies are marked "
                                     "present on the Wafer Builder map yet.")
             return False
+
+        # _adopt resets the anchor, the run index and the origin offset, so
+        # re-adopting an IDENTICAL list would quietly un-anchor the chuck
+        # every time the map happened to redraw. This runs automatically on
+        # every map load now (instrument_panel._exec_seed_die_list_from_map),
+        # so it has to be a no-op when nothing actually changed.
+        same = (len(touchdowns) == len(self._touchdowns) and
+                all(a["seq"] == b["seq"] and a["device_id"] == b["device_id"]
+                    and a["x"] == b["x"] and a["y"] == b["y"]
+                    for a, b in zip(touchdowns, self._touchdowns)))
+        if same:
+            if not quiet:
+                self._log(f"[PMA] Die list already matches the Wafer Builder "
+                          f"map ({len(touchdowns)} shots) - nothing to rebuild.")
+            return True
 
         self._adopt("(Wafer Builder map — no .PMA)",
                     {"DieSizeX": spx, "DieSizeY": spy}, touchdowns)
@@ -929,20 +954,17 @@ class EgPmaRunPanel(ttk.Frame):
                                       t["device_id"]))
             prev = (qx, qy)
         n_off = 0
-        if self._table_all_var.get():
-            for i, t in enumerate(self._touchdowns):
-                if i in in_run:
-                    continue
-                qx, qy = self._table_position(t)
-                self._tree.insert("", "end", iid=str(i), tags=("offrun",),
-                                  values=(t["seq"], f"{qx},{qy}", "", "",
-                                          t["device_id"]))
-                n_off += 1
+        for i, t in enumerate(self._touchdowns):
+            if i in in_run:
+                continue
+            qx, qy = self._table_position(t)
+            self._tree.insert("", "end", iid=str(i), tags=("offrun",),
+                              values=(t["seq"], f"{qx},{qy}", "", "",
+                                      t["device_id"]))
+            n_off += 1
         self._table_count_var.set(
             f"{len(run_order)} probed by this recipe"
-            + (f", {n_off} more on the wafer" if n_off else
-               ("" if self._table_all_var.get()
-                else f" — {len(self._touchdowns) - len(run_order)} others hidden")))
+            + (f", {n_off} more on the wafer" if n_off else ""))
 
     # -- anchoring ----------------------------------------------------------
 
@@ -1195,25 +1217,80 @@ class EgPmaRunPanel(ttk.Frame):
     # touchdowns and took every row/col index with it.
     _WAFER_SOURCE_ATTRS = ("_xls_shot_data", "_csv_shot_data")
 
+    def _builder_shot_layout(self) -> tuple:
+        """(rows, cols) of one shot, read from the Wafer Builder-published map.
+
+        The published map is the source of truth for the wafer (same reason
+        as _wafer_builder_rc_lookup), and it states the shot shape outright:
+        every die is stamped with the quad_pos slot it occupies inside its
+        own touchdown - "R{r}C{c}" generically, or the legacy TL/BL/TR/BR
+        names for the 2x2 quad. The extent of those slots across the map IS
+        the shot.
+
+        Every other source can be silent or wrong about it:
+          - the recipe-generator .xls leaves shot_rows/shot_cols blank;
+          - the Wafer Builder tab's Shot entry boxes read "1"/"1" until
+            that project is actually opened on that tab, and a run does not
+            require opening it;
+          - counting slashes in a device ID gives 1 for a single-die
+            touchdown list, which is a legal way to write a 2x2 recipe.
+        All three made a LaMP 2x2 draw as a single die.
+
+        Returns (0, 0) when the loaded map carries no slot names at all
+        (e.g. the Accretech source), so callers fall through as before.
+        """
+        cached = getattr(self, "_builder_shot_cache", None)
+        if cached is not None:
+            return cached
+        wm = self._run_map()
+        dies = getattr(wm, "_last_dies", None) or []
+        max_r = max_c = -1
+        for d in dies:
+            pos = (d.get("quad_pos") or "").strip()
+            if not pos:
+                continue
+            if pos.upper() in QUAD_ORDER:
+                # Legacy quad naming exists only for the 2x2 shot.
+                max_r = max_c = 1
+                break
+            m = re.fullmatch(r"R(\d+)C(\d+)", pos, re.IGNORECASE)
+            if m:
+                max_r = max(max_r, int(m.group(1)))
+                max_c = max(max_c, int(m.group(2)))
+        out = (0, 0) if (max_r < 0 or max_c < 0) else (max_r + 1, max_c + 1)
+        self._builder_shot_cache = out
+        return out
+
     def shot_layout(self) -> tuple:
         """(rows, cols) of the die block one touchdown covers.
 
-        Taken from the loaded wafer definition, which carries it, so a 1x5
-        strip does not get expanded as though it were the 2x2 LaMP quad.
-        Falls back to the Wafer Builder tab's own Shot-tab dims (real for
-        any project built there directly, PMA or not - see
-        adopt_from_wafer_builder), then to shot_geometry's inference from
-        the widest device-ID list.
+        The Wafer Builder-published map wins outright - it is the wafer, and
+        it records the shot per die (see _builder_shot_layout). Only if it
+        carries no slot names at all do the older sources get a turn: the
+        loaded wafer definition, which carries the dims for a project that
+        stated them (so a 1x5 strip is not expanded as a 2x2 LaMP quad),
+        then the Wafer Builder tab's own live Shot-tab dims, then
+        shot_geometry's inference from the widest device-ID list.
         """
-        data = self.wafer_definition_data() or {}
-        rows, cols = int(data.get("shot_rows") or 0), int(data.get("shot_cols") or 0)
+        rows, cols = self._builder_shot_layout()
+        if rows <= 0 or cols <= 0:
+            data = self.wafer_definition_data() or {}
+            rows = int(data.get("shot_rows") or 0)
+            cols = int(data.get("shot_cols") or 0)
         if rows <= 0 or cols <= 0:
             gen = getattr(self._main_layout, "recipe_gen", None)
             if gen is not None:
                 try:
-                    rows, cols = gen._shot_dims()
+                    gr, gc = gen._shot_dims()
                 except Exception:
-                    rows, cols = 0, 0
+                    gr, gc = 0, 0
+                # _shot_dims() floors at 1x1, so it can never report "not
+                # set" - taking it at face value pinned the shot to a single
+                # die whenever that tab had no project open, and silently
+                # shadowed the device-ID fallback below, which gets a 2x2
+                # right. Only accept it when it names a real multi-die shot.
+                if gr * gc > 1:
+                    rows, cols = gr, gc
         widest = max(
             (len(str(t.get("device_id", "")).split("/"))
              for t in (self._touchdowns or [])), default=1)
@@ -1296,6 +1373,13 @@ class EgPmaRunPanel(ttk.Frame):
         this can never invent a row/col scheme of its own that drifts out
         of step with what WaferMapPanel/RecipeGenPanel are using.
         """
+        # Rebuilt from the published map on next use, same lifecycle as
+        # _builder_grid_cache below - cleared before shot_layout() reads it.
+        self._builder_shot_cache = None
+        # grid (x, y) -> touchdown index, what _locate_real turns a ?P
+        # reading into. Depends on both the touchdown list and the map, so
+        # it is dropped here with the rest of them.
+        self._grid_index_cache = None
         rows, cols = self.shot_layout()
         rc_lookup = self._wafer_builder_rc_lookup()
         die_id_lookup = self._wafer_builder_die_id_lookup()
@@ -1565,6 +1649,30 @@ class EgPmaRunPanel(ttk.Frame):
                 wmap.canvas.tag_raise(inner)
                 self._sel_window_items.append(inner)
 
+    def _shot_window_cells(self, seq) -> list:
+        """The map cells the chuck's shot really covers, for drawing.
+
+        A recipe may name ONE die per touchdown even where the probe card
+        lands a whole R x C shot (LaMP's whole-wafer case: single die IDs,
+        2x2 card). expand_touchdowns_to_dies can only produce the dies the
+        recipe NAMES, so self._cells holds one cell there and the window
+        drew a single square no matter what shot_layout() said.
+
+        The shot is a property of the probe card, not of how many dies the
+        recipe happens to name, so the rest of the block is filled in here.
+        The die the recipe names is die #1 of the shot, and die #1 is the
+        block's top-left cell for every layout slot_grid produces (slot
+        index 0 -> (col 0, row 0), the 2x2 quad's TL included), so the
+        window extends right and down from it.
+        """
+        cells = self._cells.get(seq) or []
+        rows, cols = self.shot_layout()
+        if not cells or rows * cols <= len(cells):
+            return cells
+        r0 = min(r for r, _ in cells)
+        c0 = min(c for _, c in cells)
+        return [(r0 + dr, c0 + dc) for dr in range(rows) for dc in range(cols)]
+
     def _draw_shot_window(self):
         """Outline the 2x2 (or 1x1) block the chuck is currently on."""
         self._clear_shot_window()
@@ -1573,7 +1681,7 @@ class EgPmaRunPanel(ttk.Frame):
             self._shot_window_var.set("Shot window: chuck not set")
             return
         seq = self._touchdowns[self._index]["seq"]
-        cells = self._cells.get(seq) or []
+        cells = self._shot_window_cells(seq)
         if not cells:
             self._shot_window_var.set("Shot window: not on the map")
             return
@@ -1786,6 +1894,84 @@ class EgPmaRunPanel(ttk.Frame):
         except Exception as e:
             self._log(f"[PMA] wafer map marker skipped — {type(e).__name__}: {e}")
 
+    def _push_xy_display(self, xy):
+        """Mirror ?P into the Run tab's own Chuck Position readout.
+
+        That big "X: - / Y: -" label (instrument_panel._exec_xy_var) is
+        built for BOTH systems, but only Accretech ever gets a control
+        that fills it: the "Refresh XY" button _tab_execution2 builds is
+        Accretech-only. Electroglas's equivalent is this pane's "Sync ?P",
+        and that used to write the position to this pane's status line and
+        the log only - so on Electroglas the label sat at "X: - / Y: -" no
+        matter how many times the operator synced, which is exactly what
+        it looked like: a readout that never reads.
+        """
+        var = getattr(self._main_layout, "_exec_xy_var", None)
+        if var is None:
+            return
+        if not xy:
+            var.set("X: ?\nY: ?")
+            return
+        var.set(f"X: {xy[0]:.0f} die\nY: {xy[1]:.0f} die")
+
+    def _grid_index_map(self) -> dict:
+        """Theoretical grid (x, y) -> touchdown index, for locating a
+        real ?P reading. Rebuilt whenever the recipe/map is (see
+        _build_rc_index, which clears the cache this reads)."""
+        cached = getattr(self, "_grid_index_cache", None)
+        if cached is not None:
+            return cached
+        cached = {}
+        for i, t in enumerate(self._touchdowns or []):
+            try:
+                cached.setdefault(self._grid_xy(t), i)
+            except Exception:
+                continue
+        self._grid_index_cache = cached
+        return cached
+
+    def _locate_real(self, real):
+        """Where the chuck REALLY is on the wafer, from a raw ?P reading.
+
+        Returns (touchdown index or None, theoretical grid (x, y) or None).
+
+        Setting the anchor fixes the prober-frame -> map-frame offset
+        (_finish_anchor). That offset does not change when the operator
+        jogs the chuck by hand with the joystick, or when a move lands
+        somewhere unexpected - only the position WITHIN the frame does. So
+        once anchored, a ?P reading is by itself enough to say where on
+        the wafer the chuck is, and the software should re-locate to it
+        rather than declare a mismatch and demand a re-anchor. That is the
+        whole point of having anchored in the first place.
+
+        A grid position with no touchdown on it is a real answer too (the
+        operator drove to a die this recipe does not visit), which is why
+        the grid comes back even when the index does not.
+        """
+        if real is None or not self._anchored:
+            return None, None
+        ox, oy = self._origin_offset
+        grid = (real[0] - ox, real[1] - oy)
+        return self._grid_index_map().get(grid), grid
+
+    def _sync_all(self):
+        """Everything the operator means by "sync", in one press.
+
+        Re-reads the published Wafer Builder map (which rebuilds the Die
+        list from it), then reads ?P and re-locates the chuck on that map.
+        Map first, because where the chuck IS only means something in terms
+        of the map it is being located on.
+        """
+        layout = self._main_layout
+        redraw = getattr(layout, "_exec_draw_wafer_map", None)
+        if redraw is not None:
+            try:
+                redraw(quiet_if_missing=True)
+            except Exception as e:
+                self._log(f"[PMA] Sync: could not reload the wafer map — "
+                          f"{type(e).__name__}: {e}")
+        self._sync_position()
+
     def _sync_position(self):
         drv = self._prober()
         if not drv:
@@ -1793,36 +1979,64 @@ class EgPmaRunPanel(ttk.Frame):
             return
 
         def _work():
-            drv.recover()
-            pos = drv.get_xy_position()
-            status = drv.decode_status(drv.get_prober_status())
-            # Actually RECONCILE against the anchor, not just display the raw
-            # reply - a mismatch here means self._index (what every MD delta
-            # is computed from) no longer describes where the chuck really
-            # is. _move_to_index checks this too, right before every move,
-            # but catching it here - the moment the operator asks to verify
-            # position - means they find out immediately instead of only
-            # when the next move refuses to send.
-            note = ""
-            if self._anchored and self._index is not None \
-                    and 0 <= self._index < len(self._touchdowns):
-                real = parse_position(pos)
-                expect = self._expected_position(self._touchdowns[self._index])
-                if real is None:
-                    note = "  (could not parse ?P - unable to verify the anchor)"
-                elif real != expect:
-                    self._anchored = False
-                    note = (f"  MISMATCH: software expected X{expect[0]}Y{expect[1]} "
-                            f"(touchdown #{self._touchdowns[self._index]['seq']}, "
-                            "accounting for the origin offset from the last anchor) - "
-                            "re-anchor (Set Initial) before running.")
-                    self._ui(self._fill_table)
-                else:
-                    note = "  matches the anchored touchdown."
-            self._ui(lambda: (self._status_var.set(f"?P={pos}  {status}"),
-                              self._log(f"[PMA] ?P={pos}  {status}{note}")))
+            try:
+                self._sync_position_work(drv)
+            except Exception as e:
+                # This ran bare in its own thread, so anything raised in it
+                # (a GPIB timeout, an unparseable status) died silently and
+                # the button looked like it had simply done nothing at all.
+                self._ui(lambda: self._log(
+                    f"[PMA] Sync ?P failed - {type(e).__name__}: {e}"))
 
         threading.Thread(target=_work, daemon=True).start()
+
+    def _sync_position_work(self, drv):
+        drv.recover()
+        pos = drv.get_xy_position()
+        status = drv.decode_status(drv.get_prober_status())
+        # RE-LOCATE against the anchor rather than merely displaying the raw
+        # reply - and rather than refusing, which is what this used to do.
+        # ?P is the authority on where the chuck is; self._index is only the
+        # software's belief about it. When they disagree the reading wins and
+        # the belief is corrected, so jogging the chuck by hand between runs
+        # is a normal thing to do instead of something that invalidates the
+        # anchor.
+        note = ""
+        real = parse_position(pos)
+        moved_to = None
+        if real is None:
+            note = "  (could not parse ?P - position unknown)"
+        elif self._anchored:
+            idx, grid = self._locate_real(real)
+            if idx is None:
+                note = (f"  grid ({grid[0]},{grid[1]}) - no touchdown in this "
+                        "recipe sits there; the chuck is on a die the recipe "
+                        "does not visit. Still anchored.")
+            elif idx == self._index:
+                note = f"  on touchdown #{self._touchdowns[idx]['seq']}, as expected."
+            else:
+                was = (self._touchdowns[self._index]['seq']
+                       if self._index is not None
+                       and 0 <= self._index < len(self._touchdowns) else "?")
+                moved_to = idx
+                note = (f"  RE-LOCATED: chuck is on touchdown "
+                        f"#{self._touchdowns[idx]['seq']} "
+                        f"({self._touchdowns[idx]['device_id']}), not #{was} - "
+                        "the software has followed it; no re-anchor needed.")
+        else:
+            note = "  (not anchored yet - Set Initial to place this on the map)"
+
+        def _apply():
+            if moved_to is not None:
+                self._index = moved_to
+                self._um_residual = [0.0, 0.0]
+                self._mark_current()
+                self._refresh_position()
+                self._fill_table()
+            self._status_var.set(f"?P={pos}  {status}")
+            self._push_xy_display(real)
+            self._log(f"[PMA] ?P={pos}  {status}{note}")
+        self._ui(_apply)
 
     # -- running ------------------------------------------------------------
 
@@ -2395,9 +2609,17 @@ class EgPmaRunPanel(ttk.Frame):
                                         f"{'PASS' if ok else 'FAIL'}")))
         return True
 
-    @staticmethod
-    def _read_position(drv):
+    def _read_position(self, drv):
         """?P, surviving one link stall. None if it still cannot be read.
+
+        Every reading is pushed to the Run tab's Chuck Position X/Y as it
+        is taken (see _push_xy_display), so that box shows what ?P actually
+        last said rather than a position the software worked out for
+        itself. This is the single choke point every ?P read in a run goes
+        through - before a move, after a move, and on Sync - so wiring the
+        display here is what makes it track the machine instead of needing
+        a button press. Accretech never reaches this method; it has its own
+        Refresh XY path (instrument_panel._exec_get_xy) and is untouched.
 
         The 2001X intermittently stops answering mid-run - a query times out and
         the link stays wedged until it is drained or cleared. That is a link
@@ -2407,15 +2629,20 @@ class EgPmaRunPanel(ttk.Frame):
         does stop, because continuing without being able to verify where the
         chuck is means probing dies nobody has confirmed.
         """
+        pos = None
         try:
-            return parse_position(drv.get_xy_position())
+            pos = parse_position(drv.get_xy_position())
         except Exception:
-            pass
-        try:
-            drv.recover()
-            return parse_position(drv.get_xy_position())
-        except Exception:
-            return None
+            try:
+                drv.recover()
+                pos = parse_position(drv.get_xy_position())
+            except Exception:
+                pos = None
+        # Shown even when it is None, so an unreadable position reads as
+        # "X: ? / Y: ?" rather than silently leaving the last good numbers
+        # on screen looking current.
+        self._ui(lambda p=pos: self._push_xy_display(p))
+        return pos
 
     def _move_next(self, drv, cap: int) -> bool:
         if getattr(self, "_needs_restart", False):
@@ -2451,10 +2678,14 @@ class EgPmaRunPanel(ttk.Frame):
         cx, cy = self._grid_xy(cur)
         nx, ny = self._grid_xy(nxt)
         dx, dy = nx - cx, ny - cy
-        if (dx, dy) == (0, 0):
-            self._index = target
-            self._ui(lambda: (self._mark_current(), self._refresh_position()))
-            return True
+        # NOTE: "the target is where we already are, so there is nothing to
+        # do" is decided AFTER the real ?P read below, never before it. It
+        # used to short-circuit here, which meant that selecting the
+        # touchdown the software believed the chuck was already on skipped
+        # the one check that would have caught the belief being wrong - and
+        # then reported arrival. A jogged chuck could be recorded as parked
+        # on a die it was nowhere near, and the next measurement would be
+        # filed against that die.
 
         # Verify the chuck is REALLY at (cx, cy) - what self._index assumes -
         # BEFORE computing/sending anything from that assumption, in EITHER
@@ -2479,14 +2710,61 @@ class EgPmaRunPanel(ttk.Frame):
             return False
         expected = self._expected_position(cur)
         if real != expected:
-            self._anchored = False
-            self._ui(lambda r=real, c=expected, s=cur['seq']: self._log(
-                f"[PMA] STOPPED: chuck is really at X{r[0]}Y{r[1]} but the "
-                f"software expected X{c[0]}Y{c[1]} (touchdown #{s}, accounting "
-                "for the origin offset from the last anchor) - re-anchor "
-                "(Set Initial) before continuing. No move was sent."))
+            # FOLLOW the chuck, do not refuse. ?P is the authority on where
+            # it is; self._index is only the software's belief about it, and
+            # a disagreement means the belief is stale - not that the anchor
+            # is. Setting the anchor fixed the prober-frame -> map-frame
+            # OFFSET, and jogging the chuck by hand does not change an
+            # offset, only the position within the frame. So the real
+            # reading still locates the chuck on the map by itself, and the
+            # right response is to step from where it actually is.
+            #
+            # This used to stop the run and demand a re-anchor, which made
+            # touching the joystick between runs (or any single missed step)
+            # cost a full re-anchor for information the machine was already
+            # telling us.
+            here, grid = self._locate_real(real)
+            # The µm mode's sub-count remainder accumulates along a
+            # continuous path (see _move_um); a re-location breaks that
+            # path, so carrying it forward would apply one touchdown's
+            # rounding error to a step it has nothing to do with.
+            self._um_residual = [0.0, 0.0]
+            if here is not None:
+                self._index = here
+                cur = self._touchdowns[here]
+                where = f"touchdown #{cur['seq']} ({cur['device_id']})"
+            else:
+                where = (f"grid ({grid[0]},{grid[1]}), which no touchdown in "
+                         "this recipe covers")
+            self._ui(lambda r=real, w=where, c=expected, s=nxt['seq']: self._log(
+                f"[PMA] Re-located before moving to #{s}: chuck is really at "
+                f"X{r[0]}Y{r[1]} — {w} — not X{c[0]}Y{c[1]} as assumed. "
+                "Stepping from where it actually is; no re-anchor needed."))
             self._ui(self._fill_table)
-            return False
+            # Recompute the step from the REAL position to the target's real
+            # position, both in the anchored frame, so it is right whether or
+            # not the chuck happens to be sitting on a touchdown at all.
+            tx, ty = self._expected_position(nxt)
+            dx, dy = tx - real[0], ty - real[1]
+            if (dx, dy) == (0, 0):
+                self._index = target
+                self._ui(lambda: (self._mark_current(), self._refresh_position()))
+                return True
+            if here is None and self._motion_var.get() == MOTION_UM:
+                # MM steps by the recipe's own micron deltas between two
+                # touchdowns (_move_um), so it has no way to express "from
+                # this arbitrary die". MD can - it works in grid counts.
+                self._ui(lambda: self._log(
+                    "[PMA] STOPPED: in µm (MM) mode the step is the recipe's "
+                    "own micron delta between two touchdowns, and the chuck is "
+                    "not on one. Switch to die steps (MD), or re-anchor."))
+                return False
+        elif (dx, dy) == (0, 0):
+            # Confirmed by ?P, not assumed: the chuck really is on the
+            # target already.
+            self._index = target
+            self._ui(lambda: (self._mark_current(), self._refresh_position()))
+            return True
 
         if self._motion_var.get() == MOTION_UM:
             return self._move_um(drv, cur, nxt, target, (nx, ny), before=real)
