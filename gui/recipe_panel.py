@@ -192,18 +192,26 @@ def _step_unit(step: dict) -> str:
 def describe_target_calc(measured_step: dict, applied_step: dict) -> str:
     """Grey hint text: what combining a measure step's own reading with its
     Target step's forced quantity will compute - e.g. force current
-    elsewhere, measure voltage here, and the two combine into a resistance.
-    "" means there's no known calculation for this pair of units - the
-    Target is still kept as a reference (so a passfail after it can still
-    name it), but the step's raw reading is what gets reported/checked."""
+    elsewhere, measure voltage here, and the two combine into a resistance;
+    or (Ohm's law) measure resistance here, force V or I elsewhere, and get
+    the other quantity out. "" means there's no known calculation for this
+    pair of units - the Target is still kept as a reference (so a passfail
+    after it can still name it), but the step's raw reading is what gets
+    reported/checked."""
     a_unit = _step_unit(applied_step)
     m_unit = _step_unit(measured_step)
-    if not (a_unit and m_unit and {a_unit, m_unit} == {"V", "A"}):
+    if not (a_unit and m_unit):
         return ""
     applied_name = applied_step.get("name") or "target"
-    if m_unit == "V":
-        return f"→ resistance: R = this reading (V) ÷ '{applied_name}' (I)  →  Ω"
-    return f"→ resistance: R = '{applied_name}' (V) ÷ this reading (I)  →  Ω"
+    if {a_unit, m_unit} == {"V", "A"}:
+        if m_unit == "V":
+            return f"→ resistance: R = this reading (V) ÷ '{applied_name}' (I)  →  Ω"
+        return f"→ resistance: R = '{applied_name}' (V) ÷ this reading (I)  →  Ω"
+    if m_unit == "ohm" and a_unit == "V":
+        return f"→ Ohm's law: I = '{applied_name}' (V) ÷ this reading (Ω)  →  A"
+    if m_unit == "ohm" and a_unit == "A":
+        return f"→ Ohm's law: V = '{applied_name}' (I) × this reading (Ω)  →  V"
+    return ""
 
 
 def compute_target_derived(measured_value: float, measured_unit: str,
@@ -211,14 +219,24 @@ def compute_target_derived(measured_value: float, measured_unit: str,
     """(value, unit) derived from a measure step's own reading plus its
     Target step's value, or None when no known calculation applies to this
     pair of units - the caller should keep the raw measured value in that
-    case (blank divide-by-zero also returns None, for the same reason)."""
-    if {measured_unit, applied_unit} != {"V", "A"}:
-        return None
-    v = measured_value if measured_unit == "V" else applied_value
-    i = measured_value if measured_unit == "A" else applied_value
-    if not i:
-        return None
-    return v / i, "ohm"
+    case (blank divide-by-zero also returns None, for the same reason).
+
+    Two known pairings: a measured V + an applied I (or vice versa) combine
+    into resistance; a measured resistance + an applied V or I combine via
+    Ohm's law into the other quantity (I = V/R, or V = I*R)."""
+    if {measured_unit, applied_unit} == {"V", "A"}:
+        v = measured_value if measured_unit == "V" else applied_value
+        i = measured_value if measured_unit == "A" else applied_value
+        if not i:
+            return None
+        return v / i, "ohm"
+    if measured_unit == "ohm" and applied_unit == "V":
+        if not measured_value:
+            return None
+        return applied_value / measured_value, "A"
+    if measured_unit == "ohm" and applied_unit == "A":
+        return applied_value * measured_value, "V"
+    return None
 
 
 def _instrument_options(step_type: str, mode: str) -> tuple:
@@ -383,13 +401,15 @@ def _normalize_step(step: dict) -> dict:
         step["mode"] = "apply"
     elif step["mode"] not in _STEP_MODES:
         step["mode"] = "measure"
-    if step["mode"] == "measure":
+    if step["mode"] == "measure" and t != FOUR_WIRE_TYPE:
         # A measure step's Target names an earlier APPLY step whose forced
         # quantity combines with this step's own reading into a derived
-        # value (usually resistance - see compute_target_derived /
+        # value (resistance, or - for a plain "resistance" step - the other
+        # quantity via Ohm's law; see compute_target_derived /
         # instrument_panel._exec2_run_steps_once). Blank is legitimate -
-        # most measurements (2-wire, 4-wire ohms) need nothing applied
-        # elsewhere to already mean what they say.
+        # most measurements need nothing applied elsewhere to already mean
+        # what they say. 4-wire ohms never combines with a Target at all -
+        # see _on_type_change's own comment on why it's excluded here too.
         step["target"] = saved_target
 
     options = _instrument_options(t, step["mode"])
@@ -1865,12 +1885,11 @@ class RecipePanel(ttk.Frame):
         self._target_cb.bind("<KeyRelease>", lambda _e: self._update_target_calc_hint())
         # Grey, computed-on-the-fly explanation of what a measure step's
         # Target will combine into (e.g. force current elsewhere + measure
-        # voltage here -> resistance) - see describe_target_calc. Placed
-        # under the Direct checkbox, in the columns it doesn't use.
+        # voltage here -> resistance) - see describe_target_calc. The Label
+        # itself is built down by term_row, next to Terminals - only the
+        # StringVar is declared here, next to Target, since every other
+        # reader of _target_calc_var is a .set() call, not layout.
         self._target_calc_var = tk.StringVar(value="")
-        ttk.Label(editor, textvariable=self._target_calc_var, foreground="#6b7280",
-                 font=("Arial", 8, "italic"), wraplength=420, justify="left").grid(
-                 row=6, column=4, columnspan=4, sticky="w", padx=(6, 2), pady=(2, 0))
         _lbl(1, 4, "HI:")
         # readonly - a step can only pick a pin actually on the active probe
         # card, which itself can now only carry pins the active bench really
@@ -1974,6 +1993,9 @@ class RecipePanel(ttk.Frame):
             term_row, textvariable=self._ed_vars["terminals"],
             values=("", "FRONT", "REAR"), state="readonly", width=7)
         self._terminals_cb.pack(side="left", padx=(4, 0))
+        ttk.Label(term_row, textvariable=self._target_calc_var, foreground="#6b7280",
+                 font=("Arial", 8, "italic"), wraplength=380, justify="left").pack(
+                 side="left", padx=(12, 0))
         # Per-RECIPE toggles (not per-step, unlike everything else in this
         # editor) - moved down here next to Direct Wiring, on the same row,
         # so every checkbox on the tab lives in one place at the bottom
@@ -2225,6 +2247,10 @@ class RecipePanel(ttk.Frame):
         if t in ("resistance", FOUR_WIRE_TYPE):
             self._ed_vars["mode"].set("measure")
             self._mode_cb.config(state="disabled")
+            # Neither type sources anything - the instrument just reads
+            # whatever's across the pins - so there is no level to set.
+            self._ed_vars["level"].set("")
+            self._level_ent.config(state="disabled")
         elif t == "wave":
             self._ed_vars["mode"].set("apply")
             self._mode_cb.config(state="disabled")
@@ -2299,7 +2325,12 @@ class RecipePanel(ttk.Frame):
         # A measure step's Target names an earlier apply step to combine
         # with (see _normalize_step / describe_target_calc) - open/passfail
         # already enabled it for their own, different, meaning above.
-        if mode == "measure":
+        # 4-wire ohms is excluded: it's a DMM function with its own dedicated
+        # sense pins, never combined with a separate apply step in practice,
+        # and offering a Target here that quietly never did anything was
+        # more confusing than useful - a plain "resistance" step keeps
+        # Target (see the Ohm's law pairing in describe_target_calc).
+        if mode == "measure" and t != FOUR_WIRE_TYPE:
             self._target_cb.config(state="normal")
             self._refresh_target_values()
         else:

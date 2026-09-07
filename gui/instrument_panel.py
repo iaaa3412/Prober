@@ -1444,15 +1444,9 @@ class MainLayout(ttk.Frame):
                           "Pass yield ≥").pack(side="left", padx=(0, 2))
         self._default_yield_var = tk.StringVar(value="0")
         ttk.Entry(lf, textvariable=self._default_yield_var, width=5).pack(
-            side="left", padx=(0, 2))
-        ttk.Label(lf, text="% to auto-continue, else pause").pack(side="left", padx=(0, 8))
+            side="left", padx=(0, 8))
         ttk.Button(lf, text="Set Default",
                   command=self._set_default_yield).pack(side="left", padx=(0, 10))
-
-        self._default_yield_lbl = ttk.Label(lf, text="", foreground="#374151",
-                                            font=("Segoe UI", 8, "italic"))
-        self._default_yield_lbl.pack(side="left")
-        self._update_default_yield_label()
 
     def _update_default_yield_label(self):
         lbl = getattr(self, "_default_yield_lbl", None)
@@ -2517,16 +2511,14 @@ class MainLayout(ttk.Frame):
         list_frame = ttk.LabelFrame(right_col, text="Pads")
         right_col.add(list_frame, weight=1)
 
-        cols = ("pad", "net", "x", "y")
+        cols = ("pad", "x", "y")
         self._pad_tree = ttk.Treeview(
             list_frame, columns=cols, show="headings", height=10, selectmode="browse"
         )
         self._pad_tree.heading("pad", text="Pad")
-        self._pad_tree.heading("net", text="Net")
         self._pad_tree.heading("x",   text="X (µm)")
         self._pad_tree.heading("y",   text="Y (µm)")
         self._pad_tree.column("pad", width=80)
-        self._pad_tree.column("net", width=95)
         self._pad_tree.column("x",   width=65, anchor="e")
         self._pad_tree.column("y",   width=65, anchor="e")
 
@@ -2559,8 +2551,6 @@ class MainLayout(ttk.Frame):
         self._btn_pad_add_die = ttk.Button(pad_ctrl, text="Add Die", state="disabled",
                                            command=self._add_custom_die)
         self._btn_pad_add_die.pack(side="left", padx=2)
-        ttk.Label(pad_ctrl, text="Custom Sketch — saved by 💾 Save All, top of tab",
-                 foreground="#6b7280", wraplength=420, justify="left").pack(side="left", padx=(10, 0))
 
         self._on_pad_source_change()
 
@@ -2580,11 +2570,19 @@ class MainLayout(ttk.Frame):
             self._btn_pad_add_die.config(state="disabled")
             self._populate_pad_tree_from_ata(self.pad_panel._last_pads or [])
 
+    @staticmethod
+    def _fmt_um(v):
+        try:
+            return str(round(float(v)))
+        except (TypeError, ValueError):
+            return v if v is not None else ""
+
     def _refresh_pad_tree_from_custom(self):
         for item in self._pad_tree.get_children():
             self._pad_tree.delete(item)
         for pad in self.pad_panel._custom_pads:
-            self._pad_tree.insert("", "end", values=(pad["name"], "", pad["x"], pad["y"]))
+            self._pad_tree.insert("", "end", values=(
+                pad["name"], self._fmt_um(pad["x"]), self._fmt_um(pad["y"])))
 
     def _populate_pad_tree_from_ata(self, pads: list):
         for item in self._pad_tree.get_children():
@@ -2592,16 +2590,14 @@ class MainLayout(ttk.Frame):
         if not pads:
             return 0
         sample = pads[0]
-        n_key   = next((k for k in ("pad_name", "name", "label", "pad") if k in sample), None)
-        net_key = next((k for k in ("net_name", "net", "signal") if k in sample), None)
-        x_key   = next((k for k in ("x_um", "x_mm", "x", "center_x") if k in sample), None)
-        y_key   = next((k for k in ("y_um", "y_mm", "y", "center_y") if k in sample), None)
+        n_key = next((k for k in ("pad_name", "name", "label", "pad") if k in sample), None)
+        x_key = next((k for k in ("x_um", "x_mm", "x", "center_x") if k in sample), None)
+        y_key = next((k for k in ("y_um", "y_mm", "y", "center_y") if k in sample), None)
         for p in pads:
             self._pad_tree.insert("", "end", values=(
-                p.get(n_key, "")   if n_key   else "",
-                p.get(net_key, "") if net_key else "",
-                p.get(x_key, "")  if x_key   else "",
-                p.get(y_key, "")  if y_key   else "",
+                p.get(n_key, "") if n_key else "",
+                self._fmt_um(p.get(x_key)) if x_key else "",
+                self._fmt_um(p.get(y_key)) if y_key else "",
             ))
         return len(pads)
 
@@ -5871,7 +5867,8 @@ class MainLayout(ttk.Frame):
             return raw_value, raw_unit, (f"  (no known calculation for {raw_unit}+"
                                          f"{applied[1]} — using the raw reading)")
         dv, du = derived
-        return dv, du, f"  -> R = {dv:.6g} Ω  (combined with '{tgt}')"
+        du_symbol = {"ohm": "Ω", "V": "V", "A": "A"}.get(du, du)
+        return dv, du, f"  -> {dv:.6g} {du_symbol}  (combined with '{tgt}')"
 
     def _exec2_resolve_instrument(self, s: dict, family_default_key: str, fallback_driver):
         """Which driver object a step's SMU/DMM branch should actually use.

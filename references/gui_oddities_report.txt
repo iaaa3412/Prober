@@ -335,3 +335,57 @@ worth a second look / decision later.
      after sending a command."
 
 ------------------------------------------------------------------------
+
+8. Recipe tab - "ohmf" (4-wire resistance) steps are fully buildable but
+   never actually execute
+   File: gui/instrument_panel.py (_exec2_run_steps_once, ~line 6014-6566)
+   Found: 2026-09-07
+
+   The Recipe tab's step editor fully supports "ohmf" as a Type: it has its
+   own SnsHI/SnsLO sense-pin fields (recipe_panel.py's FOUR_WIRE_TYPE),
+   restricts the Instrument choice to DMM only (_instrument_options), and
+   validate_recipe()/Compute Connection are aware of it. But the actual run
+   engine's step dispatch (_exec2_run_steps_once) only branches on
+   t == "delay" / "move" / "picture" / "open" / "passfail" / "resistance" /
+   "voltage" / "current" / "wave" - there is no "ohmf" (or FOUR_WIRE_TYPE)
+   branch anywhere in gui/instrument_panel.py at all (confirmed: zero
+   matches for "ohmf", "FOUR_WIRE_TYPE", "his", or "los" in that file).
+
+   Concretely, an "ohmf" step in a real run: still gets its switch channels
+   closed (that happens generically before the type dispatch, for every
+   step), gets no instrument command sent, takes no reading, records no
+   result, and the loop silently moves on to the next step - no error, no
+   log line calling out that it did nothing beyond the generic "close
+   conn" line every step type gets.
+
+   Level/Limit/HI/LO/SnsHI/SnsLO can all be filled in for an ohmf step and
+   look completely normal in the editor and in a saved recipe - there is
+   currently no way to tell, short of reading this code, that the step
+   will do nothing when the recipe actually runs. Needs a decision: add
+   the missing execution branch (real 4-wire DMM resistance read), or
+   remove "ohmf" from the Type list until it's implemented.
+
+------------------------------------------------------------------------
+
+9. Recipe tab - Accretech's "Refresh" button (next to Validate) is a vague
+   name for a passive, read-only status check
+   File: gui/recipe_panel.py (_build_shot_origin_controls /
+   _refresh_shot_origin_label, ~line 1274-1387)
+   Found: 2026-09-07
+
+   Next to Validate sits a button that's just labeled "Refresh" on
+   Accretech (only enabled when this recipe's "Minor moves (multi-die
+   shot)" checkbox is on). It does not set, capture, or fix anything - it
+   only re-reads whether the Run tab's Wafer Builder > Overlay alignment
+   is currently confirmed, and updates the status text next to it
+   accordingly ("using Overlay alignment (row +N, col +N)" or "no
+   confirmed Overlay alignment - go to Wafer Builder > Overlay first").
+   Asked what it does mid-session without reading the code first - the
+   generic "Refresh" label gives no hint that it's a read-only check
+   rather than an action, unlike Electroglas's equivalent slot in the same
+   spot, which is clearly named "📍 Set Shot Origin" and actually does
+   something (captures the chuck's current position). Worth a clearer
+   label on the Accretech side (e.g. "Check Overlay Alignment") if this
+   comes up again - not a bug, just an unclear name for what it does.
+
+------------------------------------------------------------------------
