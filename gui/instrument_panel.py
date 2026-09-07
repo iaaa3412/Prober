@@ -5324,11 +5324,49 @@ class MainLayout(ttk.Frame):
         # broke every later Measure click with "stopped before step 1"
         # until the app was relaunched.
         self._exec_aborted = False
+        if self._system == "electroglas":
+            self._exec_measure_here_eg()
+            return
         # Resolved here, on the main thread, not inside the background
         # thread below - see _exec_prepare_shot_geometry's own note.
         shot_geom = self._exec_prepare_shot_geometry()
         threading.Thread(target=self._exec_touchdown_then_measure,
                          args=(shot_geom,), daemon=True).start()
+
+    def _exec_measure_here_eg(self):
+        """Measure button, Electroglas: the same thing a run touchdown does.
+
+        Straight through EgPmaRunPanel._measure_here, which is what the run
+        itself calls, so one press produces exactly what one touchdown of a
+        run produces: Z verified up (_ensure_contact raises it if the chuck
+        is not in contact, rather than measuring open air), the whole shot's
+        per-slot die IDs and map cells published for the engine, the recipe
+        run once, then each slot's verdict recorded, painted on its own
+        square, tallied, and written into controller.die_status so an export
+        sees it.
+
+        It used to go down the generic path, which resolves its shot
+        geometry from the Wafer Builder tab's live entry boxes and a
+        confirmed Accretech Overlay alignment. Electroglas has neither, so
+        shot_geom came back None: no slots were published, no per-die
+        results were recorded, and the only thing a Measure press produced
+        was a log line.
+        """
+        run = getattr(self, "eg_pma_run", None)
+        if run is None:
+            self._exec_log("[MEASURE] The Electroglas Run tab is not available.")
+            return
+        if getattr(run, "_running", False):
+            self._exec_log("[MEASURE] A run is active — stop it first.")
+            return
+        if run._index is None or not run._touchdowns:
+            self._exec_log("[MEASURE] Set where the chuck is first "
+                           "(Chuck is on → Set), so the reading can be filed "
+                           "against a die.")
+            return
+        drv = self.controller.drivers.get("prober")
+        threading.Thread(target=run._measure_here, args=(drv,),
+                         daemon=True).start()
 
     def _exec_touchdown_then_measure(self, shot_geom=None):
         prober = self.controller.drivers.get("prober")
