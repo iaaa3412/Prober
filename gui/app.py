@@ -400,9 +400,8 @@ class AtomicaDashboard(tk.Tk):
                                      foreground="#1d4ed8")
                 self._refresh_ata_picker()
                 self._ata_picker_var.set(self._ata_display_name(folder_name))
-                ui.exec_panel.set_wafer_map(ui.wafer_map, wafer_id=folder_name)
                 ui.wafer_id_var.set(folder_name)
-            ui.exec_panel.log(
+            self.log(
                 f"[SYSTEM] Default ATA folder '{folder_name}'.")
 
     @property
@@ -1572,9 +1571,9 @@ class AtomicaDashboard(tk.Tk):
 
         if ready != self._sys_ready_prev:
             if ready:
-                self.ui.exec_panel.log("[SYSTEM] System ready.")
+                self.log("[SYSTEM] System ready.")
             elif self._sys_ready_prev is not None:
-                self.ui.exec_panel.log(f"[SYSTEM] No longer ready — missing: {', '.join(missing)}")
+                self.log(f"[SYSTEM] No longer ready — missing: {', '.join(missing)}")
             self._sys_ready_prev = ready
 
         self._update_prober_status_label()
@@ -1828,8 +1827,7 @@ class AtomicaDashboard(tk.Tk):
                              foreground="#1d4ed8")
         self._refresh_ata_picker()
         self._ata_picker_var.set(self._ata_display_name(folder_name))
-        self.ui.exec_panel.log(f"[SYSTEM] ATA folder '{folder_name}' loaded — {n_dies} dies found.")
-        self.ui.exec_panel.set_wafer_map(self.ui.wafer_map, wafer_id=folder_name)
+        self.log(f"[SYSTEM] ATA folder '{folder_name}' loaded — {n_dies} dies found.")
         self.ui.wafer_id_var.set(folder_name)
         self.check_system_ready()
 
@@ -1892,10 +1890,8 @@ class AtomicaDashboard(tk.Tk):
         if not folder:
             return
         n_pads = self.ui.load_pad_layout(folder)
-        self.ui.exec_panel.load_recipe()
-        self.ui.exec_panel.lbl_route.config(text="P1 (VDD)  -> SMU_HI\nP2 (GND)  -> SMU_LO\nP6 (OUT)  -> DMM_HI")
         folder_name = os.path.basename(folder)
-        self.ui.exec_panel.log(f"[SYSTEM] Pad layout loaded from '{folder_name}' — {n_pads} pads.")
+        self.log(f"[SYSTEM] Pad layout loaded from '{folder_name}' — {n_pads} pads.")
 
     def cmd_browse_export(self):
         selected_dir = filedialog.askdirectory(initialdir=self.ui.export_path_var.get(), title="Select Export Directory")
@@ -1967,13 +1963,13 @@ class AtomicaDashboard(tk.Tk):
         export_dir = self.ui.export_path_var.get()
         current_lot = self.ui.lot_id.get()
         if not os.path.exists(export_dir):
-            self.ui.exec_panel.log("[ERROR] The selected export directory does not exist.")
+            self.log("[ERROR] The selected export directory does not exist.")
             return None
         if not current_lot:
-            self.ui.exec_panel.log("[ERROR] Please enter a valid Lot ID.")
+            self.log("[ERROR] Please enter a valid Lot ID.")
             return None
         if not self.results_data:
-            self.ui.exec_panel.log("[ERROR] No measurement results yet.")
+            self.log("[ERROR] No measurement results yet.")
             return None
         wafer_id = self.ui.wafer_id_var.get().strip()
         name_parts = [current_lot] + ([wafer_id] if wafer_id else []) + ["results"]
@@ -2015,12 +2011,12 @@ class AtomicaDashboard(tk.Tk):
                     writer.writerow({"kind": "DIE", "row": row, "col": col,
                                      "status": status})
 
-            self.ui.exec_panel.log(
+            self.log(
                 f"[RESULTS] Export Succesful {len(self.results_data)} result(s), "
                 f"{len(self.die_status)} die verdict(s)")
             return filepath
         except Exception as e:
-            self.ui.exec_panel.log(f"[ERROR] Failed to save CSV file: {e}")
+            self.log(f"[ERROR] Failed to save CSV file: {e}")
             return None
 
     def cmd_import_results_csv(self):
@@ -2044,7 +2040,7 @@ class AtomicaDashboard(tk.Tk):
             with open(path, newline='', encoding='utf-8') as f:
                 rows = list(csv.DictReader(f))
         except Exception as e:
-            self.ui.exec_panel.log(f"[ERROR] Could not read {os.path.basename(path)}: {e}")
+            self.log(f"[ERROR] Could not read {os.path.basename(path)}: {e}")
             return
         meta = next((r for r in rows if r.get("kind") == "META"), None)
         if meta is None:
@@ -2090,11 +2086,10 @@ class AtomicaDashboard(tk.Tk):
                                      foreground="#1d4ed8")
                 self._refresh_ata_picker()
                 self._ata_picker_var.set(self._ata_display_name(os.path.basename(folder)))
-                ui.exec_panel.set_wafer_map(ui.wafer_map, wafer_id=os.path.basename(folder))
             except Exception as e:
-                ui.exec_panel.log(f"[SETUP] Could not load ATA folder {os.path.basename(folder)!r}: {e}")
+                self.log(f"[SETUP] Could not load ATA folder {os.path.basename(folder)!r}: {e}")
         elif folder:
-            ui.exec_panel.log(
+            self.log(
                 f"[SETUP] ATA folder {os.path.basename(folder)!r} not found on this machine - "
                 "continuing without it.")
 
@@ -2103,7 +2098,7 @@ class AtomicaDashboard(tk.Tk):
             try:
                 ui.pin_wiring.switch_to_card(probe_card)
             except Exception as e:
-                ui.exec_panel.log(f"[SETUP] Could not switch to probe card "
+                self.log(f"[SETUP] Could not switch to probe card "
                                   f"{probe_card!r}: {e}")
 
         recipe = (meta.get("recipe") or "").strip()
@@ -2111,7 +2106,7 @@ class AtomicaDashboard(tk.Tk):
             try:
                 ui._exec2_load_recipe_by_name(recipe)
             except Exception as e:
-                ui.exec_panel.log(f"[SETUP] Could not load recipe {recipe!r}: {e}")
+                self.log(f"[SETUP] Could not load recipe {recipe!r}: {e}")
 
         lot_id = (meta.get("lot_id") or "").strip()
         wafer_id = (meta.get("wafer_id") or "").strip()
@@ -2181,7 +2176,7 @@ class AtomicaDashboard(tk.Tk):
                                 sum(1 for s in die_status.values() if s == "FAIL"))
         self.update_statistics_visuals()
         self.check_system_ready()
-        ui.exec_panel.log(
+        self.log(
             f"[SETUP] Loaded {len(results)} result(s), {len(die_status)} die "
             f"verdict(s) — recipe '{recipe or '?'}', "
             f"probe card '{probe_card or '?'}'.")
@@ -2190,14 +2185,14 @@ class AtomicaDashboard(tk.Tk):
         export_dir = self.ui.export_path_var.get()
         current_lot = self.ui.lot_id.get()
         if not os.path.exists(export_dir):
-            self.ui.exec_panel.log("[ERROR] The selected export directory does not exist.")
+            self.log("[ERROR] The selected export directory does not exist.")
             return None
         if not current_lot:
-            self.ui.exec_panel.log("[ERROR] Please enter a valid Lot ID.")
+            self.log("[ERROR] Please enter a valid Lot ID.")
             return None
         fmt = self.ui.get_selected_export_format()
         if not fmt:
-            self.ui.exec_panel.log("[ERROR] No export format selected")
+            self.log("[ERROR] No export format selected")
             return None
         wafer_id = self.ui.wafer_id_var.get().strip()
         fmt_type = fmt.get("type", "sql")
@@ -2216,7 +2211,7 @@ class AtomicaDashboard(tk.Tk):
             else:
                 reason = ("readings that carry a device-ID string"
                          if fmt.get("requires_die_id", True) else "measurement results")
-            self.ui.exec_panel.log(
+            self.log(
                 f"[ERROR] No matching results yet from the last run for '{fmt['name']}' — "
                 f"this format needs {reason}.")
             return None
@@ -2258,7 +2253,7 @@ class AtomicaDashboard(tk.Tk):
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
                     writer.writerows(rows)
-                self.ui.exec_panel.log(
+                self.log(
                     f"[RESULTS] Export Succesful {len(rows)} '{fmt['name']}' row(s)")
                 return filepath
             else:
@@ -2269,11 +2264,11 @@ class AtomicaDashboard(tk.Tk):
                 # 0x97 byte - not valid UTF-8, so the export would not reopen.
                 with open(filepath, "w", newline="", encoding="utf-8") as f:
                     f.write("\n".join(statements) + "\n")
-                self.ui.exec_panel.log(
+                self.log(
                     f"[RESULTS] Export Succesful {len(statements)} '{fmt['name']}' row(s)")
                 return filepath
         except Exception as e:
-            self.ui.exec_panel.log(f"[ERROR] Failed to save {ext.upper()} file: {e}")
+            self.log(f"[ERROR] Failed to save {ext.upper()} file: {e}")
             return None
 
     def cmd_buzzer_clear(self):
@@ -2296,7 +2291,7 @@ class AtomicaDashboard(tk.Tk):
         threading.Thread(target=_run, daemon=True).start()
 
     def cmd_abort(self):
-        self.ui.exec_panel.abort()
+        self.log("[PROBER] Run Stopped.")
         drv = self.drivers.get("prober")
         if drv and drv.inst and self.active_system != "accretech":
             self.log(f"[PROBER] {self.active_system.capitalize()} prober stop command "

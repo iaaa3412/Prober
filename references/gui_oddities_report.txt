@@ -438,6 +438,37 @@ worth a second look / decision later.
    calls and would need to be kept or redirected), or was ExecutionDashboard
    supposed to be wired in somewhere and got dropped by accident?
 
+   RESOLVED 2026-09-07: confirmed _tab_execution2 fully replaced it -
+   ExecutionDashboard had exactly one consumer anywhere in the repo
+   (instrument_panel.py's _build_exec_panel, confirmed by grep) and its
+   own dead widget tree was never shown. Removed gui/execution_panel.py
+   entirely, plus _build_exec_panel/the ExecutionDashboard import/its
+   call site in MainLayout.__init__. Every app.py call site was checked
+   individually for a real side effect before deciding what to do with
+   it, not just deleted blindly:
+   - ~23 exec_panel.log(...) calls -> self.log(...) directly (MainLayout
+     always passes controller=self, so ui.controller.log/self.log were
+     always the exact same call - confirmed via app.py's MainLayout
+     construction sites before assuming this).
+   - exec_panel.set_wafer_map()/load_recipe()/lbl_route.config() calls
+     deleted outright - traced each definition first: set_wafer_map
+     only fed ExecutionDashboard's own dead wafer-map widget/dict state
+     (zero external effect), load_recipe() was a literal `pass` stub.
+   - exec_panel.abort() (cmd_abort, the real emergency-stop handler) was
+     NOT a pure no-op - its body called self.log("[PROBER] Run
+     Stopped."), a real, user-visible Main Log line - traced this before
+     touching it and replaced the call with that exact log line directly
+     instead of deleting it, so the abort flow's visible behavior is
+     unchanged.
+   - on_stats_change=self.controller.on_exec_stats_change (the other
+     constructor arg) was checked too: on_exec_stats_change has a SECOND,
+     real caller in the live run engine (instrument_panel.py:6740) - left
+     completely untouched, only lost its redundant second (fake-data)
+     caller from the deleted dashboard.
+   Verified: grepped the whole repo for zero remaining exec_panel/
+   ExecutionDashboard/execution_panel references, syntax-checked, and a
+   clean headless launch.
+
 ------------------------------------------------------------------------
 
 7. Electroglas Prober Debug tab - hint text removed from UI, preserved here

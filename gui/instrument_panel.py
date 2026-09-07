@@ -13,7 +13,6 @@ from wafer_map_view import (WaferMapPanel, PadLayoutPanel, ProbeCardWiringFrame,
                             recipe_file_path, copy_recipe, copy_probe_card, copy_wafer_map,
                             delete_recipe, delete_probe_card, delete_wafer_map,
                             rebuild_wafer_map_panel)
-from execution_panel import ExecutionDashboard
 from gds_parser_panel import GdsParserPanel
 from switch_settings_panel import SwitchSettingsPanel
 from switchbox_test_panel import SwitchboxTestPanel
@@ -279,8 +278,6 @@ class MainLayout(ttk.Frame):
         self._tab_prober_debug(debug_nb)
         self._tab_gpib_trace(debug_nb)
         self._tab_nanoz_switch(debug_nb)
-
-        self._build_exec_panel()
 
     def load_nautata_folder(self):
         """Loads NAUTATA into the shared ATA folder, exactly as if it had
@@ -2535,17 +2532,6 @@ class MainLayout(ttk.Frame):
             hidden, controller=self.controller, get_folder=lambda: self._ata_folder,
             main_layout=self)
         self.pma_wafer.grid(row=0, column=0, sticky="nsew")
-
-    def _build_exec_panel(self):
-        tab = ttk.Frame(self)
-        tab.rowconfigure(0, weight=1)
-        tab.columnconfigure(0, weight=1)
-        self.exec_panel = ExecutionDashboard(
-            tab,
-            log_fn=self.controller.log,
-            on_stats_change=self.controller.on_exec_stats_change,
-        )
-        self.exec_panel.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
 
     def _tab_execution2(self, nb):
         tab = ttk.Frame(nb)
