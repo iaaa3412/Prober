@@ -816,7 +816,7 @@ class EgProberDebugPanel(ttk.Frame):
                 # Any of the Die Size rows just changed SP1 - re-infer it
                 # (rather than trust the raw/mm/mil input math here too) and
                 # push the result to the Run tab's own display, same as a
-                # fresh connect does. See instrument_panel._exec2_refresh_die_size.
+                # fresh connect does. See instrument_panel._exec_refresh_die_size.
                 if method.startswith("set_die_size"):
                     self._refresh_run_tab_die_size()
             except Exception as e:
@@ -826,7 +826,7 @@ class EgProberDebugPanel(ttk.Frame):
 
     def _refresh_run_tab_die_size(self):
         ui = getattr(self.controller, "instrument_panel_eg", None)
-        refresh = getattr(ui, "_exec2_refresh_die_size", None)
+        refresh = getattr(ui, "_exec_refresh_die_size", None)
         if refresh:
             self.after(0, refresh)
 

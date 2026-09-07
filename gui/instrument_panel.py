@@ -81,16 +81,16 @@ class MainLayout(ttk.Frame):
         # Shared with the Wafer Builder tab's Die Map "Label min width (px):"
         # control (recipe_gen_panel.py binds its Spinbox to this SAME
         # Variable, not a copy) - one knob for die-ID-label zoom thresholds
-        # on both maps. See _exec2_labels_fit for how the Run tab uses it.
-        self._exec2_label_min_px_var = tk.IntVar(value=22)
-        self._exec2_label_min_px_var.trace_add(
-            "write", self._on_exec2_label_min_px_change)
+        # on both maps. See _exec_labels_fit for how the Run tab uses it.
+        self._exec_label_min_px_var = tk.IntVar(value=22)
+        self._exec_label_min_px_var.trace_add(
+            "write", self._on_exec_label_min_px_change)
         self._build_layout()
 
-    def _on_exec2_label_min_px_change(self, *_args):
-        if hasattr(self, "_exec2_wafer_map"):
-            self._exec2_redraw_overlay_on_run_map()
-            self._exec2_redraw_overlay_on_results_map()
+    def _on_exec_label_min_px_change(self, *_args):
+        if hasattr(self, "_exec_wafer_map"):
+            self._exec_redraw_overlay_on_run_map()
+            self._exec_redraw_overlay_on_results_map()
 
     def _build_layout(self):
         paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
@@ -1407,7 +1407,7 @@ class MainLayout(ttk.Frame):
         if self._system == "accretech":
             self._build_default_yield_row(settings_lf)
 
-        # Same fix as the Run tab's _exec2_map_source_var: Electroglas has no
+        # Same fix as the Run tab's _exec_map_source_var: Electroglas has no
         # hardware-extracted map of its own - the legacy "Electroglas" source
         # (ata_wafer_map_electroglas.csv) is whatever the old PMA Process
         # extraction last wrote, often stale or a placeholder rectangle (see
@@ -1950,12 +1950,12 @@ class MainLayout(ttk.Frame):
             try:
                 reset()
             except Exception as exc:
-                self._exec2_log(f"[RUN] Could not reset the Run tab for the new "
+                self._exec_log(f"[RUN] Could not reset the Run tab for the new "
                                 f"ATA folder: {type(exc).__name__}: {exc}")
-        # NOT here yet - _exec2_autoload_default_recipe (moved below,
+        # NOT here yet - _exec_autoload_default_recipe (moved below,
         # after the new wafer map is actually drawn) selects the recipe's
-        # touchdowns via self._exec2_wafer_map.set_picked(), which needs
-        # self._exec2_wafer_map.dies to already be this folder's dies. This
+        # touchdowns via self._exec_wafer_map.set_picked(), which needs
+        # self._exec_wafer_map.dies to already be this folder's dies. This
         # early in the method it is still the PREVIOUS folder's (or empty on
         # the very first load), so the picks it set matched nothing - and
         # either way clear_picks()/_on_sites_changed([]) below wiped them a
@@ -1994,9 +1994,9 @@ class MainLayout(ttk.Frame):
             try:
                 recipe_gen._sync_views(folder_path)
             except Exception as exc:
-                self._exec2_log(f"[RUN] Could not publish the auto-loaded "
+                self._exec_log(f"[RUN] Could not publish the auto-loaded "
                                 f"Wafer Builder map: {type(exc).__name__}: {exc}")
-        self._exec2_map_folder = folder_path
+        self._exec_map_folder = folder_path
         # Electroglas has no hardware-extracted map of its own anymore - the
         # Wafer Builder tab (synced above via autoload_map_for_folder) IS the
         # wafer there. Defaulting back to the legacy "Electroglas" source
@@ -2005,7 +2005,7 @@ class MainLayout(ttk.Frame):
         # Process extraction (often stale or a placeholder rectangle) even
         # though _sync_views already pointed the Run tab at "Wafer Builder"
         # the last time a map was actually published from that tab.
-        self._exec2_map_source_var.set(
+        self._exec_map_source_var.set(
             "Accretech" if self._system == "accretech" else "Wafer Builder")
         # The drawn overlay (canvas items + die_ids) belongs to the PREVIOUS
         # folder's map and is stale the instant the map changes underneath
@@ -2016,11 +2016,11 @@ class MainLayout(ttk.Frame):
         # confirmed - see recipe_gen_panel._state_from_dict. It gets
         # re-drawn below, once the new folder's Accretech map is actually on
         # screen.
-        self._exec2_clear_overlay()
-        self._exec2_wafer_map.clear_picks()
-        self._exec2_on_sites_changed([])
-        self._exec2_draw_wafer_map(quiet_if_missing=True)
-        self._exec2_reapply_overlay()
+        self._exec_clear_overlay()
+        self._exec_wafer_map.clear_picks()
+        self._exec_on_sites_changed([])
+        self._exec_draw_wafer_map(quiet_if_missing=True)
+        self._exec_reapply_overlay()
         self._refresh_export_formats()
         self._refresh_cenfire_transfer_button()
         self._refresh_lamp_push_button()
@@ -2040,17 +2040,17 @@ class MainLayout(ttk.Frame):
         # from the previous folder are cleared), the default recipe's
         # touchdowns can be selected and will actually paint. This also has
         # to be AFTER pma_process.scan_ata_folder() above, not just after
-        # the map draw: _exec2_apply_recipe_sites expands each selected site
+        # the map draw: _exec_apply_recipe_sites expands each selected site
         # into its WHOLE shot via eg_pma_run._seq_at_rc/_cells, and those are
         # only populated once eg_pma_run has adopted a recipe and built its
         # row/col index (_build_rc_index, via scan_ata_folder's own PMA
         # autoload -> adopt_from_process). Selecting sites before that index
-        # exists does not fail loudly - _exec2_touchdown_cells falls back to
+        # exists does not fail loudly - _exec_touchdown_cells falls back to
         # the raw (row, col) picks with no shot expansion - so only the
         # anchor die of each shot got selected, not the whole quad. A manual
         # reselect from the Recipe dropdown later worked fine because by then
         # the index was already built, which made this look intermittent.
-        self._exec2_autoload_default_recipe(folder_path)
+        self._exec_autoload_default_recipe(folder_path)
 
         # NanoZ is no longer a tab nested in this MainLayout (see
         # gui/nanoz_mode.py) - forward the load to whichever NanoZPanel
@@ -2228,17 +2228,17 @@ class MainLayout(ttk.Frame):
         self._pad_custom_loaded = True
         self.controller.log("[PROBE CARD] Custom layout saved")
 
-    def _exec2_on_card_picked(self):
-        name = self._exec2_card_var.get()
+    def _exec_on_card_picked(self):
+        name = self._exec_card_var.get()
         if not hasattr(self, "pin_wiring"):
             return
         if name != self.pin_wiring.get_active_card():
             self.pin_wiring.switch_to_card(name)
 
     def _on_probe_card_change(self, card_name: str):
-        if hasattr(self, "_exec2_card_var"):
-            self._exec2_card_cb.config(values=[""] + sorted(self.pin_wiring.get_card_names()))
-            self._exec2_card_var.set(card_name)
+        if hasattr(self, "_exec_card_var"):
+            self._exec_card_cb.config(values=[""] + sorted(self.pin_wiring.get_card_names()))
+            self._exec_card_var.set(card_name)
         # Nothing to tell Wafer Builder here any more: the Shot tab used to
         # hold the card's die-to-pin table and had to follow a card change,
         # but pins are picked per measurement step on the Recipe tab now, so
@@ -2247,11 +2247,11 @@ class MainLayout(ttk.Frame):
             return
         self.recipe_panel.load_recipes(card_name, self.pin_wiring.get_recipes())
         self.recipe_panel.refresh_connections()
-        if getattr(self, "_exec2_steps", None):
-            self._exec2_steps = []
-            self._exec2_steps_tree.delete(*self._exec2_steps_tree.get_children())
-            self._exec2_steps_var.set("No recipe loaded")
-            self._exec2_recipe_var.set("")
+        if getattr(self, "_exec_steps", None):
+            self._exec_steps = []
+            self._exec_steps_tree.delete(*self._exec_steps_tree.get_children())
+            self._exec_steps_var.set("No recipe loaded")
+            self._exec_recipe_var.set("")
             self.controller.log(
                 "[RUN] Probe card changed — refresh")
         if hasattr(self.controller, "check_system_ready"):
@@ -2303,7 +2303,7 @@ class MainLayout(ttk.Frame):
             get_ata_folder=lambda: self._ata_folder,
             get_die_pins=lambda: (self.pin_wiring.get_die_pins()
                                   if hasattr(self, "pin_wiring") else {}),
-            on_save=self._exec2_load_recipe_by_name)
+            on_save=self._exec_load_recipe_by_name)
         self.recipe_panel.grid(row=0, column=0, sticky="nsew")
 
     def _tab_switch_settings(self, nb):
@@ -2454,7 +2454,7 @@ class MainLayout(ttk.Frame):
         just from an older file.
 
         PmaWaferPanel is still built - just not shown - and still assigned
-        to self.pma_wafer: the Overlay sub-tab (see _exec2_build_overlay_tab,
+        to self.pma_wafer: the Overlay sub-tab (see _exec_build_overlay_tab,
         added below as this notebook's last sub-tab) reads self.pma_wafer.
         workbook_data/_pma_shot_data/etc defensively via getattr for its
         PMA/xls/csv comparison sources, so keeping the object alive avoids
@@ -2482,14 +2482,14 @@ class MainLayout(ttk.Frame):
         # Map/Die Map) since it needs the wafer already defined; unlike
         # those three it lives on MainLayout, not RecipeGenPanel, because
         # the process it replaced (the old "Overlay…" Run tab dialog) reads
-        # and writes MainLayout's own _exec2_* overlay state/Run+Results
-        # maps directly - see _exec2_build_overlay_tab's own comment.
+        # and writes MainLayout's own _exec_* overlay state/Run+Results
+        # maps directly - see _exec_build_overlay_tab's own comment.
         overlay_tab = ttk.Frame(self.recipe_gen._sub_nb)
-        self._exec2_build_overlay_tab(overlay_tab)
+        self._exec_build_overlay_tab(overlay_tab)
         self.recipe_gen._sub_nb.add(overlay_tab, text="Overlay")
-        self._exec2_overlay_tab_widget = overlay_tab
+        self._exec_overlay_tab_widget = overlay_tab
         self.recipe_gen._sub_nb.bind(
-            "<<NotebookTabChanged>>", self._exec2_on_wafer_builder_subtab_changed, add="+")
+            "<<NotebookTabChanged>>", self._exec_on_wafer_builder_subtab_changed, add="+")
 
         hidden = ttk.Frame(tab)
         self.pma_wafer = PmaWaferPanel(
@@ -2512,7 +2512,7 @@ class MainLayout(ttk.Frame):
 
         PmaWaferPanel is still built - just not shown - and still assigned
         to self.pma_wafer: other code (Accretech's Overlay sub-tab,
-        _exec2_overlay_source_data, centroid matching against an Accretech
+        _exec_overlay_source_data, centroid matching against an Accretech
         map) reads self.pma_wafer.workbook_data/_pma_shot_data/etc
         defensively via getattr, so keeping the object alive avoids breaking
         those paths even though there is no more .PMA/.xls-driven UI to feed
@@ -2539,101 +2539,101 @@ class MainLayout(ttk.Frame):
         tab.rowconfigure(1, weight=1)
         tab.columnconfigure(0, weight=1)
 
-        self._exec2_running  = False
-        self._exec2_aborted  = False
-        self._exec2_run_mode = None
-        self._exec2_die_num  = 0
-        # Reset every run start (_exec2_reset_counts) - see
-        # _exec2_should_configure's own docstring.
-        self._exec2_step_config_cache = {}
-        self._exec2_avg_count_cache = {}
+        self._exec_running  = False
+        self._exec_aborted  = False
+        self._exec_run_mode = None
+        self._exec_die_num  = 0
+        # Reset every run start (_exec_reset_counts) - see
+        # _exec_should_configure's own docstring.
+        self._exec_step_config_cache = {}
+        self._exec_avg_count_cache = {}
         # Set per touchdown by the Electroglas run so exports name the whole
         # shot; blank means fall back to the map/overlay per-cell die ID.
-        self._exec2_die_id_override = ""
-        self._exec2_total_dies = 0
+        self._exec_die_id_override = ""
+        self._exec_total_dies = 0
         # Bumped on every start/abort. A run thread captures its own token and
         # re-checks it at every loop step/finish — if a new run (or an abort)
         # bumps the token out from under it, the stale thread stops touching
         # shared state/hardware instead of racing the new run and silently
         # "resuming" its own old loop.
-        self._exec2_run_token = 0
-        self._exec2_lot_thread: threading.Thread | None = None
+        self._exec_run_token = 0
+        self._exec_lot_thread: threading.Thread | None = None
         # Cassette automation hooks into this - set to a callable
         # fn(pass_n, fail_n, total_n, aborted) to be notified whenever a run
-        # (Full Die today) finishes, instead of polling _exec2_running.
-        self._exec2_on_run_finished = None
+        # (Full Die today) finishes, instead of polling _exec_running.
+        self._exec_on_run_finished = None
         # Index into controller.results_data where the most recently started
         # run began — export formats (unlike "Save as CSV") only export from
         # here onward, so re-running doesn't pile old runs' rows into a new
         # export.
-        self._exec2_last_run_start_idx = 0
-        self._exec2_steps    = []
-        self._exec2_current_rc = None
-        # See _exec2_start_site_list's own comment - the last real (row,
+        self._exec_last_run_start_idx = 0
+        self._exec_steps    = []
+        self._exec_current_rc = None
+        # See _exec_start_site_list's own comment - the last real (row,
         # col) list a "test" mode run actually used, since get_picked() is
         # already empty again by the time that run finishes.
-        self._exec2_last_test_sites: list = []
-        self._exec2_overlay_row_offset = 0
-        self._exec2_overlay_col_offset = 0
-        self._exec2_overlay_offset_confirmed = False
-        self._exec2_overlay_items: list = []
-        self._exec2_overlay_result_items: list = []
-        self._exec2_overlay_die_ids: dict = {}
+        self._exec_last_test_sites: list = []
+        self._exec_overlay_row_offset = 0
+        self._exec_overlay_col_offset = 0
+        self._exec_overlay_offset_confirmed = False
+        self._exec_overlay_items: list = []
+        self._exec_overlay_result_items: list = []
+        self._exec_overlay_die_ids: dict = {}
         # Accretech's equivalent of NanoZ's 1x20 window / Electroglas's 2x2
-        # quad window - see _exec2_update_shot_window.
-        self._exec2_shot_window_items: list = []
+        # quad window - see _exec_update_shot_window.
+        self._exec_shot_window_items: list = []
         # ➡ Move to Selected's own arm/target state - see
-        # _exec2_move_selected_button. Deliberately separate from the
-        # normal pick system (_exec2_wafer_map._picked/get_picked()).
-        self._exec2_move_armed = False
-        self._exec2_move_target_rc = None
-        self._exec2_move_target_prev_fill = None
-        self._exec2_move_prev_click_handler = None
-        self._exec2_move_prev_picking_enabled = True
+        # _exec_move_selected_button. Deliberately separate from the
+        # normal pick system (_exec_wafer_map._picked/get_picked()).
+        self._exec_move_armed = False
+        self._exec_move_target_rc = None
+        self._exec_move_target_prev_fill = None
+        self._exec_move_prev_click_handler = None
+        self._exec_move_prev_picking_enabled = True
 
         ctrl = tk.Frame(tab, bg="#f1f5f9", relief="solid", bd=1)
         ctrl.grid(row=0, column=0, sticky="ew", padx=6, pady=(6, 2))
 
         tk.Label(ctrl, text="Recipe:", bg="#f1f5f9").pack(side="left", padx=(10, 2), pady=6)
-        self._exec2_recipe_var = tk.StringVar()
-        self._exec2_recipe_cb = ttk.Combobox(
-            ctrl, textvariable=self._exec2_recipe_var, width=20, state="readonly",
-            postcommand=lambda: self._exec2_recipe_cb.config(
+        self._exec_recipe_var = tk.StringVar()
+        self._exec_recipe_cb = ttk.Combobox(
+            ctrl, textvariable=self._exec_recipe_var, width=20, state="readonly",
+            postcommand=lambda: self._exec_recipe_cb.config(
                 values=self.recipe_panel.get_recipe_names()))
-        self._exec2_recipe_cb.pack(side="left", pady=6)
-        self._exec2_recipe_cb.bind(
-            "<<ComboboxSelected>>", lambda _e: self._exec2_load_recipe())
+        self._exec_recipe_cb.pack(side="left", pady=6)
+        self._exec_recipe_cb.bind(
+            "<<ComboboxSelected>>", lambda _e: self._exec_load_recipe())
 
         tk.Label(ctrl, text="Probe Card:", bg="#f1f5f9").pack(side="left", padx=(10, 2), pady=6)
-        self._exec2_card_var = tk.StringVar(value="")
-        self._exec2_card_cb = ttk.Combobox(
-            ctrl, textvariable=self._exec2_card_var, width=14, state="readonly")
-        self._exec2_card_cb.pack(side="left", pady=6)
-        self._exec2_card_cb.bind("<<ComboboxSelected>>",
-                                 lambda _e: self._exec2_on_card_picked())
+        self._exec_card_var = tk.StringVar(value="")
+        self._exec_card_cb = ttk.Combobox(
+            ctrl, textvariable=self._exec_card_var, width=14, state="readonly")
+        self._exec_card_cb.pack(side="left", pady=6)
+        self._exec_card_cb.bind("<<ComboboxSelected>>",
+                                 lambda _e: self._exec_on_card_picked())
 
         ttk.Separator(ctrl, orient="vertical").pack(side="left", fill="y", padx=10, pady=4)
 
-        self._exec2_full_btn = ttk.Button(
-            ctrl, text="▶  Full Die", command=self._exec2_start_full_die)
-        self._exec2_full_btn.pack(side="left", padx=4, pady=5)
+        self._exec_full_btn = ttk.Button(
+            ctrl, text="▶  Full Die", command=self._exec_start_full_die)
+        self._exec_full_btn.pack(side="left", padx=4, pady=5)
         # Kept but not packed on either system - Test Selected replaces it as
-        # the sole "test some dies" entry point, but _exec2_abort/
-        # _exec2_finish_run/_exec2_start_test_die still toggle its state
-        # alongside _exec2_full_btn regardless of which system this is, so
+        # the sole "test some dies" entry point, but _exec_abort/
+        # _exec_finish_run/_exec_start_test_die still toggle its state
+        # alongside _exec_full_btn regardless of which system this is, so
         # the attribute stays around either way.
-        self._exec2_test_btn = ttk.Button(
-            ctrl, text="▶  Test Die", command=self._exec2_start_test_die)
-        self._exec2_test_selected_btn = ttk.Button(
-            ctrl, text="▶  Test Selected", command=self._exec2_start_test_selected)
-        self._exec2_test_selected_btn.pack(side="left", padx=2, pady=5)
+        self._exec_test_btn = ttk.Button(
+            ctrl, text="▶  Test Die", command=self._exec_start_test_die)
+        self._exec_test_selected_btn = ttk.Button(
+            ctrl, text="▶  Test Selected", command=self._exec_start_test_selected)
+        self._exec_test_selected_btn.pack(side="left", padx=2, pady=5)
 
         ttk.Separator(ctrl, orient="vertical").pack(side="left", fill="y", padx=10, pady=4)
 
         # The real, full-story entry point - recipe steps, the recipe's own
         # saved touchdown list, Minor Moves (Accretech) and all - unlike
         # Full Die/Test Selected to its left, which stay the plain
-        # single-die case only (see _exec2_start_run's docstring). To the
+        # single-die case only (see _exec_start_run's docstring). To the
         # RIGHT of the separator, immediately next to Unload: it starts the
         # wafer, and sitting among Full Die/Test Selected/Unload (which
         # only ever touch one die) made it indistinguishable from them.
@@ -2646,20 +2646,20 @@ class MainLayout(ttk.Frame):
         # around it.
         run_border = tk.Frame(ctrl, background="#15803d")
         run_border.pack(side="left", padx=(2, 6), pady=5)
-        self._exec2_run_btn = ttk.Button(
+        self._exec_run_btn = ttk.Button(
             run_border, text="▶  Run",
             command=(lambda: self.eg_pma_run._run_all())
                     if self._system == "electroglas"
-                    else self._exec2_start_run)
-        self._exec2_run_btn.pack(padx=2, pady=2)
+                    else self._exec_start_run)
+        self._exec_run_btn.pack(padx=2, pady=2)
 
         for label, cmd, attr in [
-            ("⏏  Unload (U)",  self._exec2_manual_unload, "_exec2_unload_btn"),
+            ("⏏  Unload (U)",  self._exec_manual_unload, "_exec_unload_btn"),
             # Pause is what ⏹ Stop Run used to do: finish what is in
             # progress and hold, keeping the position so Run resumes. Stop
-            # is now a real stop - see _exec2_abort.
-            ("⏸  Pause",       self._exec2_pause, "_exec2_pause_btn"),
-            ("⏹  Stop Run",       self._exec2_abort, "_exec2_stop_btn"),
+            # is now a real stop - see _exec_abort.
+            ("⏸  Pause",       self._exec_pause, "_exec_pause_btn"),
+            ("⏹  Stop Run",       self._exec_abort, "_exec_stop_btn"),
         ]:
             btn = ttk.Button(ctrl, text=label, command=cmd)
             btn.pack(side="left", padx=3, pady=5)
@@ -2668,13 +2668,13 @@ class MainLayout(ttk.Frame):
         # Nothing is running yet at startup - Stop Run/Pause have nothing to
         # stop or pause, and pressing Stop Run with no run active used to
         # still open every channel and drop Z for no reason. See
-        # _exec2_set_running_buttons, called at every real start/finish.
-        self._exec2_set_running_buttons(False)
+        # _exec_set_running_buttons, called at every real start/finish.
+        self._exec_set_running_buttons(False)
 
-        self._exec2_state_lbl = tk.Label(
+        self._exec_state_lbl = tk.Label(
             ctrl, text="IDLE", bg="#f1f5f9", fg="#6b7280",
             font=("Segoe UI", 11, "bold"))
-        self._exec2_state_lbl.pack(side="right", padx=12)
+        self._exec_state_lbl.pack(side="right", padx=12)
 
         body = ttk.PanedWindow(tab, orient="horizontal")
         body.grid(row=1, column=0, sticky="nsew", padx=6, pady=(2, 6))
@@ -2715,18 +2715,18 @@ class MainLayout(ttk.Frame):
         pos_lf.columnconfigure(0, weight=1)
         pos_lf.columnconfigure(1, weight=1)
 
-        self._exec2_xy_var = tk.StringVar(value="X: —\nY: —")
-        ttk.Label(pos_lf, textvariable=self._exec2_xy_var,
+        self._exec_xy_var = tk.StringVar(value="X: —\nY: —")
+        ttk.Label(pos_lf, textvariable=self._exec_xy_var,
                   font=("Consolas", 13, "bold"), foreground="#0077cc",
                   justify="center").grid(row=0, column=0, columnspan=2, pady=(0, 2))
 
-        self._exec2_die_var = tk.StringVar(value="Die: —")
-        ttk.Label(pos_lf, textvariable=self._exec2_die_var,
+        self._exec_die_var = tk.StringVar(value="Die: —")
+        ttk.Label(pos_lf, textvariable=self._exec_die_var,
                   font=("Consolas", 9), foreground="#374151",
                   justify="center").grid(row=1, column=0, columnspan=2)
 
-        self._exec2_step_var = tk.StringVar(value="Step: —")
-        ttk.Label(pos_lf, textvariable=self._exec2_step_var,
+        self._exec_step_var = tk.StringVar(value="Step: —")
+        ttk.Label(pos_lf, textvariable=self._exec_step_var,
                   font=("Consolas", 9), foreground="#6b7280",
                   justify="center").grid(row=2, column=0, columnspan=2, pady=(0, 4))
 
@@ -2736,21 +2736,21 @@ class MainLayout(ttk.Frame):
         # 3x2 grid: Measure/First Die, Z Up/Z Down, Back/Next, then (Accretech
         # only) Move to Selected and ↻ Refresh XY. Reset Counts moved to the
         # Pass/Fail section, next to what it resets - not here anymore.
-        self._exec2_measure_btn = ttk.Button(
-            pos_lf, text="Measure", command=self._exec2_touchdown_measure)
-        self._exec2_measure_btn.grid(
+        self._exec_measure_btn = ttk.Button(
+            pos_lf, text="Measure", command=self._exec_touchdown_measure)
+        self._exec_measure_btn.grid(
                    row=4, column=0, sticky="ew", padx=(0, 1), pady=1)
-        self._exec2_first_die_btn = ttk.Button(
-            pos_lf, text="⏮ First Die", command=self._exec2_manual_go_to_start)
-        self._exec2_first_die_btn.grid(
+        self._exec_first_die_btn = ttk.Button(
+            pos_lf, text="⏮ First Die", command=self._exec_manual_go_to_start)
+        self._exec_first_die_btn.grid(
                    row=4, column=1, sticky="ew", padx=(1, 0), pady=1)
-        self._exec2_zup_btn = ttk.Button(
-            pos_lf, text="⬆ Z Up", command=self._exec2_manual_z_up)
-        self._exec2_zup_btn.grid(
+        self._exec_zup_btn = ttk.Button(
+            pos_lf, text="⬆ Z Up", command=self._exec_manual_z_up)
+        self._exec_zup_btn.grid(
                    row=5, column=0, sticky="ew", padx=(0, 1), pady=1)
-        self._exec2_zdown_btn = ttk.Button(
-            pos_lf, text="⬇ Z Down", command=self._exec2_manual_z_down)
-        self._exec2_zdown_btn.grid(
+        self._exec_zdown_btn = ttk.Button(
+            pos_lf, text="⬇ Z Down", command=self._exec_manual_z_down)
+        self._exec_zdown_btn.grid(
                    row=5, column=1, sticky="ew", padx=(1, 0), pady=1)
         if self._system == "electroglas":
             # ▶▶ Next Die (an Accretech-shaped "advance one die" action) is
@@ -2758,13 +2758,13 @@ class MainLayout(ttk.Frame):
             # that pane's former Run section, since single-die-step
             # advancing through the touchdown list IS what Back/Next mean
             # for a .PMA step-through.
-            self._exec2_back_btn = ttk.Button(
+            self._exec_back_btn = ttk.Button(
                 pos_lf, text="⏮ Back", command=lambda: self.eg_pma_run._step_back())
-            self._exec2_back_btn.grid(
+            self._exec_back_btn.grid(
                        row=6, column=0, sticky="ew", padx=(0, 1), pady=1)
-            self._exec2_next_btn = ttk.Button(
+            self._exec_next_btn = ttk.Button(
                 pos_lf, text="⏭ Next", command=lambda: self.eg_pma_run._step_once())
-            self._exec2_next_btn.grid(
+            self._exec_next_btn.grid(
                        row=6, column=1, sticky="ew", padx=(1, 0), pady=1)
             # Same arm/target process as Accretech's own Move to Selected
             # (row 8 there) - see EgPmaRunPanel.toggle_move_armed. The
@@ -2781,8 +2781,8 @@ class MainLayout(ttk.Frame):
             # direct query for this (see electroglas_2001x.infer_die_size),
             # so this is the only place an operator can see it without
             # opening Prober Debug and inferring it by hand.
-            self._exec2_die_size_var = tk.StringVar(value="Prober die size: unknown")
-            ttk.Label(pos_lf, textvariable=self._exec2_die_size_var,
+            self._exec_die_size_var = tk.StringVar(value="Prober die size: unknown")
+            ttk.Label(pos_lf, textvariable=self._exec_die_size_var,
                      font=("Consolas", 8), foreground="#6b7280",
                      justify="center").grid(row=8, column=0, columnspan=2, pady=(2, 0))
         else:
@@ -2790,38 +2790,38 @@ class MainLayout(ttk.Frame):
             # Next Die) - Back is a plain relative die-index step backward
             # instead (S command), the closest "die mode" equivalent to
             # Next's bare J. Neither touches the picked-sites list or shots
-            # - see _exec2_manual_prev_die/_exec2_manual_next_die.
-            self._exec2_back_btn = ttk.Button(
-                pos_lf, text="⏮ Back", command=self._exec2_manual_prev_die)
-            self._exec2_back_btn.grid(
+            # - see _exec_manual_prev_die/_exec_manual_next_die.
+            self._exec_back_btn = ttk.Button(
+                pos_lf, text="⏮ Back", command=self._exec_manual_prev_die)
+            self._exec_back_btn.grid(
                        row=6, column=0, sticky="ew", padx=(0, 1), pady=1)
-            self._exec2_next_btn = ttk.Button(
-                pos_lf, text="⏭ Next", command=self._exec2_manual_next_die)
-            self._exec2_next_btn.grid(
+            self._exec_next_btn = ttk.Button(
+                pos_lf, text="⏭ Next", command=self._exec_manual_next_die)
+            self._exec_next_btn.grid(
                        row=6, column=1, sticky="ew", padx=(1, 0), pady=1)
-            self._exec2_prev_shot_btn = ttk.Button(
-                pos_lf, text="⏮⏮ Previous Shot", command=self._exec2_manual_prev_shot)
-            self._exec2_prev_shot_btn.grid(
+            self._exec_prev_shot_btn = ttk.Button(
+                pos_lf, text="⏮⏮ Previous Shot", command=self._exec_manual_prev_shot)
+            self._exec_prev_shot_btn.grid(
                        row=7, column=0, sticky="ew", padx=(0, 1), pady=1)
-            self._exec2_next_shot_btn = ttk.Button(
-                pos_lf, text="⏭⏭ Next Shot", command=self._exec2_manual_next_shot)
-            self._exec2_next_shot_btn.grid(
+            self._exec_next_shot_btn = ttk.Button(
+                pos_lf, text="⏭⏭ Next Shot", command=self._exec_manual_next_shot)
+            self._exec_next_shot_btn.grid(
                        row=7, column=1, sticky="ew", padx=(1, 0), pady=1)
             # Its own separate arm/target system - see
-            # _exec2_move_selected_button's docstring - deliberately not
+            # _exec_move_selected_button's docstring - deliberately not
             # tied to the normal pick system (Test Selected's picks) at all.
-            self._exec2_move_selected_btn = ttk.Button(
+            self._exec_move_selected_btn = ttk.Button(
                 pos_lf, text="➡ Move to Selected",
-                command=self._exec2_move_selected_button)
-            self._exec2_move_selected_btn.grid(
+                command=self._exec_move_selected_button)
+            self._exec_move_selected_btn.grid(
                 row=8, column=0, columnspan=2, sticky="ew", pady=1)
             # Manual, fire-and-forget version of the same Q read
-            # _exec2_refresh_xy_blocking runs automatically (and blocking)
+            # _exec_refresh_xy_blocking runs automatically (and blocking)
             # right before Full Die/Test Die/Test Selected/Minor Moves'
             # first move - see that method.
-            self._exec2_refresh_xy_btn = ttk.Button(
-                pos_lf, text="↻ Refresh XY", command=self._exec2_get_xy)
-            self._exec2_refresh_xy_btn.grid(
+            self._exec_refresh_xy_btn = ttk.Button(
+                pos_lf, text="↻ Refresh XY", command=self._exec_get_xy)
+            self._exec_refresh_xy_btn.grid(
                 row=9, column=0, columnspan=2, sticky="ew", pady=1)
 
         # Recipe Steps is the one that grows, so it takes the weighted row on
@@ -2832,21 +2832,21 @@ class MainLayout(ttk.Frame):
         steps_lf.rowconfigure(0, weight=1)
         steps_lf.columnconfigure(0, weight=1)
 
-        self._exec2_steps_var = tk.StringVar(value="No recipe loaded")
+        self._exec_steps_var = tk.StringVar(value="No recipe loaded")
 
         cols = ("n", "name", "type", "conn")
-        self._exec2_steps_tree = ttk.Treeview(
+        self._exec_steps_tree = ttk.Treeview(
             steps_lf, columns=cols, show="headings", height=5, selectmode="browse")
         for cid, text, width in (("n", "#", 24), ("name", "Name", 78),
                                  ("type", "Type", 68), ("conn", "Conn", 100)):
-            self._exec2_steps_tree.heading(cid, text=text)
-            self._exec2_steps_tree.column(cid, width=width,
+            self._exec_steps_tree.heading(cid, text=text)
+            self._exec_steps_tree.column(cid, width=width,
                                           anchor="center" if cid == "n" else "w")
-        self._exec2_steps_tree.grid(row=0, column=0, sticky="nsew")
+        self._exec_steps_tree.grid(row=0, column=0, sticky="nsew")
         ssb = ttk.Scrollbar(steps_lf, orient="vertical",
-                            command=self._exec2_steps_tree.yview)
+                            command=self._exec_steps_tree.yview)
         ssb.grid(row=1, column=1, sticky="ns")
-        self._exec2_steps_tree.configure(yscrollcommand=ssb.set)
+        self._exec_steps_tree.configure(yscrollcommand=ssb.set)
 
         map_lf = ttk.LabelFrame(body, text="Wafer Map")
         body.add(map_lf, weight=55 if self._system == "electroglas" else 2)
@@ -2887,80 +2887,80 @@ class MainLayout(ttk.Frame):
 
         map_bar = ttk.Frame(map_lf)
         map_bar.grid(row=0, column=0, sticky="ew", padx=6, pady=(6, 2))
-        self._exec2_map_folder = None
+        self._exec_map_folder = None
         # Electroglas has no hardware-extracted map of its own (unlike
         # Accretech's own "Accretech" source) - Wafer Builder IS the wafer
         # there, published straight to the Run tab by _sync_views whenever
         # it changes (see recipe_gen_panel.py). The old "Electroglas"
         # source (ata_wafer_map_electroglas.csv) predates Wafer Builder
         # entirely and is retired.
-        self._exec2_map_source_var = tk.StringVar(
+        self._exec_map_source_var = tk.StringVar(
             value="Accretech" if self._system == "accretech" else "Wafer Builder")
-        self._exec2_map_path_var = tk.StringVar(value="No wafer map loaded")
-        ttk.Label(map_bar, textvariable=self._exec2_map_path_var,
+        self._exec_map_path_var = tk.StringVar(value="No wafer map loaded")
+        ttk.Label(map_bar, textvariable=self._exec_map_path_var,
                   foreground="#6b7280", font=("Segoe UI", 8)).pack(
                   side="left", padx=8)
 
-        self._exec2_sites_var = tk.StringVar(value="Test sites: 0 picked")
-        ttk.Label(map_bar, textvariable=self._exec2_sites_var,
+        self._exec_sites_var = tk.StringVar(value="Test sites: 0 picked")
+        ttk.Label(map_bar, textvariable=self._exec_sites_var,
                   foreground="#6b7280", font=("Segoe UI", 8)).pack(
                   side="left", padx=8)
 
         ttk.Separator(map_bar, orient="vertical").pack(side="left", fill="y", padx=8)
         # Overlay… moved to Wafer Builder > Overlay (see _tab_pma_wafer /
-        # _exec2_build_overlay_tab) - same process, embedded there instead
+        # _exec_build_overlay_tab) - same process, embedded there instead
         # of a popup so the accretech map/offset controls live together.
         # 💾 Save Selected Map removed (both systems) - it duplicated the
         # Recipe tab's ⬅ Take from map selection (recipe_panel._sites_from_
         # map), which does the exact same thing (save the picked dies as
         # the loaded recipe's touchdown list) from the other tab; that one
         # now also does the Electroglas shot-collapsing this one used to.
-        self._exec2_select_all_btn = ttk.Button(
-            map_bar, text="☑ Select All", command=self._exec2_toggle_select_all)
-        self._exec2_select_all_btn.pack(side="left", padx=(6, 0))
+        self._exec_select_all_btn = ttk.Button(
+            map_bar, text="☑ Select All", command=self._exec_toggle_select_all)
+        self._exec_select_all_btn.pack(side="left", padx=(6, 0))
 
-        self._exec2_wafer_map = WaferMapPanel(
+        self._exec_wafer_map = WaferMapPanel(
             map_lf, show_title=False, show_axis_grid=True)
-        self._exec2_wafer_map.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 6))
-        self._exec2_wafer_map.enable_picking(on_change=self._exec2_on_sites_changed)
-        self._exec2_wafer_map.on_redraw = self._exec2_redraw_overlay_on_run_map
+        self._exec_wafer_map.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 6))
+        self._exec_wafer_map.enable_picking(on_change=self._exec_on_sites_changed)
+        self._exec_wafer_map.on_redraw = self._exec_redraw_overlay_on_run_map
         # Both halves are needed and they do different jobs: on_zoom REBUILDS
         # the labels (a zoom scales canvas items in place rather than
         # redrawing, so stale ones survive at the wrong size), while the
         # bindings decide whether they should be VISIBLE at this zoom level.
         # Keeping only the visibility half would leave wrongly-sized labels;
         # keeping only the rebuild would show them when too small to read.
-        # Debounced (_exec2_debounced) rather than called directly - a fast
+        # Debounced (_exec_debounced) rather than called directly - a fast
         # scroll or a middle-drag pan (which reuses this same on_zoom, see
         # wafer_map_view._bind_zoom_only) fires this many times a second,
         # and each call rebuilds every die-ID label - so a burst of events
         # now collapses into one rebuild shortly after the burst ends,
         # instead of rebuilding on every single one of them. What gets
         # redrawn, and when the data itself changes, is unchanged.
-        self._exec2_wafer_map.on_zoom = self._exec2_debounced(
-            "_exec2_zoom_debounce_id", self._exec2_redraw_overlay_on_run_map)
+        self._exec_wafer_map.on_zoom = self._exec_debounced(
+            "_exec_zoom_debounce_id", self._exec_redraw_overlay_on_run_map)
         # Double-click "reset view" would otherwise redraw a second time on
         # this same long-lived canvas - the exact "packed with no gaps"
         # corruption _new_results_wafer_map's own comment documents. Route
         # it through a fresh-widget rebuild instead, same fix, same reason.
-        self._exec2_wafer_map.on_reset_request = self._exec2_rebuild_run_map
+        self._exec_wafer_map.on_reset_request = self._exec_rebuild_run_map
         # Bound with add="+" so the map's own pan/zoom/reset bindings (set up
         # inside WaferMapPanel.__init__) still run first.
         for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>", "<Double-Button-1>"):
-            self._exec2_wafer_map.canvas.bind(
-                seq, lambda _e: self._exec2_update_overlay_visibility(), add="+")
+            self._exec_wafer_map.canvas.bind(
+                seq, lambda _e: self._exec_update_overlay_visibility(), add="+")
 
         stat_lf = ttk.LabelFrame(pos_row, text="Pass / Fail", padding=(8, 4))
         stat_lf.grid(row=0, column=1, sticky="nsew", padx=(3, 0))
         count_font = ("Consolas", 18, "bold")
         stat_lf.columnconfigure(0, weight=1)
 
-        self._exec2_pass_var = tk.IntVar(value=0)
-        self._exec2_fail_var = tk.IntVar(value=0)
+        self._exec_pass_var = tk.IntVar(value=0)
+        self._exec_fail_var = tk.IntVar(value=0)
 
         for var, label, color in [
-            (self._exec2_pass_var, "PASS", "#00a800"),
-            (self._exec2_fail_var, "FAIL", "#dc2626"),
+            (self._exec_pass_var, "PASS", "#00a800"),
+            (self._exec_fail_var, "FAIL", "#dc2626"),
         ]:
             row_f = ttk.Frame(stat_lf)
             row_f.pack(fill="x", pady=4)
@@ -2972,15 +2972,15 @@ class MainLayout(ttk.Frame):
 
         ttk.Separator(stat_lf, orient="horizontal").pack(fill="x", pady=8)
 
-        self._exec2_pct_var = tk.StringVar(value="Yield:  —")
-        ttk.Label(stat_lf, textvariable=self._exec2_pct_var,
+        self._exec_pct_var = tk.StringVar(value="Yield:  —")
+        ttk.Label(stat_lf, textvariable=self._exec_pct_var,
                   font=("Consolas", 13, "bold"), foreground="#374151").pack()
 
-        ttk.Button(stat_lf, text="Reset Counts", command=self._exec2_reset_counts).pack(
+        ttk.Button(stat_lf, text="Reset Counts", command=self._exec_reset_counts).pack(
             fill="x", pady=(8, 0))
 
 
-    def _exec2_log(self, msg: str):
+    def _exec_log(self, msg: str):
         ts = time.strftime("%H:%M:%S")
         line = f"{ts}  {msg}"
         try:
@@ -2993,7 +2993,7 @@ class MainLayout(ttk.Frame):
             # run continues; this one line just goes to stdout instead.
             print(line)
 
-    def _exec2_minor_moves_active(self) -> bool:
+    def _exec_minor_moves_active(self) -> bool:
         """Whether the CURRENTLY LOADED recipe wants shot-aware single-die
         stepping - see the Recipe tab's Minor Moves checkbox. Read fresh
         each time rather than cached, since it can change any time the
@@ -3001,13 +3001,13 @@ class MainLayout(ttk.Frame):
         rp = getattr(self, "recipe_panel", None)
         return bool(rp and hasattr(rp, "is_minor_moves") and rp.is_minor_moves())
 
-    def _exec2_draw_wafer_map(self, quiet_if_missing: bool = False):
-        folder = self._exec2_map_folder
+    def _exec_draw_wafer_map(self, quiet_if_missing: bool = False):
+        folder = self._exec_map_folder
         # The Run tab map is always the real per-die Accretech/Wafer
         # Builder map, Minor Moves on or off - a shot is drawn as an
-        # OUTLINE over that die map (see _exec2_update_shot_window), never
+        # OUTLINE over that die map (see _exec_update_shot_window), never
         # by swapping the map itself to one square per shot.
-        filename = WAFER_MAP_SOURCES[self._exec2_map_source_var.get()]
+        filename = WAFER_MAP_SOURCES[self._exec_map_source_var.get()]
         # The Accretech source file is just row/col die-step indices, no
         # real micron size - load_from_ata's fallback used to turn that
         # into a flat 1-unit square regardless of the real die shape. Wafer
@@ -3018,24 +3018,24 @@ class MainLayout(ttk.Frame):
         # hits that fallback.
         gen = getattr(self, "recipe_gen", None)
         pitch = gen._die_pitch() if gen is not None and hasattr(gen, "_die_pitch") else (1.0, 1.0)
-        n = self._exec2_wafer_map.load_from_ata(folder, filename=filename, pitch=pitch)
-        run_dbg = self._exec2_wafer_map.last_draw_debug or {}
+        n = self._exec_wafer_map.load_from_ata(folder, filename=filename, pitch=pitch)
+        run_dbg = self._exec_wafer_map.last_draw_debug or {}
         if run_dbg.get("warning"):
-            self._exec2_log(f"[ERROR] Run wafer map: {run_dbg['warning']}")
-        self._exec2_wafer_map.clear_picks()
+            self._exec_log(f"[ERROR] Run wafer map: {run_dbg['warning']}")
+        self._exec_wafer_map.clear_picks()
         name = os.path.basename(folder)
-        self._exec2_map_path_var.set(
+        self._exec_map_path_var.set(
             f"{name}  ({n} dies)" if n else f"{name} — {filename} not found")
         if n or not quiet_if_missing:
-            self._exec2_log(f"[RUN] Wafer map loaded from '{name}/{filename}' — {n} dies")
-        self._exec2_adopt_map_die_ids()
+            self._exec_log(f"[RUN] Wafer map loaded from '{name}/{filename}' — {n} dies")
+        self._exec_adopt_map_die_ids()
         # Both systems mirror the Run map onto the Results tab, so the
         # pass/fail map there is never a stale copy of a different wafer.
         self._sync_results_wafer_map()
         if self._system == "accretech":
-            self._exec2_load_selected_map(quiet_if_missing=True)
+            self._exec_load_selected_map(quiet_if_missing=True)
 
-    def _exec2_rebuild_run_map(self):
+    def _exec_rebuild_run_map(self):
         """Replace the Run tab wafer map with a fresh widget instead of
         redrawing on its existing canvas - wired as on_reset_request so a
         double-click "reset view" (which used to redraw straight on the
@@ -3043,41 +3043,41 @@ class MainLayout(ttk.Frame):
         no gaps" corruption. rebuild_wafer_map_panel already carries over
         pick selection and PASS/FAIL/CURRENT status; this just re-attaches
         the extra bindings that live outside WaferMapPanel itself."""
-        old = self._exec2_wafer_map
+        old = self._exec_wafer_map
         new = rebuild_wafer_map_panel(old)
-        self._exec2_wafer_map = new
-        new.on_reset_request = self._exec2_rebuild_run_map
+        self._exec_wafer_map = new
+        new.on_reset_request = self._exec_rebuild_run_map
         for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>", "<Double-Button-1>"):
             new.canvas.bind(
-                seq, lambda _e: self._exec2_update_overlay_visibility(), add="+")
-        self._exec2_redraw_overlay_on_run_map()
+                seq, lambda _e: self._exec_update_overlay_visibility(), add="+")
+        self._exec_redraw_overlay_on_run_map()
         dbg = new.last_draw_debug or {}
-        self._exec2_log("[RUN] Run map view reset")
+        self._exec_log("[RUN] Run map view reset")
         if dbg.get("warning"):
-            self._exec2_log(f"[ERROR] Run wafer map (reset): {dbg['warning']}")
+            self._exec_log(f"[ERROR] Run wafer map (reset): {dbg['warning']}")
 
-    def _exec2_adopt_map_die_ids(self):
+    def _exec_adopt_map_die_ids(self):
         """Use the die IDs the loaded map file carries as the overlay.
 
         The Electroglas map (ata_wafer_map_electroglas.csv) names every
         touchdown in a device_id column, so there is nothing to match up -
         unlike Accretech, where the Overlay dialog has to reconcile two
-        different maps. Feeding them into the SAME _exec2_overlay_die_ids
+        different maps. Feeding them into the SAME _exec_overlay_die_ids
         dict means the labels inherit everything that already works there:
         redrawn from WaferMapPanel.on_redraw after any rebuild, moved with
         the dies by canvas.scale on zoom, and written out by Save Selected
         Map, so an export can never disagree with what is on screen.
         """
-        wm = self._exec2_wafer_map
+        wm = self._exec_wafer_map
         ids = {rc: text for rc, text in (wm.die_ids or {}).items() if text}
         if not ids:
             return
         # Never clobber an overlay the operator built by hand in the dialog.
-        if self._exec2_overlay_die_ids and self._system == "accretech":
+        if self._exec_overlay_die_ids and self._system == "accretech":
             return
-        self._exec2_clear_overlay_labels(wm, self._exec2_overlay_items)
-        self._exec2_overlay_die_ids = ids
-        self._exec2_redraw_overlay_on_run_map()
+        self._exec_clear_overlay_labels(wm, self._exec_overlay_items)
+        self._exec_overlay_die_ids = ids
+        self._exec_redraw_overlay_on_run_map()
 
     def _new_results_wafer_map(self):
         """(Re)create the Results tab's own WaferMapPanel from scratch, on
@@ -3098,15 +3098,15 @@ class MainLayout(ttk.Frame):
         wm = WaferMapPanel(self._results_map_frame)
         wm.grid(row=1, column=0, sticky="nsew", padx=(8, 4), pady=(0, 8))
         wm.canvas.bind("<Button-1>", self._on_results_map_click, add="+")
-        wm.on_redraw = self._exec2_redraw_overlay_on_results_map
-        wm.on_zoom = self._exec2_debounced(
-            "_exec2_results_zoom_debounce_id", self._exec2_redraw_overlay_on_results_map)
+        wm.on_redraw = self._exec_redraw_overlay_on_results_map
+        wm.on_zoom = self._exec_debounced(
+            "_exec_results_zoom_debounce_id", self._exec_redraw_overlay_on_results_map)
         # A double-click "reset view" on THIS widget, later, must not redraw
         # a second time on this same canvas - see this method's own comment.
         # Route it through the lighter rebuild below instead, which keeps
         # PASS/FAIL/CURRENT status and the pick selection instead of
         # dropping them the way a brand new dataset load correctly does.
-        wm.on_reset_request = self._exec2_rebuild_results_map_view
+        wm.on_reset_request = self._exec_rebuild_results_map_view
         self._results_wafer_map = wm
         if old is not None:
             try:
@@ -3115,7 +3115,7 @@ class MainLayout(ttk.Frame):
                 pass
         return wm
 
-    def _exec2_rebuild_results_map_view(self):
+    def _exec_rebuild_results_map_view(self):
         """Same fresh-widget fix as _new_results_wafer_map, but for a plain
         view reset (double-click) rather than a genuinely new dataset - so
         this one preserves PASS/FAIL/CURRENT status and the pick selection
@@ -3125,35 +3125,35 @@ class MainLayout(ttk.Frame):
             return
         new = rebuild_wafer_map_panel(old)
         self._results_wafer_map = new
-        new.on_reset_request = self._exec2_rebuild_results_map_view
+        new.on_reset_request = self._exec_rebuild_results_map_view
         new.canvas.bind("<Button-1>", self._on_results_map_click, add="+")
         dbg = new.last_draw_debug or {}
-        self._exec2_log("[RUN] Results map view reset")
+        self._exec_log("[RUN] Results map view reset")
         if dbg.get("warning"):
-            self._exec2_log(f"[ERROR] Results wafer map (reset): {dbg['warning']}")
+            self._exec_log(f"[ERROR] Results wafer map (reset): {dbg['warning']}")
 
     def _sync_results_wafer_map(self):
         rwm = getattr(self, "_results_wafer_map", None)
         if rwm is None:
             return
-        dies = self._exec2_wafer_map._last_dies
+        dies = self._exec_wafer_map._last_dies
         if dies:
             rwm = self._new_results_wafer_map()
             rwm._last_dies = dies
             rwm._draw_from_die_list(dies)  # triggers on_redraw -> overlay labels
             dbg = rwm.last_draw_debug or {}
             if dbg.get("warning"):
-                self._exec2_log(f"[ERROR] Results wafer map: {dbg['warning']}")
+                self._exec_log(f"[ERROR] Results wafer map: {dbg['warning']}")
         else:
             rwm.canvas.delete("all")
             rwm.dies.clear()
             rwm.canvas.create_text(150, 100, text="No wafer map loaded yet.", fill="gray")
             rwm._run_on_redraw()
 
-    def _exec2_set_state(self, text: str, color: str):
-        self._exec2_state_lbl.config(text=text, fg=color)
+    def _exec_set_state(self, text: str, color: str):
+        self._exec_state_lbl.config(text=text, fg=color)
 
-    def _exec2_open_all_channels(self):
+    def _exec_open_all_channels(self):
         """Open every switch channel, whichever matrix this bench has.
 
         Called on a stop, so the bench is never left with a source still
@@ -3169,12 +3169,12 @@ class MainLayout(ttk.Frame):
                 switch.open_channel("allslots")
             else:
                 switch.open_channel("allslots")
-            self._exec2_log("[RUN] All switch channels opened.")
+            self._exec_log("[RUN] All switch channels opened.")
         except Exception as e:
-            self._exec2_log(f"[RUN] Could not open all channels: "
+            self._exec_log(f"[RUN] Could not open all channels: "
                             f"{type(e).__name__}: {e}")
 
-    def _exec2_set_running_buttons(self, running: bool):
+    def _exec_set_running_buttons(self, running: bool):
         """One place that decides which Run tab controls make sense right
         now - called at every real start (both engines) and every real
         finish/abort, never from a mid-run status change.
@@ -3195,14 +3195,14 @@ class MainLayout(ttk.Frame):
         used to still open every switch channel and drop Z for no reason.
         """
         state = "disabled" if running else "normal"
-        for attr in ("_exec2_full_btn", "_exec2_test_btn",
-                    "_exec2_test_selected_btn", "_exec2_run_btn",
-                    "_exec2_measure_btn", "_exec2_first_die_btn",
-                    "_exec2_zup_btn", "_exec2_zdown_btn",
-                    "_exec2_back_btn", "_exec2_next_btn",
-                    "_exec2_prev_shot_btn", "_exec2_next_shot_btn",
-                    "_exec2_move_selected_btn", "_exec2_refresh_xy_btn",
-                    "_exec2_unload_btn"):
+        for attr in ("_exec_full_btn", "_exec_test_btn",
+                    "_exec_test_selected_btn", "_exec_run_btn",
+                    "_exec_measure_btn", "_exec_first_die_btn",
+                    "_exec_zup_btn", "_exec_zdown_btn",
+                    "_exec_back_btn", "_exec_next_btn",
+                    "_exec_prev_shot_btn", "_exec_next_shot_btn",
+                    "_exec_move_selected_btn", "_exec_refresh_xy_btn",
+                    "_exec_unload_btn"):
             btn = getattr(self, attr, None)
             if btn is not None:
                 try:
@@ -3217,7 +3217,7 @@ class MainLayout(ttk.Frame):
             except tk.TclError:
                 pass
         stop_state = "normal" if running else "disabled"
-        for attr in ("_exec2_stop_btn", "_exec2_pause_btn"):
+        for attr in ("_exec_stop_btn", "_exec_pause_btn"):
             btn = getattr(self, attr, None)
             if btn is not None:
                 try:
@@ -3233,7 +3233,7 @@ class MainLayout(ttk.Frame):
         except Exception:
             pass
 
-    def _exec2_pause(self):
+    def _exec_pause(self):
         """Stop after the work in progress, keeping the position.
 
         What ⏹ Stop Run used to do. Nothing is reset and the bench is left
@@ -3243,23 +3243,23 @@ class MainLayout(ttk.Frame):
         if eg_run is not None and getattr(eg_run, "_running", False):
             try:
                 eg_run._pause()
-                self._exec2_set_running_buttons(False)
-                self._exec2_log("[RUN] Pause")
+                self._exec_set_running_buttons(False)
+                self._exec_log("[RUN] Pause")
                 return
             except Exception as e:
-                self._exec2_log(f"[RUN] Could not pause the .PMA run: {e}")
-        if not self._exec2_running:
-            self._exec2_log("[RUN] Nothing to pause.")
+                self._exec_log(f"[RUN] Could not pause the .PMA run: {e}")
+        if not self._exec_running:
+            self._exec_log("[RUN] Nothing to pause.")
             return
-        # The Accretech-style loops check _exec2_running between dies, so
+        # The Accretech-style loops check _exec_running between dies, so
         # clearing it stops them the same graceful way - without the abort
         # flag, which is what triggers the emergency stop and the reset.
-        self._exec2_running = False
-        self._exec2_set_running_buttons(False)
-        self._exec2_set_state("PAUSED", "#b45309")
-        self._exec2_log("[RUN] Paused after the current die — position kept.")
+        self._exec_running = False
+        self._exec_set_running_buttons(False)
+        self._exec_set_state("PAUSED", "#b45309")
+        self._exec_log("[RUN] Paused after the current die — position kept.")
 
-    def _exec2_abort(self):
+    def _exec_abort(self):
         # One Stop Run button covers both run engines now - the normal Full
         # Die/Test Selected/Test Die loop below, AND (Electroglas only)
         # EgPmaRunPanel's own .PMA step-through, which used to need its own
@@ -3275,16 +3275,16 @@ class MainLayout(ttk.Frame):
         #
         # Idempotency guard: this can genuinely be called twice for one
         # real stop - the operator's own Stop Run press racing
-        # _exec2_zup_measure_zdown's own automatic abort-on-failed-Z-down
+        # _exec_zup_measure_zdown's own automatic abort-on-failed-Z-down
         # safety check (a real run-thread call, not a UI click) - and with
         # no guard the emergency_stop/K/es commands below went out on the
-        # wire twice per stop. self._exec2_aborted is reset to False by
-        # every run starter (_exec2_start_full_die_walk/_start_site_list/
+        # wire twice per stop. self._exec_aborted is reset to False by
+        # every run starter (_exec_start_full_die_walk/_start_site_list/
         # _start_minor_moves), so it is exactly "a stop was already
         # processed for the run in progress, nothing new has started
         # since" - not just "not currently running".
-        if self._exec2_aborted:
-            self._exec2_log("[RUN] Stop Run: already stopped — ignoring.")
+        if self._exec_aborted:
+            self._exec_log("[RUN] Stop Run: already stopped — ignoring.")
             return
         eg_run = getattr(self, "eg_pma_run", None)
         eg_was_running = bool(getattr(eg_run, "_running", False))
@@ -3292,29 +3292,29 @@ class MainLayout(ttk.Frame):
             try:
                 eg_run._stop()
             except Exception as e:
-                self._exec2_log(f"[RUN] Could not stop the .PMA step-through: {e}")
-        self._exec2_running = False
-        self._exec2_aborted = True
-        self._exec2_set_running_buttons(False)
+                self._exec_log(f"[RUN] Could not stop the .PMA step-through: {e}")
+        self._exec_running = False
+        self._exec_aborted = True
+        self._exec_set_running_buttons(False)
         # The .PMA run thread opens the channels and drops Z itself on the
         # way out (see EgPmaRunPanel._make_safe), so doing it here as well
         # would race it. Anything else, this is the only chance.
         if not eg_was_running:
-            self._exec2_open_all_channels()
+            self._exec_open_all_channels()
             prober_z = self.controller.drivers.get("prober")
             if prober_z is not None and getattr(prober_z, "inst", None):
                 try:
                     prober_z.z_down()
-                    self._exec2_log("[RUN] Chuck separated (Z down).")
+                    self._exec_log("[RUN] Chuck separated (Z down).")
                 except Exception as e:
-                    self._exec2_log(f"[RUN] Could not separate the chuck: "
+                    self._exec_log(f"[RUN] Could not separate the chuck: "
                                     f"{type(e).__name__}: {e}")
-        self._exec2_run_token += 1
-        self.after(0, lambda: self._exec2_wafer_map.enable_picking(
-            on_change=self._exec2_on_sites_changed))
-        self.after(0, lambda: self._exec2_set_state(
+        self._exec_run_token += 1
+        self.after(0, lambda: self._exec_wafer_map.enable_picking(
+            on_change=self._exec_on_sites_changed))
+        self.after(0, lambda: self._exec_set_state(
             "STOPPING…" if eg_was_running else "STOPPED", "#dc2626"))
-        self._exec2_log("[RUN] Stop and reset")
+        self._exec_log("[RUN] Stop and reset")
         # Accretech-only: send_es (buzzer clear) is a UF200R command with no
         # Electroglas equivalent - the EG driver stubs it as
         # _not_implemented, so this used to fire on every Electroglas Stop
@@ -3332,137 +3332,137 @@ class MainLayout(ttk.Frame):
             def _clear_buzzer():
                 try:
                     prober.send_es()
-                    self._exec2_log("[RUN] es sent (buzzer clear)")
+                    self._exec_log("[RUN] es sent (buzzer clear)")
                 except Exception as e:
-                    self._exec2_log(f"[RUN] es error: {e}")
+                    self._exec_log(f"[RUN] es error: {e}")
             threading.Thread(target=_clear_buzzer, daemon=True).start()
 
-    def _exec2_safe_after(self, fn):
+    def _exec_safe_after(self, fn):
         """self.after(0, fn), swallowing the rare "main thread is not in
         main loop" RuntimeError a queued Tcl call can raise when called
         from a run thread (same class of bug fixed in
-        pma_wafer_panel.py's workbook loader). Used in _exec2_finish_run
+        pma_wafer_panel.py's workbook loader). Used in _exec_finish_run
         because that is the one cleanup path EVERY run thread's finally
         block depends on to unlock the UI - losing that race there left a
         run stuck showing RUNNING forever instead of just losing a log
-        line, which is what happens everywhere else _exec2_log is used."""
+        line, which is what happens everywhere else _exec_log is used."""
         try:
             self.after(0, fn)
         except (RuntimeError, tk.TclError):
             pass
 
-    def _exec2_finish_run(self, token: int, msg: str, color: str):
-        if token != self._exec2_run_token:
+    def _exec_finish_run(self, token: int, msg: str, color: str):
+        if token != self._exec_run_token:
             # Superseded by a newer run (or an abort) while this thread was
             # blocked on a hardware call — it's no longer "the" run, so don't
             # stomp on whatever state that newer run/abort has already set.
             return
-        finished_mode = self._exec2_run_mode
-        self._exec2_running  = False
-        self._exec2_run_mode = None
-        self._exec2_safe_after(lambda: self._exec2_set_running_buttons(False))
-        self._exec2_safe_after(lambda: self._exec2_step_var.set("Step: —"))
-        self._exec2_safe_after(lambda: self._exec2_wafer_map.enable_picking(
-            on_change=self._exec2_on_sites_changed))
-        if not self._exec2_aborted:
-            self._exec2_safe_after(lambda: self._exec2_set_state(msg, color))
-        if self._exec2_on_run_finished:
+        finished_mode = self._exec_run_mode
+        self._exec_running  = False
+        self._exec_run_mode = None
+        self._exec_safe_after(lambda: self._exec_set_running_buttons(False))
+        self._exec_safe_after(lambda: self._exec_step_var.set("Step: —"))
+        self._exec_safe_after(lambda: self._exec_wafer_map.enable_picking(
+            on_change=self._exec_on_sites_changed))
+        if not self._exec_aborted:
+            self._exec_safe_after(lambda: self._exec_set_state(msg, color))
+        if self._exec_on_run_finished:
             # pass_var/fail_var are Tk vars - read them inside the deferred
             # call (main thread) rather than here (this thread), same
-            # reasoning as _exec2_safe_after itself.
-            total = self._exec2_total_dies
-            aborted = self._exec2_aborted
-            hook = self._exec2_on_run_finished
+            # reasoning as _exec_safe_after itself.
+            total = self._exec_total_dies
+            aborted = self._exec_aborted
+            hook = self._exec_on_run_finished
             def _call_hook():
-                hook(self._exec2_pass_var.get(), self._exec2_fail_var.get(),
+                hook(self._exec_pass_var.get(), self._exec_fail_var.get(),
                     total, aborted, finished_mode)
-            self._exec2_safe_after(_call_hook)
+            self._exec_safe_after(_call_hook)
 
-    def _exec2_ensure_separated(self, prober, stb: int):
+    def _exec_ensure_separated(self, prober, stb: int):
         if stb != 67:
             return
-        self._exec2_log("[RUN] finished chuck UP (STB=67 — contact) >> D  (Separate)")
+        self._exec_log("[RUN] finished chuck UP (STB=67 — contact) >> D  (Separate)")
         prober.z_down()
 
-    def _exec2_zup_measure_zdown(self, prober, die_label: str,
+    def _exec_zup_measure_zdown(self, prober, die_label: str,
                                  steps: list = None, row: int = None, col: int = None,
                                  shot_geom=None) -> bool:
         """row/col: the touchdown's own real (row, col) - always needed,
         for the ordinary single-die fallback colouring. shot_geom (see
-        _exec2_prepare_shot_geometry): when this touchdown's shot has more
+        _exec_prepare_shot_geometry): when this touchdown's shot has more
         than one die, published before the steps run and used after to
         colour each die in the shot on its own real square instead of
         just this one touched square - covers ANY shot shape (1x20, 3x9,
         2x2, ...) and any subset of dies the recipe actually measures
         (only the die #s a passfail step actually tagged get a verdict;
         the rest are simply never touched, still whatever colour they
-        were) - see _exec2_color_shot_squares."""
-        self._exec2_safe_after(lambda: self._exec2_step_var.set("Step: Contact"))
+        were) - see _exec_color_shot_squares."""
+        self._exec_safe_after(lambda: self._exec_step_var.set("Step: Contact"))
         try:
-            self._exec2_log("[RUN] >> Z  (Contact)")
+            self._exec_log("[RUN] >> Z  (Contact)")
             stb = prober.z_up()
             if stb == 67:
-                self._exec2_log("[RUN] << STB=67  (Z Up confirmed — CONTACT)")
+                self._exec_log("[RUN] << STB=67  (Z Up confirmed — CONTACT)")
             else:
-                self._exec2_log(f"[RUN] Z Up returned STB={stb} (expected 67)")
+                self._exec_log(f"[RUN] Z Up returned STB={stb} (expected 67)")
         except Exception as e:
-            self._exec2_log(f"[RUN] Touchdown error: {e} — measuring anyway")
+            self._exec_log(f"[RUN] Touchdown error: {e} — measuring anyway")
 
         shot_row = shot_col = None
         if shot_geom is not None and row is not None and col is not None:
-            shot_row, shot_col = self._exec2_publish_die_slots_at(shot_geom, row, col)
+            shot_row, shot_col = self._exec_publish_die_slots_at(shot_geom, row, col)
 
-        self._exec2_safe_after(lambda: self._exec2_step_var.set("Step: Testing"))
+        self._exec_safe_after(lambda: self._exec_step_var.set("Step: Testing"))
         try:
-            ok = self._exec2_run_steps_once(steps)
+            ok = self._exec_run_steps_once(steps)
         finally:
-            # Captured before this gets wiped - _exec2_tally_shot_result
+            # Captured before this gets wiped - _exec_tally_shot_result
             # (below) needs the real die ID per slot to know which slots
-            # in _exec2_slot_verdicts are actual dies (countable) versus
+            # in _exec_slot_verdicts are actual dies (countable) versus
             # empty NA/TARGET corners (not), the same distinction
             # eg_pma_run_panel._measure_here already makes on the
             # Electroglas side.
-            ids_by_slot = list(getattr(self, "_exec2_die_ids_by_slot", None) or [])
+            ids_by_slot = list(getattr(self, "_exec_die_ids_by_slot", None) or [])
             if shot_geom is not None:
-                self._exec2_die_rc_by_slot = []
-                self._exec2_die_ids_by_slot = []
-                self._exec2_die_shotpos_by_slot = []
-        self._exec2_safe_after(lambda p=ok, dl=die_label: self._exec2_log(
+                self._exec_die_rc_by_slot = []
+                self._exec_die_ids_by_slot = []
+                self._exec_die_shotpos_by_slot = []
+        self._exec_safe_after(lambda p=ok, dl=die_label: self._exec_log(
             f"[RESULTS] {'PASS' if p else 'FAIL'}  {dl}"))
 
         if row is not None and col is not None:
-            self._exec2_color_shot_squares(shot_geom, shot_row, shot_col, row, col, ok)
-        self._exec2_tally_shot_result(shot_geom, ids_by_slot, ok)
+            self._exec_color_shot_squares(shot_geom, shot_row, shot_col, row, col, ok)
+        self._exec_tally_shot_result(shot_geom, ids_by_slot, ok)
 
-        if self._exec2_aborted:
+        if self._exec_aborted:
             # Stop Run already separated the chuck (its own D, sent the
             # moment it was pressed) - sending a second D here for the
             # in-flight measurement that just finished would be a real
             # duplicate command, not a safety margin.
-            self._exec2_log("[RUN] Skipping Separate (D) — already sent by Stop Run.")
+            self._exec_log("[RUN] Skipping Separate (D) — already sent by Stop Run.")
             return ok
 
         z_down_confirmed = True
         try:
-            self._exec2_log("[RUN] >> D  (Separate)")
+            self._exec_log("[RUN] >> D  (Separate)")
             stb = prober.z_down()
             if stb == 68:
-                self._exec2_log("[RUN] << STB=68  (Z Down confirmed — separated)")
+                self._exec_log("[RUN] << STB=68  (Z Down confirmed — separated)")
             else:
-                self._exec2_log(f"[RUN] Z Down returned STB={stb} (expected 68)")
+                self._exec_log(f"[RUN] Z Down returned STB={stb} (expected 68)")
                 z_down_confirmed = False
         except Exception as e:
-            self._exec2_log(f"[RUN] Separate error: {e}")
+            self._exec_log(f"[RUN] Separate error: {e}")
             z_down_confirmed = False
 
         if not z_down_confirmed:
-            self._exec2_log("[RUN] Aborting/rejected")
-            self._exec2_abort()
+            self._exec_log("[RUN] Aborting/rejected")
+            self._exec_abort()
         else:
-            self._exec2_maybe_read_state()
+            self._exec_maybe_read_state()
         return ok
 
-    def _exec2_update_die_color(self, row: int, col: int, ok: bool):
+    def _exec_update_die_color(self, row: int, col: int, ok: bool):
         status = "PASS" if ok else "FAIL"
         # The only persistent record of this verdict - the map widgets only
         # hold it as canvas item colour. cmd_save_csv reads this to write
@@ -3472,8 +3472,8 @@ class MainLayout(ttk.Frame):
         except Exception:
             pass
         try:
-            if (row, col) in self._exec2_wafer_map.dies:
-                self._exec2_wafer_map.update_die(row, col, status)
+            if (row, col) in self._exec_wafer_map.dies:
+                self._exec_wafer_map.update_die(row, col, status)
         except Exception:
             pass
         rwm = getattr(self, "_results_wafer_map", None)
@@ -3485,7 +3485,7 @@ class MainLayout(ttk.Frame):
                 pass
 
 
-    def _exec2_switch_panels(self):
+    def _exec_switch_panels(self):
         panels = []
         probe_routing = getattr(self, "probe_routing", None)
         if probe_routing is not None:
@@ -3498,43 +3498,43 @@ class MainLayout(ttk.Frame):
             panels.append(bottom)
         return panels
 
-    def _exec2_mark_closed(self, channels):
+    def _exec_mark_closed(self, channels):
         for ch in channels:
-            for p in self._exec2_switch_panels():
+            for p in self._exec_switch_panels():
                 self.after(0, lambda p=p, ch=ch: p.mark_closed(ch))
 
-    def _exec2_mark_open(self, channels):
+    def _exec_mark_open(self, channels):
         for ch in channels:
-            for p in self._exec2_switch_panels():
+            for p in self._exec_switch_panels():
                 self.after(0, lambda p=p, ch=ch: p.mark_open(ch))
 
-    def _exec2_mark_all_open(self):
-        for p in self._exec2_switch_panels():
+    def _exec_mark_all_open(self):
+        for p in self._exec_switch_panels():
             self.after(0, p.mark_all_open)
 
-    def _exec2_maybe_read_state(self):
-        if self._exec2_die_num % 5:
+    def _exec_maybe_read_state(self):
+        if self._exec_die_num % 5:
             return
-        for p in self._exec2_switch_panels():
+        for p in self._exec_switch_panels():
             self.after(0, p.read_state)
 
 
-    def _exec2_can_start(self) -> bool:
+    def _exec_can_start(self) -> bool:
         ok = True
-        if self._exec2_lot_thread and self._exec2_lot_thread.is_alive():
-            self._exec2_log("[RUN] Cannot start — the previous run is still finishing")
+        if self._exec_lot_thread and self._exec_lot_thread.is_alive():
+            self._exec_log("[RUN] Cannot start — the previous run is still finishing")
             ok = False
-        if not self._exec2_steps:
-            self._exec2_log("[RUN] Cannot start — no recipe loaded "
+        if not self._exec_steps:
+            self._exec_log("[RUN] Cannot start — no recipe loaded "
                             "(pick one from the Recipe dropdown first).")
             ok = False
         if self._system == "accretech":
-            if (self._exec2_map_source_var.get() not in ("Accretech", "Wafer Builder")
-                    or not self._exec2_wafer_map._last_dies):
-                self._exec2_log("[RUN] Cannot start — no wafer map loaded")
+            if (self._exec_map_source_var.get() not in ("Accretech", "Wafer Builder")
+                    or not self._exec_wafer_map._last_dies):
+                self._exec_log("[RUN] Cannot start — no wafer map loaded")
                 ok = False
-        elif not self._exec2_wafer_map._last_dies:
-            self._exec2_log("[RUN] Cannot start — no wafer map loaded")
+        elif not self._exec_wafer_map._last_dies:
+            self._exec_log("[RUN] Cannot start — no wafer map loaded")
             ok = False
         if self._system == "accretech":
             # Only what THIS bench actually has fitted - a bench with no
@@ -3550,29 +3550,29 @@ class MainLayout(ttk.Frame):
             required_instruments = ("prober", "smu", "relay1")
         missing_instruments = [k for k in required_instruments if k not in self.controller.drivers]
         if missing_instruments:
-            self._exec2_log("[RUN] Cannot start — instrument(s) not connected: "
+            self._exec_log("[RUN] Cannot start — instrument(s) not connected: "
                             f"{', '.join(missing_instruments)} (see the Instruments tab).")
             ok = False
         return ok
 
-    def _exec2_start_full_die(self):
-        if self._exec2_running:
-            self._exec2_log("[RUN] A run is already active.")
+    def _exec_start_full_die(self):
+        if self._exec_running:
+            self._exec_log("[RUN] A run is already active.")
             return
-        if not self._exec2_can_start():
+        if not self._exec_can_start():
             return
         # Full Die/Test Selected are the plain "walk the dies, measure"
         # entry points - Minor Moves (multi-die shots, touchdown list, the
         # whole story) is ▶ Run's job now, not theirs. Refuse rather than
         # silently doing a native G/J walk that doesn't mean anything on a
         # wafer where a map square is a multi-die shot.
-        if self._system == "accretech" and self._exec2_minor_moves_active():
-            self._exec2_log("[RUN] Full Die: this recipe has Minor Moves on — "
+        if self._system == "accretech" and self._exec_minor_moves_active():
+            self._exec_log("[RUN] Full Die: this recipe has Minor Moves on — "
                             "use Run instead.")
             return
-        self._exec2_start_full_die_walk("Full Die")
+        self._exec_start_full_die_walk("Full Die")
 
-    def _exec2_start_full_die_walk(self, mode_label: str):
+    def _exec_start_full_die_walk(self, mode_label: str):
         """The actual native G/J whole-wafer walk - shared by Full Die and
         ▶ Run's own "no saved touchdowns, do the whole wafer" fallback."""
         if self._system == "electroglas":
@@ -3588,100 +3588,100 @@ class MainLayout(ttk.Frame):
             # real. Use the PMA Run tab instead, which drives Electroglas
             # with verified MD/MM relative steps and a software-anchored
             # datum.
-            self._exec2_log(
+            self._exec_log(
                 f"[RUN] {mode_label}: the native whole-wafer walk (G/J) is "
                 "Accretech-only - it assumes a status-byte protocol and "
                 "onboard wafer map the Electroglas does not have. Use the "
                 "PMA Run tab for Electroglas recipes instead.")
             return
-        self._exec2_reset_counts(total_dies=len(self._exec2_wafer_map._last_dies or []))
-        self._exec2_running  = True
-        self._exec2_set_running_buttons(True)
-        self._exec2_aborted  = False
-        self._exec2_run_mode = "full"
-        self._exec2_run_token += 1
-        my_token = self._exec2_run_token
-        self._exec2_wafer_map.enable_picking(0)
-        self.after(0, lambda: self._exec2_set_state(f"RUNNING ({mode_label})", "#2563eb"))
-        self._exec2_log(f"[RUN] {mode_label} — walking the entire wafer (G/J), "
+        self._exec_reset_counts(total_dies=len(self._exec_wafer_map._last_dies or []))
+        self._exec_running  = True
+        self._exec_set_running_buttons(True)
+        self._exec_aborted  = False
+        self._exec_run_mode = "full"
+        self._exec_run_token += 1
+        my_token = self._exec_run_token
+        self._exec_wafer_map.enable_picking(0)
+        self.after(0, lambda: self._exec_set_state(f"RUNNING ({mode_label})", "#2563eb"))
+        self._exec_log(f"[RUN] {mode_label} — walking the entire wafer (G/J), "
                         "measuring the loaded recipe at every die.")
-        # Resolved here, on the main thread - see _exec2_prepare_shot_geometry.
-        shot_geom = self._exec2_prepare_shot_geometry()
-        self._exec2_lot_thread = threading.Thread(
-            target=self._exec2_full_die_thread, args=(my_token, shot_geom), daemon=True)
-        self._exec2_lot_thread.start()
+        # Resolved here, on the main thread - see _exec_prepare_shot_geometry.
+        shot_geom = self._exec_prepare_shot_geometry()
+        self._exec_lot_thread = threading.Thread(
+            target=self._exec_full_die_thread, args=(my_token, shot_geom), daemon=True)
+        self._exec_lot_thread.start()
 
-    def _exec2_full_die_thread(self, my_token: int, shot_geom=None):
+    def _exec_full_die_thread(self, my_token: int, shot_geom=None):
         prober = self.controller.drivers.get("prober")
         if not (prober and prober.inst):
-            self._exec2_log("[RUN] ERROR: prober not connected")
-            self._exec2_finish_run(my_token, "ERROR: prober not connected", "#dc2626")
+            self._exec_log("[RUN] ERROR: prober not connected")
+            self._exec_finish_run(my_token, "ERROR: prober not connected", "#dc2626")
             return
         error_msg = None
         try:
-            self._exec2_refresh_xy_blocking(prober)
-            self._exec2_log("[RUN] >> D  (Separate)")
+            self._exec_refresh_xy_blocking(prober)
+            self._exec_log("[RUN] >> D  (Separate)")
             prober.z_down()
 
-            self._exec2_log("[RUN] >> G  (Position start die)")
+            self._exec_log("[RUN] >> G  (Position start die)")
             # move_to_start_die() raises if the prober answers with a GPIB
             # error (STB=76) instead of 67/70 — e.g. it wasn't sitting on
             # the probing menu when G was sent. Caught below so the GUI
             # reflects the real outcome instead of claiming a clean finish.
             stb = prober.move_to_start_die()
-            self._exec2_log(f"[RUN] << STB={stb}")
-            self._exec2_ensure_separated(prober, stb)
+            self._exec_log(f"[RUN] << STB={stb}")
+            self._exec_ensure_separated(prober, stb)
 
-            while (self._exec2_running and not self._exec2_aborted
-                   and self._exec2_run_token == my_token):
+            while (self._exec_running and not self._exec_aborted
+                   and self._exec_run_token == my_token):
                 raw = prober.get_xy_position()
                 x, y = _parse_q_response(raw)
-                self._exec2_die_num += 1
-                die_label = f"Die #{self._exec2_die_num}  (X{x:.0f} Y{y:.0f})"
-                self.after(0, lambda d=die_label: self._exec2_die_var.set(f"Die: {d}"))
+                self._exec_die_num += 1
+                die_label = f"Die #{self._exec_die_num}  (X{x:.0f} Y{y:.0f})"
+                self.after(0, lambda d=die_label: self._exec_die_var.set(f"Die: {d}"))
                 self.after(0, lambda x=x, y=y:
-                           self._exec2_xy_var.set(f"X: {x:.0f} die\nY: {y:.0f} die"))
-                self._exec2_highlight_current(int(y), int(x))
-                self._exec2_log(f"[RUN] << Q  die X={x:.0f} Y={y:.0f}")
+                           self._exec_xy_var.set(f"X: {x:.0f} die\nY: {y:.0f} die"))
+                self._exec_highlight_current(int(y), int(x))
+                self._exec_log(f"[RUN] << Q  die X={x:.0f} Y={y:.0f}")
 
-                ok = self._exec2_zup_measure_zdown(
+                ok = self._exec_zup_measure_zdown(
                     prober, die_label, row=int(y), col=int(x), shot_geom=shot_geom)
-                # Pass/Fail counters are updated inside _exec2_zup_measure_zdown
-                # itself now (see _exec2_tally_shot_result) - once per real
+                # Pass/Fail counters are updated inside _exec_zup_measure_zdown
+                # itself now (see _exec_tally_shot_result) - once per real
                 # die in the shot, not once per touchdown.
 
-                if (not self._exec2_running or self._exec2_aborted
-                        or self._exec2_run_token != my_token):
+                if (not self._exec_running or self._exec_aborted
+                        or self._exec_run_token != my_token):
                     break
 
-                self._exec2_log("[RUN] >> J  (Next die)")
+                self._exec_log("[RUN] >> J  (Next die)")
                 stb = prober.next_die()
                 if stb == 81:
-                    self._exec2_log("[RUN] << STB=81  (wafer end)")
+                    self._exec_log("[RUN] << STB=81  (wafer end)")
                     break
                 if stb == 90:
-                    self._exec2_log("[RUN] << STB=90  (probing stop — <STOP> pushed)")
+                    self._exec_log("[RUN] << STB=90  (probing stop — <STOP> pushed)")
                     break
-                self._exec2_log(f"[RUN] << STB={stb}")
-                self._exec2_ensure_separated(prober, stb)
+                self._exec_log(f"[RUN] << STB={stb}")
+                self._exec_ensure_separated(prober, stb)
         except Exception as e:
             error_msg = str(e)
-            self._exec2_log(f"[RUN] ERROR: {e}")
+            self._exec_log(f"[RUN] ERROR: {e}")
         finally:
             if error_msg:
-                self._exec2_finish_run(my_token, f"ERROR: {error_msg[:60]}", "#dc2626")
+                self._exec_finish_run(my_token, f"ERROR: {error_msg[:60]}", "#dc2626")
             else:
-                self._exec2_finish_run(my_token, "FINISHED (Full Die)", "#16a34a")
+                self._exec_finish_run(my_token, "FINISHED (Full Die)", "#16a34a")
 
-    def _exec2_start_minor_moves(self, shots: list, mode_label: str):
+    def _exec_start_minor_moves(self, shots: list, mode_label: str):
         """Shared Full Die / Test Die startup for Minor Moves - `shots` are
         real absolute (row, col) die coordinates picked on the map, each
         naming a die that belongs to one shot (see goto_shot_die below for
         how the shot itself, and die #1's own cell within it, are found);
         from there only the die(s) the loaded recipe's steps reference by
         die # are visited.
-        Same button/lock/state bookkeeping _exec2_start_full_die and
-        _exec2_start_test_die already do for the native G/J path.
+        Same button/lock/state bookkeeping _exec_start_full_die and
+        _exec_start_test_die already do for the native G/J path.
 
         Everything Tk-touching (recipe_gen's shot dims/cells, which read
         Tk StringVars) is resolved HERE, on the main thread, and handed to
@@ -3692,21 +3692,21 @@ class MainLayout(ttk.Frame):
 
         Origin: each (row, col) in `shots` is a real absolute die
         coordinate picked on the map (the map only ever shows real dies -
-        see _exec2_draw_wafer_map) - but it may be ANY die belonging to
+        see _exec_draw_wafer_map) - but it may be ANY die belonging to
         the target shot (whichever square the picker/shot-window
         highlighted), not necessarily die #1's own cell. Same as Next
-        Shot/Previous Shot (_exec2_go_to_shot/_exec2_current_shot_index):
+        Shot/Previous Shot (_exec_go_to_shot/_exec_current_shot_index):
         the Overlay dialog's confirmed row/col offset is what tells us
         WHICH shot a real coordinate falls in (floor-divide by the shot
         dimensions), then shot_die_rc() gives any die #'s cell within
         that shot to land on."""
-        if not self._exec2_overlay_offset_confirmed:
-            self._exec2_log("[RUN] Minor Moves: no Wafer Builder > Overlay")
+        if not self._exec_overlay_offset_confirmed:
+            self._exec_log("[RUN] Minor Moves: no Wafer Builder > Overlay")
             return
-        overlay_offset = (self._exec2_overlay_row_offset, self._exec2_overlay_col_offset)
+        overlay_offset = (self._exec_overlay_row_offset, self._exec_overlay_col_offset)
         gen = getattr(self, "recipe_gen", None)
         if gen is None:
-            self._exec2_log("[RUN] Minor Moves: the Wafer Builder tab is not available.")
+            self._exec_log("[RUN] Minor Moves: the Wafer Builder tab is not available.")
             return
         shot_rows, shot_cols = gen._shot_dims()
         shot_cells = dict(gen._shot_cells)
@@ -3718,7 +3718,7 @@ class MainLayout(ttk.Frame):
         # measured it twice, then a third time, etc. Collapse to one
         # representative pick per shot, first-seen order, before the
         # run thread ever starts.
-        row_off, col_off = self._exec2_overlay_row_offset, self._exec2_overlay_col_offset
+        row_off, col_off = self._exec_overlay_row_offset, self._exec_overlay_col_offset
         seen_shots = {}
         deduped = []
         for row, col in shots:
@@ -3728,58 +3728,58 @@ class MainLayout(ttk.Frame):
             seen_shots[key] = (row, col)
             deduped.append((row, col))
         if len(deduped) != len(shots):
-            self._exec2_log(f"[RUN] Minor Moves: {len(shots)} touchdown(s) resolved to "
+            self._exec_log(f"[RUN] Minor Moves: {len(shots)} touchdown(s) resolved to "
                             f"{len(deduped)} distinct shot(s)")
         shots = deduped
 
-        self._exec2_reset_counts(total_dies=len(shots))
-        self._exec2_running  = True
-        self._exec2_set_running_buttons(True)
-        self._exec2_aborted  = False
+        self._exec_reset_counts(total_dies=len(shots))
+        self._exec_running  = True
+        self._exec_set_running_buttons(True)
+        self._exec_aborted  = False
         # Used to be a binary "Full Die" vs. everything-else-is-"test" check,
         # from when this function's only two callers were the Minor Moves
-        # variants of Full Die and Test Die. ▶ Run (_exec2_start_run) is the
+        # variants of Full Die and Test Die. ▶ Run (_exec_start_run) is the
         # real, only caller now, passing mode_label="Run" - which that old
         # check silently mislabeled as "test" too, since it wasn't "Full
         # Die". cassette_panel._start_next_run trusts this label to decide
         # how to replay the next wafer, and "test" means "look for a
         # remembered Test Selected pick list" - one that a Minor Moves ▶ Run
-        # never populates (see _exec2_start_site_list's own "test"-only
+        # never populates (see _exec_start_site_list's own "test"-only
         # bookkeeping). That silently broke cassette automation for every
         # Minor Moves recipe run via ▶ Run - confirmed live on Cenfire,
         # which is Minor Moves' whole reason for existing, while LaMP (no
-        # Minor Moves, ▶ Run takes the plain _exec2_start_site_list path
+        # Minor Moves, ▶ Run takes the plain _exec_start_site_list path
         # instead of this function entirely) never touched this bug at all -
         # not a Cenfire-specific gap, a real generalization one.
-        self._exec2_run_mode = {"Full Die": "full", "Test Die": "test",
+        self._exec_run_mode = {"Full Die": "full", "Test Die": "test",
                                 "Run": "run"}.get(mode_label, "run")
-        self._exec2_run_token += 1
-        my_token = self._exec2_run_token
-        self._exec2_wafer_map.enable_picking(0)
-        self.after(0, lambda: self._exec2_set_state(
+        self._exec_run_token += 1
+        my_token = self._exec_run_token
+        self._exec_wafer_map.enable_picking(0)
+        self.after(0, lambda: self._exec_set_state(
             f"RUNNING (Minor Moves — {mode_label})", "#2563eb"))
-        self._exec2_log(f"[RUN] {mode_label} (Minor Moves) — {len(shots)} shot(s), "
+        self._exec_log(f"[RUN] {mode_label} (Minor Moves) — {len(shots)} shot(s), "
                         "visiting only the die(s) the recipe references.")
-        self._exec2_lot_thread = threading.Thread(
-            target=self._exec2_minor_move_thread,
+        self._exec_lot_thread = threading.Thread(
+            target=self._exec_minor_move_thread,
             args=(shots, my_token, overlay_offset, shot_rows, shot_cols, shot_cells),
             daemon=True)
-        self._exec2_lot_thread.start()
+        self._exec_lot_thread.start()
 
-    def _exec2_publish_die_slots_for(self, shot_row, shot_col, shot_rows, shot_cols,
+    def _exec_publish_die_slots_for(self, shot_row, shot_col, shot_rows, shot_cols,
                                      shot_cells, row_offset, col_offset):
-        """Tell _exec2_run_steps_once/_exec2_slot_identity where each die #
+        """Tell _exec_run_steps_once/_exec_slot_identity where each die #
         in shot (shot_row, shot_col) really sits, and its real die ID -
-        shared by the full Minor Moves run (_exec2_minor_move_thread's own
+        shared by the full Minor Moves run (_exec_minor_move_thread's own
         publish_die_slots) and the standalone Measure button
-        (_exec2_touchdown_then_measure), so a Measure press files each
+        (_exec_touchdown_then_measure), so a Measure press files each
         step's reading against the die it actually measured (by the
         step's own Die # field) instead of always the shot's landing
         square - same bug class the run path already had this fix for."""
         present = present_slots(shot_cells, shot_rows, shot_cols)
         max_die = max(present.values()) if present else 1
         rcs, ids, shotpos = [], [], []
-        wm = self._exec2_wafer_map
+        wm = self._exec_wafer_map
         for die_num in range(1, max_die + 1):
             rc = shot_die_rc(shot_cells, shot_rows, shot_cols, die_num)
             if rc is None:
@@ -3791,7 +3791,7 @@ class MainLayout(ttk.Frame):
             real_row = shot_row * shot_rows + r + row_offset
             real_col = shot_col * shot_cols + c + col_offset
             rcs.append((real_row, real_col))
-            ids.append(self._exec2_overlay_die_ids.get((real_row, real_col))
+            ids.append(self._exec_overlay_die_ids.get((real_row, real_col))
                       or wm.die_ids.get((real_row, real_col), ""))
             # (reticle row, reticle col, row WITHIN the shot, col WITHIN
             # the shot) - generic reticle/shot-position bookkeeping any
@@ -3799,17 +3799,17 @@ class MainLayout(ttk.Frame):
             # shot_row/shot_col/intra_row/intra_col source fields), not
             # tied to any one project's naming.
             shotpos.append((shot_row, shot_col, r, c))
-        self._exec2_die_rc_by_slot = rcs
-        self._exec2_die_ids_by_slot = ids
-        self._exec2_die_shotpos_by_slot = shotpos
+        self._exec_die_rc_by_slot = rcs
+        self._exec_die_ids_by_slot = ids
+        self._exec_die_shotpos_by_slot = shotpos
 
-    def _exec2_prepare_shot_geometry(self):
+    def _exec_prepare_shot_geometry(self):
         """Main-thread-only: resolve the STATIC per-run geometry (shot
         template dims/cells, Overlay offset) needed to file each Die#-
         tagged step's reading against its own real square within whatever
         shot a touchdown lands on - independent of Minor Moves. Minor
         Moves only ever gates whether a "move" step actually repositions
-        the chuck between dies (_exec2_move_fn) - a recipe that reaches
+        the chuck between dies (_exec_move_fn) - a recipe that reaches
         every die in a shot through switch routing at ONE physical
         touchdown (LAMP: 4 dies, 4 different HI/LO pin pairs, zero chuck
         movement) still wants its readings split across the shot's 4 real
@@ -3819,7 +3819,7 @@ class MainLayout(ttk.Frame):
         this is resolved HERE and handed to a background run thread as
         plain data - calling those off the UI thread can raise "main
         thread is not in main loop" (same class of bug
-        _exec2_start_minor_moves's own docstring already covers).
+        _exec_start_minor_moves's own docstring already covers).
 
         Returns (shot_rows, shot_cols, shot_cells, row_offset, col_offset)
         - the STATIC part, constant for the whole run - or None if there
@@ -3832,15 +3832,15 @@ class MainLayout(ttk.Frame):
         shot_rows, shot_cols = gen._shot_dims()
         if shot_rows * shot_cols <= 1:
             return None
-        if not self._exec2_overlay_offset_confirmed:
-            self._exec2_log("[RUN] This shot template has more than one die, but "
+        if not self._exec_overlay_offset_confirmed:
+            self._exec_log("[RUN] This shot template has more than one die, but "
                             "there is no confirmed Overlay alignment")
             return None
         shot_cells = dict(gen._shot_cells)
         return (shot_rows, shot_cols, shot_cells,
-                self._exec2_overlay_row_offset, self._exec2_overlay_col_offset)
+                self._exec_overlay_row_offset, self._exec_overlay_col_offset)
 
-    def _exec2_publish_die_slots_at(self, shot_geom, row: int, col: int) -> tuple:
+    def _exec_publish_die_slots_at(self, shot_geom, row: int, col: int) -> tuple:
         """Per-touchdown: which shot (row, col) falls in (floor-divide by
         the shot dims, same as Next Shot/Previous Shot and Minor Moves'
         own shot_rc_for) - not necessarily die #1's own cell, any die of
@@ -3851,15 +3851,15 @@ class MainLayout(ttk.Frame):
         shot_rows, shot_cols, shot_cells, row_offset, col_offset = shot_geom
         shot_row = (row - row_offset) // shot_rows
         shot_col = (col - col_offset) // shot_cols
-        self._exec2_publish_die_slots_for(
+        self._exec_publish_die_slots_for(
             shot_row, shot_col, shot_rows, shot_cols, shot_cells,
             row_offset, col_offset)
         return shot_row, shot_col
 
-    def _exec2_color_shot_squares(self, shot_geom, shot_row: int, shot_col: int,
+    def _exec_color_shot_squares(self, shot_geom, shot_row: int, shot_col: int,
                                   fallback_row: int, fallback_col: int, fallback_ok: bool):
         """Colour every die in the shot on its OWN real square from
-        _exec2_slot_verdicts (each die passes/fails independently), same
+        _exec_slot_verdicts (each die passes/fails independently), same
         rule the Minor Moves run thread already applies - falling back to
         colouring just the touched square with the combined verdict when
         the recipe never tagged a passfail step with a Die # (or nothing
@@ -3867,7 +3867,7 @@ class MainLayout(ttk.Frame):
         case)."""
         shot_rows, shot_cols, shot_cells, row_offset, col_offset = (
             shot_geom if shot_geom is not None else (None, None, None, None, None))
-        slot_verdicts = dict(getattr(self, "_exec2_slot_verdicts", None) or {})
+        slot_verdicts = dict(getattr(self, "_exec_slot_verdicts", None) or {})
         if shot_geom is not None and slot_verdicts:
             for die_num, passed in sorted(slot_verdicts.items()):
                 rc = shot_die_rc(shot_cells, shot_rows, shot_cols, die_num)
@@ -3876,11 +3876,11 @@ class MainLayout(ttk.Frame):
                 r, c = rc
                 real_row = shot_row * shot_rows + r + row_offset
                 real_col = shot_col * shot_cols + c + col_offset
-                self._exec2_update_die_color(real_row, real_col, passed)
+                self._exec_update_die_color(real_row, real_col, passed)
         else:
-            self._exec2_update_die_color(fallback_row, fallback_col, fallback_ok)
+            self._exec_update_die_color(fallback_row, fallback_col, fallback_ok)
 
-    def _exec2_tally_shot_result(self, shot_geom, ids_by_slot: list, fallback_ok: bool):
+    def _exec_tally_shot_result(self, shot_geom, ids_by_slot: list, fallback_ok: bool):
         """Add this touchdown's result(s) to the Pass/Fail counters - once
         per REAL die in the shot when the recipe tagged its passfail steps
         with a Die #, not once per touchdown.
@@ -3891,12 +3891,12 @@ class MainLayout(ttk.Frame):
         them. Without this, a quad with two real dies (one PASS, one FAIL)
         added exactly one tally for the whole shot, so the counters showed
         results by SHOT (touchdown) instead of by DIE - the same "counts
-        shots, not dies" complaint _exec2_run_steps_once's passfail-step
+        shots, not dies" complaint _exec_run_steps_once's passfail-step
         found-is-None gap partly caused, but this half of it lives here,
         not there: even with slot_verdicts fully and correctly populated,
-        nothing before this ever expanded ONE _exec2_add_pass/_exec2_add_fail
+        nothing before this ever expanded ONE _exec_add_pass/_exec_add_fail
         call per touchdown into one per die for the OVERALL counters (only
-        _exec2_color_shot_squares, just above, already did that for the map
+        _exec_color_shot_squares, just above, already did that for the map
         squares).
 
         An empty NA/TARGET corner still gets a passfail verdict (LAMP
@@ -3905,9 +3905,9 @@ class MainLayout(ttk.Frame):
         eg_pma_run_panel._measure_here already applies on the Electroglas
         side, so both systems agree on what "a die" means here. ids_by_slot
         is 0-indexed by die # - 1 (die #1 is index 0), built by
-        _exec2_publish_die_slots_for/_at right before the steps ran.
+        _exec_publish_die_slots_for/_at right before the steps ran.
         """
-        slot_verdicts = dict(getattr(self, "_exec2_slot_verdicts", None) or {})
+        slot_verdicts = dict(getattr(self, "_exec_slot_verdicts", None) or {})
         if shot_geom is not None and slot_verdicts:
             counted = 0
             for die_num, passed in sorted(slot_verdicts.items()):
@@ -3916,18 +3916,18 @@ class MainLayout(ttk.Frame):
                 if (die_id or "").strip().upper() in ("", "NA"):
                     continue
                 counted += 1
-                self._exec2_safe_after(
-                    self._exec2_add_pass if passed else self._exec2_add_fail)
+                self._exec_safe_after(
+                    self._exec_add_pass if passed else self._exec_add_fail)
             if counted:
                 return
             # No slot resolved to a real, named die (e.g. no Wafer Builder
             # map published yet) - fall through to the single combined
             # tally below rather than silently adding nothing for a real
             # touchdown that WAS measured.
-        self._exec2_safe_after(
-            self._exec2_add_pass if fallback_ok else self._exec2_add_fail)
+        self._exec_safe_after(
+            self._exec_add_pass if fallback_ok else self._exec_add_fail)
 
-    def _exec2_minor_move_thread(self, shots: list, my_token: int, overlay_offset: tuple,
+    def _exec_minor_move_thread(self, shots: list, my_token: int, overlay_offset: tuple,
                                  shot_rows: int, shot_cols: int, shot_cells: dict):
         """One touchdown per shot, exactly like the native G/J path - the
         difference is what happens AT that touchdown. A shot lands on die
@@ -3941,8 +3941,8 @@ class MainLayout(ttk.Frame):
         """
         prober = self.controller.drivers.get("prober")
         if not (prober and prober.inst):
-            self._exec2_log("[RUN] ERROR: prober not connected")
-            self._exec2_finish_run(my_token, "ERROR: prober not connected", "#dc2626")
+            self._exec_log("[RUN] ERROR: prober not connected")
+            self._exec_finish_run(my_token, "ERROR: prober not connected", "#dc2626")
             return
         error_msg = None
         row_offset, col_offset = overlay_offset
@@ -3953,13 +3953,13 @@ class MainLayout(ttk.Frame):
         def shot_rc_for(pick_row, pick_col):
             """Which (shot_row, shot_col) a real absolute die coordinate
             falls in - same floor-division Next Shot/Previous Shot use
-            (_exec2_go_to_shot/_exec2_current_shot_index)."""
+            (_exec_go_to_shot/_exec_current_shot_index)."""
             wb_row = pick_row - row_offset
             wb_col = pick_col - col_offset
             return wb_row // shot_rows, wb_col // shot_cols
 
         def publish_die_slots(shot_row, shot_col):
-            """Tell _exec2_run_steps_once/_exec2_slot_identity where each
+            """Tell _exec_run_steps_once/_exec_slot_identity where each
             die # in THIS shot really sits, and what its real die ID is -
             same publish-before-run pattern
             eg_pma_run_panel._advance_touchdown already uses for
@@ -3968,11 +3968,11 @@ class MainLayout(ttk.Frame):
             step's own Die # field) instead of the shot's landing square
             for all of them. Cleared after the shot in the caller.
 
-            Body lives in _exec2_publish_die_slots_for so the standalone
-            Measure button (_exec2_touchdown_then_measure) can do exactly
+            Body lives in _exec_publish_die_slots_for so the standalone
+            Measure button (_exec_touchdown_then_measure) can do exactly
             the same publication for whichever shot the chuck is
             currently on, not just a full Minor Moves run."""
-            self._exec2_publish_die_slots_for(
+            self._exec_publish_die_slots_for(
                 shot_row, shot_col, shot_rows, shot_cols, shot_cells,
                 row_offset, col_offset)
 
@@ -3996,43 +3996,43 @@ class MainLayout(ttk.Frame):
             die_y = shot_row * shot_rows + r + row_offset
             die_label = (f"shot R{shot_row}C{shot_col} die #{die_num} "
                         f"(X{die_x:.0f} Y{die_y:.0f})")
-            self._exec2_safe_after(lambda d=die_label: self._exec2_die_var.set(f"Die: {d}"))
-            self._exec2_safe_after(
+            self._exec_safe_after(lambda d=die_label: self._exec_die_var.set(f"Die: {d}"))
+            self._exec_safe_after(
                 lambda x=die_x, y=die_y:
-                self._exec2_xy_var.set(f"X: {x:.0f} die\nY: {y:.0f} die"))
-            self._exec2_die_num += 1
+                self._exec_xy_var.set(f"X: {x:.0f} die\nY: {y:.0f} die"))
+            self._exec_die_num += 1
 
-            self._exec2_log(f"[RUN] >> D  (Separate before move)")
+            self._exec_log(f"[RUN] >> D  (Separate before move)")
             prober.z_down()
 
-            self._exec2_log(f"[RUN] >> J  (Position die X={die_x:.0f} Y={die_y:.0f}, "
+            self._exec_log(f"[RUN] >> J  (Position die X={die_x:.0f} Y={die_y:.0f}, "
                             f"die #{die_num})")
             stb = prober.move_to_die_xy(die_x, die_y)
-            self._exec2_log(f"[RUN] << STB={stb}")
+            self._exec_log(f"[RUN] << STB={stb}")
             if stb == 81:
-                self._exec2_log("[RUN] << (wafer end)")
-                self._exec2_running = False
+                self._exec_log("[RUN] << (wafer end)")
+                self._exec_running = False
                 raise _Stop()
             if stb == 90:
-                self._exec2_log("[RUN] << (probing stop — <STOP> pushed)")
-                self._exec2_running = False
+                self._exec_log("[RUN] << (probing stop — <STOP> pushed)")
+                self._exec_running = False
                 raise _Stop()
-            self._exec2_ensure_separated(prober, stb)
+            self._exec_ensure_separated(prober, stb)
 
-            self._exec2_log("[RUN] >> Z  (Contact)")
+            self._exec_log("[RUN] >> Z  (Contact)")
             stb = prober.z_up()
             if stb != 67:
-                self._exec2_log(f"[RUN] Z Up returned STB={stb} (expected 67)")
+                self._exec_log(f"[RUN] Z Up returned STB={stb} (expected 67)")
 
         try:
-            self._exec2_refresh_xy_blocking(prober)
+            self._exec_refresh_xy_blocking(prober)
             for land_row, land_col in shots:
-                if (not self._exec2_running or self._exec2_aborted
-                        or self._exec2_run_token != my_token):
+                if (not self._exec_running or self._exec_aborted
+                        or self._exec_run_token != my_token):
                     break
-                self._exec2_safe_after(
-                    lambda r=land_row, c=land_col: self._exec2_highlight_current(r, c))
-                self._exec2_log(f"[RUN] Shot at picked R{land_row}C{land_col}: landing on die #1")
+                self._exec_safe_after(
+                    lambda r=land_row, c=land_col: self._exec_highlight_current(r, c))
+                self._exec_log(f"[RUN] Shot at picked R{land_row}C{land_col}: landing on die #1")
                 try:
                     goto_shot_die(land_row, land_col, 1)
                 except _Stop:
@@ -4040,17 +4040,17 @@ class MainLayout(ttk.Frame):
 
                 shot_row, shot_col = shot_rc_for(land_row, land_col)
                 publish_die_slots(shot_row, shot_col)
-                self._exec2_move_fn = (
+                self._exec_move_fn = (
                     lambda die_num, lr=land_row, lc=land_col: goto_shot_die(lr, lc, die_num))
                 try:
-                    shot_ok = self._exec2_run_steps_once()
+                    shot_ok = self._exec_run_steps_once()
                 finally:
-                    self._exec2_move_fn = None
-                    self._exec2_die_rc_by_slot = []
-                    self._exec2_die_ids_by_slot = []
-                    self._exec2_die_shotpos_by_slot = []
+                    self._exec_move_fn = None
+                    self._exec_die_rc_by_slot = []
+                    self._exec_die_ids_by_slot = []
+                    self._exec_die_shotpos_by_slot = []
 
-                self._exec2_log("[RUN] >> D  (Separate)")
+                self._exec_log("[RUN] >> D  (Separate)")
                 prober.z_down()
 
                 # Each die in the shot passes or fails on its OWN square,
@@ -4058,7 +4058,7 @@ class MainLayout(ttk.Frame):
                 # dies are independent devices. Falls back to the single
                 # combined verdict on the landing square only when the
                 # recipe never tagged a passfail step with a Die #.
-                slot_verdicts = dict(getattr(self, "_exec2_slot_verdicts", None) or {})
+                slot_verdicts = dict(getattr(self, "_exec_slot_verdicts", None) or {})
                 if slot_verdicts:
                     for die_num, passed in sorted(slot_verdicts.items()):
                         rc = shot_die_rc(shot_cells, shot_rows, shot_cols, die_num)
@@ -4067,33 +4067,33 @@ class MainLayout(ttk.Frame):
                         r, c = rc
                         real_row = shot_row * shot_rows + r + row_offset
                         real_col = shot_col * shot_cols + c + col_offset
-                        self._exec2_safe_after(
-                            self._exec2_add_pass if passed else self._exec2_add_fail)
-                        self._exec2_update_die_color(real_row, real_col, passed)
+                        self._exec_safe_after(
+                            self._exec_add_pass if passed else self._exec_add_fail)
+                        self._exec_update_die_color(real_row, real_col, passed)
                 else:
-                    self._exec2_safe_after(
-                        self._exec2_add_pass if shot_ok else self._exec2_add_fail)
-                    self._exec2_update_die_color(land_row, land_col, shot_ok)
+                    self._exec_safe_after(
+                        self._exec_add_pass if shot_ok else self._exec_add_fail)
+                    self._exec_update_die_color(land_row, land_col, shot_ok)
         except Exception as e:
             error_msg = str(e)
-            self._exec2_log(f"[RUN] ERROR: {e}")
+            self._exec_log(f"[RUN] ERROR: {e}")
         finally:
-            self._exec2_move_fn = None
+            self._exec_move_fn = None
             if error_msg:
-                self._exec2_finish_run(my_token, f"ERROR: {error_msg[:60]}", "#dc2626")
+                self._exec_finish_run(my_token, f"ERROR: {error_msg[:60]}", "#dc2626")
             else:
-                self._exec2_finish_run(my_token, "FINISHED (Minor Moves)", "#16a34a")
+                self._exec_finish_run(my_token, "FINISHED (Minor Moves)", "#16a34a")
 
-    def _exec2_on_sites_changed(self, picks):
-        self._exec2_sites_var.set(self._exec2_sites_label(picks))
-        btn = getattr(self, "_exec2_select_all_btn", None)
-        dies = self._exec2_wafer_map._last_dies
+    def _exec_on_sites_changed(self, picks):
+        self._exec_sites_var.set(self._exec_sites_label(picks))
+        btn = getattr(self, "_exec_select_all_btn", None)
+        dies = self._exec_wafer_map._last_dies
         if btn and dies:
             all_rc = {(d["row"], d["col"]) for d in dies}
             is_all = bool(all_rc) and set(picks) == all_rc
             btn.config(text="☐ Deselect All" if is_all else "☑ Select All")
 
-    def _exec2_sites_label(self, picks) -> str:
+    def _exec_sites_label(self, picks) -> str:
         """Header over the map. One pick names what sits on that square.
 
         On Accretech a square is one prober die, which for a quad product is a
@@ -4106,8 +4106,8 @@ class MainLayout(ttk.Frame):
         if n != 1:
             return f"Test sites: {n} picked"
         rc = tuple(picks[0])
-        ids = ((self._exec2_overlay_die_ids or {}).get(rc, "")
-               or self._exec2_wafer_map.die_ids.get(rc, ""))
+        ids = ((self._exec_overlay_die_ids or {}).get(rc, "")
+               or self._exec_wafer_map.die_ids.get(rc, ""))
         where = f"Test site: 1 picked — R{rc[0]}C{rc[1]}"
         if not ids:
             return f"{where} (no die ID on this square)"
@@ -4116,36 +4116,36 @@ class MainLayout(ttk.Frame):
             return f"{where}:  {ids}"
         return f"{where}, touchdown of {len(devices)} devices:  {ids}"
 
-    def _exec2_randomize_sites(self):
-        dies = self._exec2_wafer_map._last_dies
+    def _exec_randomize_sites(self):
+        dies = self._exec_wafer_map._last_dies
         if not dies:
-            self._exec2_log("[RUN] No wafer map loaded.")
+            self._exec_log("[RUN] No wafer map loaded.")
             return
         import random
         pool = [(d["row"], d["col"]) for d in dies]
         picks = random.sample(pool, min(5, len(pool)))
-        self._exec2_wafer_map.set_picked(picks)
-        self._exec2_on_sites_changed(picks)
-        self._exec2_log("[RUN] Randomized test sites: "
+        self._exec_wafer_map.set_picked(picks)
+        self._exec_on_sites_changed(picks)
+        self._exec_log("[RUN] Randomized test sites: "
                         + ", ".join(f"R{r}C{c}" for r, c in picks))
 
-    def _exec2_toggle_select_all(self):
-        dies = self._exec2_wafer_map._last_dies
+    def _exec_toggle_select_all(self):
+        dies = self._exec_wafer_map._last_dies
         if not dies:
-            self._exec2_log("[RUN] No wafer map loaded — load one before selecting dies.")
+            self._exec_log("[RUN] No wafer map loaded — load one before selecting dies.")
             return
         all_rc = [(d["row"], d["col"]) for d in dies]
-        already_all = set(self._exec2_wafer_map.get_picked()) == set(all_rc)
+        already_all = set(self._exec_wafer_map.get_picked()) == set(all_rc)
         if already_all:
-            self._exec2_wafer_map.set_picked([])
-            self._exec2_on_sites_changed([])
-            self._exec2_log("[RUN] Deselected all dies.")
+            self._exec_wafer_map.set_picked([])
+            self._exec_on_sites_changed([])
+            self._exec_log("[RUN] Deselected all dies.")
         else:
-            self._exec2_wafer_map.set_picked(all_rc)
-            self._exec2_on_sites_changed(all_rc)
-            self._exec2_log(f"[RUN] Selected all {len(all_rc)} die(s).")
+            self._exec_wafer_map.set_picked(all_rc)
+            self._exec_on_sites_changed(all_rc)
+            self._exec_log(f"[RUN] Selected all {len(all_rc)} die(s).")
 
-    def _exec2_picks_as_touchdowns(self, picks) -> list:
+    def _exec_picks_as_touchdowns(self, picks) -> list:
         """Collapse picked map cells to one cell per PROBER TOUCHDOWN.
 
         On Accretech a square already is a touchdown, so this is a no-op. On
@@ -4176,7 +4176,7 @@ class MainLayout(ttk.Frame):
             out.append(anchor_rc.get(seq, rc))
         return out
 
-    def _exec2_touchdown_cells(self, picks) -> list:
+    def _exec_touchdown_cells(self, picks) -> list:
         """The inverse: every cell belonging to the touchdowns in `picks`.
 
         Used for DISPLAY, so selecting a recipe lights up whole shots rather
@@ -4197,7 +4197,7 @@ class MainLayout(ttk.Frame):
                     out.append(cell)
         return out
 
-    def _exec2_map_die_id_lookup(self) -> dict:
+    def _exec_map_die_id_lookup(self) -> dict:
         """die_id (label string) -> (row, col), from the CURRENTLY LOADED
         wafer map - the ground truth for what is physically on each square.
 
@@ -4211,26 +4211,26 @@ class MainLayout(ttk.Frame):
         Only UNIQUE labels make it in (a die_id that appears at exactly one
         square on the loaded map) - a repeated label (e.g. every PCM
         structure literally named "PCM") cannot be told apart by the id
-        alone. _exec2_resolve_site_cells checks the site's own (row, col)
+        alone. _exec_resolve_site_cells checks the site's own (row, col)
         against the map directly first, before ever consulting this table,
         so a repeated-label site with its correct position already recorded
         still resolves right without needing to be unique here.
         """
         counts, single = {}, {}
-        for rc, label in (self._exec2_wafer_map.die_ids or {}).items():
+        for rc, label in (self._exec_wafer_map.die_ids or {}).items():
             if not label:
                 continue
             counts[label] = counts.get(label, 0) + 1
             single[label] = rc
         return {label: rc for label, rc in single.items() if counts[label] == 1}
 
-    def _exec2_resolve_site_cells(self, sites) -> list:
+    def _exec_resolve_site_cells(self, sites) -> list:
         """(row, col) to select for each recipe/PMA touchdown `sites` entry
         (dicts with row/col and optionally die_id).
 
         Accretech: unchanged - the site's own (row, col) is used as-is (a
         Minor Moves recipe's per-slot row/col is itself authoritative there,
-        see _exec2_apply_recipe_sites's docstring).
+        see _exec_apply_recipe_sites's docstring).
 
         Electroglas, per site:
           1. If the site's own (row, col) is already where the map says
@@ -4245,8 +4245,8 @@ class MainLayout(ttk.Frame):
         """
         if self._system != "electroglas":
             return [(s["row"], s["col"]) for s in sites]
-        wm_ids = self._exec2_wafer_map.die_ids or {}
-        unique_id_to_rc = self._exec2_map_die_id_lookup()
+        wm_ids = self._exec_wafer_map.die_ids or {}
+        unique_id_to_rc = self._exec_map_die_id_lookup()
         resolved, unmatched = [], 0
         for s in sites:
             die_id = (s.get("die_id") or "").strip()
@@ -4261,59 +4261,59 @@ class MainLayout(ttk.Frame):
                         unmatched += 1
             resolved.append(rc)
         if unmatched:
-            self._exec2_log(
+            self._exec_log(
                 f"[RUN] {unmatched} of {len(sites)} touchdown(s) named a die ID "
                 "that doesn't match the map at its own (row, col)")
         return resolved
 
-    def _exec2_loaded_recipe_name(self) -> str:
+    def _exec_loaded_recipe_name(self) -> str:
         """The recipe the Run tab currently has loaded, if any."""
-        if not getattr(self, "_exec2_steps", None):
+        if not getattr(self, "_exec_steps", None):
             return ""
         try:
             return self.recipe_panel.get_active_recipe() or ""
         except Exception:
             return ""
 
-    def _exec2_load_selected_map(self, quiet_if_missing: bool = False):
+    def _exec_load_selected_map(self, quiet_if_missing: bool = False):
         # Only ever a recipe's own touchdown list - the standalone
         # "Load Selected Map" button is gone (picking a recipe from the
-        # dropdown already does this, via _exec2_apply_recipe_sites/here),
+        # dropdown already does this, via _exec_apply_recipe_sites/here),
         # and the old
         # folder-level CSV fallback used to load a stale selection even with
         # no recipe loaded at all. With no recipe loaded there is nothing to
         # select, so this is now a no-op rather than resurrecting whatever
         # was last saved to that file.
-        recipe = self._exec2_loaded_recipe_name()
+        recipe = self._exec_loaded_recipe_name()
         if not recipe:
             return []
         get_records = getattr(self.recipe_panel, "get_site_records", None)
         sites = list(get_records()) if get_records else []
         if not sites:
             if not quiet_if_missing:
-                self._exec2_log(
+                self._exec_log(
                     f"[RUN] Recipe '{recipe}' has no touchdown list yet — click "
                     "dies on the map, then Recipe tab's Take from map selection.")
             return []
-        resolved = self._exec2_resolve_site_cells(sites)
+        resolved = self._exec_resolve_site_cells(sites)
         picks = list(resolved)
         ids = {rc: s["die_id"] for rc, s in zip(resolved, sites) if s.get("die_id")}
-        picks = [rc for rc in self._exec2_touchdown_cells(picks)
-                 if rc in self._exec2_wafer_map.dies] or picks
-        self._exec2_wafer_map.set_picked(picks)
-        self._exec2_on_sites_changed(picks)
+        picks = [rc for rc in self._exec_touchdown_cells(picks)
+                 if rc in self._exec_wafer_map.dies] or picks
+        self._exec_wafer_map.set_picked(picks)
+        self._exec_on_sites_changed(picks)
         # Accretech-only: a Minor Moves recipe's own SITE table knows the
         # true per-slot die_id inside a shot square, which the map itself
-        # cannot label (see _exec2_apply_recipe_sites for the full reason).
+        # cannot label (see _exec_apply_recipe_sites for the full reason).
         # On Electroglas the Wafer Builder map IS the ground truth for die
         # IDs - a recipe (especially one whose touchdown resolution isn't
         # trusted yet, e.g. a PMA-based recipe) must only ever select/
         # highlight squares here, never relabel them.
         #
-        # MERGED into the existing overlay, not _exec2_clear_overlay()+
+        # MERGED into the existing overlay, not _exec_clear_overlay()+
         # replaced - a recipe selects touchdowns, it does not get to
         # redefine what the wafer map itself already knows about every
-        # OTHER die. This used to wipe _exec2_overlay_die_ids down to just
+        # OTHER die. This used to wipe _exec_overlay_die_ids down to just
         # this recipe's own (often smaller) touchdown list on every recipe
         # switch, so a die ID shown under one recipe would visibly vanish
         # the moment a different recipe on the same folder - with fewer or
@@ -4323,28 +4323,28 @@ class MainLayout(ttk.Frame):
         # every time regardless, so nothing here depends on the dict
         # itself having been emptied first.
         if ids and self._system == "accretech":
-            self._exec2_overlay_die_ids = {**(self._exec2_overlay_die_ids or {}), **ids}
-            self._exec2_redraw_overlay_on_run_map()
-            self._exec2_redraw_overlay_on_results_map()
-        self._exec2_log(f"[RUN] Loaded {len(picks)} touchdown(s) from "
+            self._exec_overlay_die_ids = {**(self._exec_overlay_die_ids or {}), **ids}
+            self._exec_redraw_overlay_on_run_map()
+            self._exec_redraw_overlay_on_results_map()
+        self._exec_log(f"[RUN] Loaded {len(picks)} touchdown(s) from "
                         f"recipe '{recipe}'.")
         return picks
 
-    def _exec2_start_test_selected(self):
-        if self._exec2_running:
-            self._exec2_log("[RUN] A run is already active.")
+    def _exec_start_test_selected(self):
+        if self._exec_running:
+            self._exec_log("[RUN] A run is already active.")
             return
-        sites = self._exec2_wafer_map.get_picked()
+        sites = self._exec_wafer_map.get_picked()
         if not sites:
-            sites = self._exec2_load_selected_map(quiet_if_missing=True)
+            sites = self._exec_load_selected_map(quiet_if_missing=True)
         if not sites:
-            self._exec2_log("[RUN] Test Selected: no dies selected")
+            self._exec_log("[RUN] Test Selected: no dies selected")
             return
-        self._exec2_log(f"[RUN] Test Selected — {len(sites)} selected die(s): "
+        self._exec_log(f"[RUN] Test Selected — {len(sites)} selected die(s): "
                         + ", ".join(f"R{r}C{c}" for r, c in sites))
-        self._exec2_start_test_die()
+        self._exec_start_test_die()
 
-    def _exec2_start_run(self):
+    def _exec_start_run(self):
         """The real, full-story entry point: the recipe's own saved
         touchdown list (Recipe tab's Touchdowns table - the same list
         Take from map selection/Take die IDs/Pull shots build), Minor
@@ -4359,33 +4359,33 @@ class MainLayout(ttk.Frame):
         touchdown list (one entry per shot) rather than relying on this
         fallback for a real run.
         """
-        if self._exec2_running:
-            self._exec2_log("[RUN] A run is already active.")
+        if self._exec_running:
+            self._exec_log("[RUN] A run is already active.")
             return
-        if not self._exec2_can_start():
+        if not self._exec_can_start():
             return
         sites = self.recipe_panel.get_sites()
-        if self._system == "accretech" and self._exec2_minor_moves_active():
+        if self._system == "accretech" and self._exec_minor_moves_active():
             if not sites:
-                sites = list(self._exec2_wafer_map.dies.keys())
+                sites = list(self._exec_wafer_map.dies.keys())
             if not sites:
-                self._exec2_log("[RUN] Run: Minor Moves is on but there is no "
+                self._exec_log("[RUN] Run: Minor Moves is on but there is no "
                                 "wafer map loaded")
                 return
-            self._exec2_start_minor_moves(sites, "Run")
+            self._exec_start_minor_moves(sites, "Run")
             return
         if sites:
-            self._exec2_start_site_list(sites, "Run", "run")
+            self._exec_start_site_list(sites, "Run", "run")
             return
-        if not (self._exec2_wafer_map._last_dies or []):
-            self._exec2_log("[RUN] Run: no saved touchdowns on this recipe and "
+        if not (self._exec_wafer_map._last_dies or []):
+            self._exec_log("[RUN] Run: no saved touchdowns on this recipe and "
                             "no wafer map loaded.")
             return
-        self._exec2_log("[RUN] Run — no saved touchdowns on this recipe, "
+        self._exec_log("[RUN] Run — no saved touchdowns on this recipe, "
                         "walking the whole wafer map instead.")
-        self._exec2_start_full_die_walk("Run")
+        self._exec_start_full_die_walk("Run")
 
-    def _exec2_wafer_builder_grid(self) -> list:
+    def _exec_wafer_builder_grid(self) -> list:
         """[{"row","col","die_ids","raw_text"}] from the Wafer Builder's Die
         Map, in die-pitch units - the same shape pma_shots_to_grid produces,
         so centroid_offset/merge_with_accretech work unchanged.
@@ -4413,19 +4413,19 @@ class MainLayout(ttk.Frame):
                        "die_ids": [d["die_id"]], "raw_text": d["die_id"]})
         return out
 
-    def _exec2_overlay_accretech_rc(self):
-        return set(self._exec2_wafer_map.dies.keys())
+    def _exec_overlay_accretech_rc(self):
+        return set(self._exec_wafer_map.dies.keys())
 
-    def _exec2_wafer_builder_footprint(self) -> set:
+    def _exec_wafer_builder_footprint(self) -> set:
         """Every (row, col) Wafer Builder considers part of the wafer -
         present in a real shot, whether or not that die has been named yet
-        - same row/col units as _exec2_wafer_builder_grid() (which only
+        - same row/col units as _exec_wafer_builder_grid() (which only
         keeps the NAMED subset, for labeling). This is what bounds
         Overlay's SELECTION to Wafer Builder's actual footprint - a wafer
         with fewer real shots than the Accretech extraction has die
         positions should select fewer squares, not the whole Accretech map.
         Empty if Wafer Builder has no map/shots defined at all, which
-        _exec2_overlay_all_accretech treats as "nothing to bound by" and
+        _exec_overlay_all_accretech treats as "nothing to bound by" and
         falls back to selecting everything (unchanged from before)."""
         gen = getattr(self, "recipe_gen", None)
         if gen is None:
@@ -4444,11 +4444,11 @@ class MainLayout(ttk.Frame):
         return out
 
     @staticmethod
-    def _exec2_overlay_all_accretech(grid: list, accretech_rc, row_offset: int,
+    def _exec_overlay_all_accretech(grid: list, accretech_rc, row_offset: int,
                                      col_offset: int, footprint: "set | None" = None) -> list:
         """One overlay entry per square the Accretech map actually has AND
         that falls within Wafer Builder's own footprint (see
-        _exec2_wafer_builder_footprint) once the offset is applied - unlike
+        _exec_wafer_builder_footprint) once the offset is applied - unlike
         merge_with_accretech (which drops any square the Wafer Builder grid
         has no real ID for), this covers every REAL shot Wafer Builder
         defines, labeling whichever of them also got a real ID. `footprint`
@@ -4469,24 +4469,24 @@ class MainLayout(ttk.Frame):
 
     _EXEC2_OVERLAY_MIN_DIE_PX = 22  # below this on-screen die width, overlay text is unreadable clutter
 
-    def _exec2_update_overlay_visibility(self):
-        if not self._exec2_overlay_items:
+    def _exec_update_overlay_visibility(self):
+        if not self._exec_overlay_items:
             return
-        wm = self._exec2_wafer_map
-        sample_rc = next(iter(self._exec2_overlay_die_ids), None)
+        wm = self._exec_wafer_map
+        sample_rc = next(iter(self._exec_overlay_die_ids), None)
         item = wm.dies.get(sample_rc) if sample_rc else None
         bbox = wm.canvas.bbox(item) if item is not None else None
         if not bbox:
             return
         width_px = bbox[2] - bbox[0]
         state = "normal" if width_px >= self._EXEC2_OVERLAY_MIN_DIE_PX else "hidden"
-        for it in self._exec2_overlay_items:
+        for it in self._exec_overlay_items:
             try:
                 wm.canvas.itemconfigure(it, state=state)
             except tk.TclError:
                 pass
 
-    def _exec2_debounced(self, pending_attr: str, fn, delay_ms: int = 60):
+    def _exec_debounced(self, pending_attr: str, fn, delay_ms: int = 60):
         """Wrap fn so a burst of calls (a fast mouse-wheel scroll, or a
         middle-drag pan - both fire many events a second) collapses into
         one call ~delay_ms after the last one in the burst, rather than
@@ -4513,18 +4513,18 @@ class MainLayout(ttk.Frame):
             setattr(self, pending_attr, self.after(delay_ms, _fire))
         return _schedule
 
-    def _exec2_redraw_overlay_on_run_map(self):
+    def _exec_redraw_overlay_on_run_map(self):
         # Explicitly clear first: a full redraw has already wiped the canvas,
         # but a ZOOM has not - it scales items in place - so without this the
         # old labels would survive alongside the new ones.
-        self._exec2_clear_overlay_labels(self._exec2_wafer_map,
-                                         self._exec2_overlay_items)
-        if self._exec2_overlay_die_ids:
-            self._exec2_overlay_items = self._exec2_draw_overlay_labels_on(
-                self._exec2_wafer_map, self._exec2_overlay_die_ids)
+        self._exec_clear_overlay_labels(self._exec_wafer_map,
+                                         self._exec_overlay_items)
+        if self._exec_overlay_die_ids:
+            self._exec_overlay_items = self._exec_draw_overlay_labels_on(
+                self._exec_wafer_map, self._exec_overlay_die_ids)
         else:
-            self._exec2_overlay_items = []
-        self._exec2_update_overlay_visibility()
+            self._exec_overlay_items = []
+        self._exec_update_overlay_visibility()
         # The PMA runner's "you are here" box is drawn on this same canvas and
         # is wiped by the same rebuild, so it re-draws off the one hook rather
         # than competing for on_redraw.
@@ -4536,20 +4536,20 @@ class MainLayout(ttk.Frame):
             except Exception:
                 pass
         if self._system == "accretech":
-            self._exec2_update_shot_window()
+            self._exec_update_shot_window()
 
-    def _exec2_redraw_overlay_on_results_map(self):
+    def _exec_redraw_overlay_on_results_map(self):
         rwm = getattr(self, "_results_wafer_map", None)
         if rwm is None:
             return
-        self._exec2_clear_overlay_labels(rwm, self._exec2_overlay_result_items)
-        if not self._exec2_overlay_die_ids:
-            self._exec2_overlay_result_items = []
+        self._exec_clear_overlay_labels(rwm, self._exec_overlay_result_items)
+        if not self._exec_overlay_die_ids:
+            self._exec_overlay_result_items = []
             return
-        self._exec2_overlay_result_items = self._exec2_draw_overlay_labels_on(
-            rwm, self._exec2_overlay_die_ids)
+        self._exec_overlay_result_items = self._exec_draw_overlay_labels_on(
+            rwm, self._exec_overlay_die_ids)
 
-    def _exec2_clear_overlay_labels(self, wm, items: list):
+    def _exec_clear_overlay_labels(self, wm, items: list):
         for item in items:
             try:
                 wm.canvas.delete(item)
@@ -4557,14 +4557,14 @@ class MainLayout(ttk.Frame):
                 pass
         items.clear()
 
-    def _exec2_clear_overlay(self):
-        self._exec2_clear_overlay_labels(self._exec2_wafer_map, self._exec2_overlay_items)
+    def _exec_clear_overlay(self):
+        self._exec_clear_overlay_labels(self._exec_wafer_map, self._exec_overlay_items)
         rwm = getattr(self, "_results_wafer_map", None)
         if rwm is not None:
-            self._exec2_clear_overlay_labels(rwm, self._exec2_overlay_result_items)
-        self._exec2_overlay_die_ids = {}
+            self._exec_clear_overlay_labels(rwm, self._exec_overlay_result_items)
+        self._exec_overlay_die_ids = {}
 
-    def _exec2_persist_overlay_offset(self):
+    def _exec_persist_overlay_offset(self):
         """Writes the Overlay's current alignment into the active Wafer
         Builder map's saved JSON immediately, the moment it's confirmed (or
         cleared) - NOT deferred until some later save.
@@ -4573,13 +4573,13 @@ class MainLayout(ttk.Frame):
         from map selection (recipe_panel._sites_from_map) saves the loaded
         RECIPE's touchdown list, not the map file, and pressing it is not
         guaranteed to happen right after Overlay at all. Without this, the
-        alignment only ever lived in the self._exec2_overlay_* instance
+        alignment only ever lived in the self._exec_overlay_* instance
         attributes and was gone the moment the app closed - see
         recipe_gen_panel._state_to_dict/_state_from_dict for the fields this
-        writes, and _exec2_reapply_overlay for the restore side.
+        writes, and _exec_reapply_overlay for the restore side.
         """
         gen = getattr(self, "recipe_gen", None)
-        folder = getattr(self, "_exec2_map_folder", None) or getattr(self, "_ata_folder", None)
+        folder = getattr(self, "_exec_map_folder", None) or getattr(self, "_ata_folder", None)
         if gen is None or not folder:
             return
         name_var = getattr(gen, "map_name_var", None)
@@ -4588,10 +4588,10 @@ class MainLayout(ttk.Frame):
         try:
             gen._autosave_named_map_quiet(folder)
         except Exception as e:
-            self._exec2_log(f"[RUN] Could not save Overlay alignment: "
+            self._exec_log(f"[RUN] Could not save Overlay alignment: "
                             f"{type(e).__name__}: {e}")
 
-    def _exec2_reapply_overlay(self):
+    def _exec_reapply_overlay(self):
         """Redraws the Overlay's saved alignment against whatever Accretech
         map/Wafer Builder grid this ATA folder just loaded.
 
@@ -4600,14 +4600,14 @@ class MainLayout(ttk.Frame):
         Builder map itself, since that offset is meaningless without knowing
         which map it was confirmed against) - this just re-draws from them,
         called from load_ata_folder AFTER the Accretech map is actually on
-        screen (_exec2_overlay_accretech_rc needs self._exec2_wafer_map.dies
+        screen (_exec_overlay_accretech_rc needs self._exec_wafer_map.dies
         populated, which is not true yet at state-restore time during a
         folder switch). A no-op if nothing was ever confirmed, or if the
         Accretech map turned out empty (e.g. Overlay was confirmed against a
         wafer map source that is no longer loaded).
 
         Accretech-only: the Overlay sub-tab itself only exists there (see
-        _tab_pma_wafer/_exec2_build_overlay_tab), reconciling the Accretech
+        _tab_pma_wafer/_exec_build_overlay_tab), reconciling the Accretech
         hardware-extracted map against the Wafer Builder grid.
         The confirmed flag/offsets live in the Wafer Builder map's own JSON
         though, which is shared and cross-synced between both systems (see
@@ -4618,39 +4618,39 @@ class MainLayout(ttk.Frame):
         """
         if self._system != "accretech":
             return
-        if not self._exec2_overlay_offset_confirmed:
+        if not self._exec_overlay_offset_confirmed:
             return
-        accretech_rc = self._exec2_overlay_accretech_rc()
+        accretech_rc = self._exec_overlay_accretech_rc()
         if not accretech_rc:
             return
-        grid = self._exec2_wafer_builder_grid()
-        footprint = self._exec2_wafer_builder_footprint()
-        matched = self._exec2_overlay_all_accretech(
-            grid, accretech_rc, self._exec2_overlay_row_offset,
-            self._exec2_overlay_col_offset, footprint)
-        self._exec2_draw_overlay(matched)
-        self._exec2_log(
+        grid = self._exec_wafer_builder_grid()
+        footprint = self._exec_wafer_builder_footprint()
+        matched = self._exec_overlay_all_accretech(
+            grid, accretech_rc, self._exec_overlay_row_offset,
+            self._exec_overlay_col_offset, footprint)
+        self._exec_draw_overlay(matched)
+        self._exec_log(
             f"[RUN] Overlay restored from the saved map ({len(matched)} die(s), "
-            f"row {self._exec2_overlay_row_offset:+d}, col {self._exec2_overlay_col_offset:+d}).")
+            f"row {self._exec_overlay_row_offset:+d}, col {self._exec_overlay_col_offset:+d}).")
 
     _OVERLAY_FONT = ("Consolas", 7)
 
-    def _exec2_overlay_font(self):
+    def _exec_overlay_font(self):
         # Cached: tkfont.Font is not free to build, and this runs per zoom step.
         if getattr(self, "_overlay_font_obj", None) is None:
             self._overlay_font_obj = tkfont.Font(family=self._OVERLAY_FONT[0],
                                                  size=self._OVERLAY_FONT[1])
         return self._overlay_font_obj
 
-    def _exec2_label_min_px(self) -> float:
-        # See _exec2_label_min_px_var's own comment (__init__) - shared with
+    def _exec_label_min_px(self) -> float:
+        # See _exec_label_min_px_var's own comment (__init__) - shared with
         # the Wafer Builder Die Map tab's "Label min width (px):" Spinbox.
         try:
-            return float(self._exec2_label_min_px_var.get())
+            return float(self._exec_label_min_px_var.get())
         except (tk.TclError, ValueError):
             return 22.0
 
-    def _exec2_labels_fit(self, wm, die_ids_by_rc: dict) -> bool:
+    def _exec_labels_fit(self, wm, die_ids_by_rc: dict) -> bool:
         """Is a die currently drawn big enough to hold its ID?
 
         Zoomed out, a whole-wafer map draws dies a few pixels across and the
@@ -4659,7 +4659,7 @@ class MainLayout(ttk.Frame):
         against the LONGEST label, so a quad ID like 'TARGET' does not
         overflow its neighbour.
 
-        _exec2_label_min_px() is an extra, operator-adjustable floor on top
+        _exec_label_min_px() is an extra, operator-adjustable floor on top
         of that - raising it hides labels until zoomed in further even if
         they would already fit text-wise; it can never cause an overflow,
         since the text-fit check above still applies regardless of where
@@ -4669,13 +4669,13 @@ class MainLayout(ttk.Frame):
         if box_w <= 0:
             return False
         longest = max(die_ids_by_rc.values(), key=len, default="")
-        font = self._exec2_overlay_font()
+        font = self._exec_overlay_font()
         return (box_w >= font.measure(longest) + 3
-                and box_w >= self._exec2_label_min_px()
+                and box_w >= self._exec_label_min_px()
                 and box_h >= font.metrics("linespace"))
 
-    def _exec2_draw_overlay_labels_on(self, wm, die_ids_by_rc: dict) -> list:
-        if not self._exec2_labels_fit(wm, die_ids_by_rc):
+    def _exec_draw_overlay_labels_on(self, wm, die_ids_by_rc: dict) -> list:
+        if not self._exec_labels_fit(wm, die_ids_by_rc):
             return []
         items = []
         for rc, label_text in die_ids_by_rc.items():
@@ -4690,170 +4690,170 @@ class MainLayout(ttk.Frame):
                 cx, cy, text=label_text, font=self._OVERLAY_FONT, fill="#1e293b"))
         return items
 
-    def _exec2_draw_overlay(self, matched: list):
-        self._exec2_clear_overlay()
+    def _exec_draw_overlay(self, matched: list):
+        self._exec_clear_overlay()
         # Labels only for cells with a real ID - every cell in `matched`
         # still gets SELECTED below regardless, since Take from map
         # selection acts on the selection, not on which squares happened
-        # to get a label. See _exec2_overlay_all_accretech.
-        self._exec2_overlay_die_ids = {(d["row"], d["col"]): "/".join(d["die_ids"])
+        # to get a label. See _exec_overlay_all_accretech.
+        self._exec_overlay_die_ids = {(d["row"], d["col"]): "/".join(d["die_ids"])
                                        for d in matched if d["die_ids"]}
-        self._exec2_overlay_items = self._exec2_draw_overlay_labels_on(
-            self._exec2_wafer_map, self._exec2_overlay_die_ids)
+        self._exec_overlay_items = self._exec_draw_overlay_labels_on(
+            self._exec_wafer_map, self._exec_overlay_die_ids)
         rwm = getattr(self, "_results_wafer_map", None)
         if rwm is not None:
-            self._exec2_overlay_result_items = self._exec2_draw_overlay_labels_on(
-                rwm, self._exec2_overlay_die_ids)
+            self._exec_overlay_result_items = self._exec_draw_overlay_labels_on(
+                rwm, self._exec_overlay_die_ids)
         picks = [(d["row"], d["col"]) for d in matched]
-        self._exec2_wafer_map.set_picked(picks)
-        self._exec2_on_sites_changed(picks)
-        self._exec2_update_overlay_visibility()
+        self._exec_wafer_map.set_picked(picks)
+        self._exec_on_sites_changed(picks)
+        self._exec_update_overlay_visibility()
 
     # -- Overlay (moved from the Run tab's "Overlay…" popup onto its own
     # Wafer Builder sub-tab, inserted by _tab_pma_wafer - same underlying
-    # process/state (_exec2_overlay_row_offset/_col_offset/_offset_
-    # confirmed, _exec2_overlay_die_ids, _exec2_draw_overlay, _exec2_
-    # persist_overlay_offset, _exec2_clear_overlay, centroid_offset), just
+    # process/state (_exec_overlay_row_offset/_col_offset/_offset_
+    # confirmed, _exec_overlay_die_ids, _exec_draw_overlay, _exec_
+    # persist_overlay_offset, _exec_clear_overlay, centroid_offset), just
     # embedded controls instead of a Toplevel, plus its own small preview
     # map so the alignment is visible without needing the Run tab open at
     # the same time (a modal dialog could float over it; a separate
     # top-level tab can't). -----------------------------------------------
 
-    def _exec2_build_overlay_tab(self, parent):
+    def _exec_build_overlay_tab(self, parent):
         parent.rowconfigure(1, weight=1)
         parent.columnconfigure(0, weight=1)
 
-        self._exec2_overlay_preview_items: list = []
-        self._exec2_overlay_tab_matched: list = []
+        self._exec_overlay_preview_items: list = []
+        self._exec_overlay_tab_matched: list = []
 
         bar = ttk.Frame(parent, padding=8)
         bar.grid(row=0, column=0, sticky="ew")
 
-        self._exec2_overlay_summary_var = tk.StringVar(value="")
-        ttk.Label(bar, textvariable=self._exec2_overlay_summary_var,
+        self._exec_overlay_summary_var = tk.StringVar(value="")
+        ttk.Label(bar, textvariable=self._exec_overlay_summary_var,
                  font=("Consolas", 9), justify="left").grid(
                  row=0, column=0, columnspan=6, sticky="w", pady=(0, 6))
 
         ttk.Label(bar, text="Row offset:").grid(row=1, column=0, sticky="e")
-        self._exec2_overlay_row_var = tk.IntVar(value=0)
+        self._exec_overlay_row_var = tk.IntVar(value=0)
         ttk.Spinbox(bar, from_=-9999, to=9999, width=6,
-                   textvariable=self._exec2_overlay_row_var).grid(
+                   textvariable=self._exec_overlay_row_var).grid(
                    row=1, column=1, sticky="w", padx=(4, 16))
         ttk.Label(bar, text="Col offset:").grid(row=1, column=2, sticky="e")
-        self._exec2_overlay_col_var = tk.IntVar(value=0)
+        self._exec_overlay_col_var = tk.IntVar(value=0)
         ttk.Spinbox(bar, from_=-9999, to=9999, width=6,
-                   textvariable=self._exec2_overlay_col_var).grid(
+                   textvariable=self._exec_overlay_col_var).grid(
                    row=1, column=3, sticky="w", padx=(4, 16))
-        self._exec2_overlay_row_var.trace_add("write", self._exec2_overlay_tab_recompute)
-        self._exec2_overlay_col_var.trace_add("write", self._exec2_overlay_tab_recompute)
+        self._exec_overlay_row_var.trace_add("write", self._exec_overlay_tab_recompute)
+        self._exec_overlay_col_var.trace_add("write", self._exec_overlay_tab_recompute)
 
-        self._exec2_overlay_status_var = tk.StringVar(value="")
-        ttk.Label(bar, textvariable=self._exec2_overlay_status_var,
+        self._exec_overlay_status_var = tk.StringVar(value="")
+        ttk.Label(bar, textvariable=self._exec_overlay_status_var,
                  foreground="#6b7280", font=("Segoe UI", 8, "italic")).grid(
                  row=1, column=4, sticky="w")
 
         btns = ttk.Frame(parent, padding=(8, 0, 8, 8))
         btns.grid(row=2, column=0, sticky="ew")
-        ttk.Button(btns, text="Auto-Center", command=self._exec2_overlay_tab_center).pack(
+        ttk.Button(btns, text="Auto-Center", command=self._exec_overlay_tab_center).pack(
             side="left")
         ttk.Button(btns, text="Overlay on Map",
-                  command=self._exec2_overlay_tab_confirm).pack(side="left", padx=6)
+                  command=self._exec_overlay_tab_confirm).pack(side="left", padx=6)
         ttk.Button(btns, text="Clear Overlay",
-                  command=self._exec2_overlay_tab_clear).pack(side="left")
+                  command=self._exec_overlay_tab_clear).pack(side="left")
 
         map_lf = ttk.LabelFrame(parent, text="Accretech map", padding=6)
         map_lf.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
         map_lf.rowconfigure(0, weight=1)
         map_lf.columnconfigure(0, weight=1)
-        self._exec2_overlay_map = WaferMapPanel(map_lf, show_title=False, show_axis_grid=True)
-        self._exec2_overlay_map.grid(row=0, column=0, sticky="nsew")
+        self._exec_overlay_map = WaferMapPanel(map_lf, show_title=False, show_axis_grid=True)
+        self._exec_overlay_map.grid(row=0, column=0, sticky="nsew")
         # Same reason the Run tab's own map wires these: die-ID labels are
         # only drawn once a die is big enough on screen to hold the text
-        # (_exec2_labels_fit) - without a hook here, zooming this preview
+        # (_exec_labels_fit) - without a hook here, zooming this preview
         # in (what an operator actually needs to do to read the IDs and
         # judge whether the overlay is centered correctly) never re-checked
         # that and the labels just never appeared, or stayed wherever they
         # were before the zoom. _reset_view (double-click) already routes
         # through on_zoom too (see WaferMapPanel), so one hook covers both.
-        self._exec2_overlay_map.on_zoom = self._exec2_debounced(
-            "_exec2_overlay_zoom_debounce_id", self._exec2_overlay_tab_recompute)
-        self._exec2_overlay_map.on_redraw = self._exec2_overlay_tab_recompute
+        self._exec_overlay_map.on_zoom = self._exec_debounced(
+            "_exec_overlay_zoom_debounce_id", self._exec_overlay_tab_recompute)
+        self._exec_overlay_map.on_redraw = self._exec_overlay_tab_recompute
 
-    def _exec2_overlay_tab_recompute(self, *_a):
-        accretech_rc = self._exec2_overlay_accretech_rc()
-        grid = self._exec2_wafer_builder_grid()
-        footprint = self._exec2_wafer_builder_footprint()
+    def _exec_overlay_tab_recompute(self, *_a):
+        accretech_rc = self._exec_overlay_accretech_rc()
+        grid = self._exec_wafer_builder_grid()
+        footprint = self._exec_wafer_builder_footprint()
         try:
-            ro = self._exec2_overlay_row_var.get()
-            co = self._exec2_overlay_col_var.get()
+            ro = self._exec_overlay_row_var.get()
+            co = self._exec_overlay_col_var.get()
         except tk.TclError:
             return
-        matched = self._exec2_overlay_all_accretech(grid, accretech_rc, ro, co, footprint)
-        self._exec2_overlay_tab_matched = matched
+        matched = self._exec_overlay_all_accretech(grid, accretech_rc, ro, co, footprint)
+        self._exec_overlay_tab_matched = matched
         n_with_id = sum(1 for m in matched if m["die_ids"])
-        self._exec2_overlay_summary_var.set(
+        self._exec_overlay_summary_var.set(
             f"Accretech dies on map:   {len(accretech_rc)}\n"
             f"Wafer Builder footprint: {len(footprint)}  (named: {len(grid)})\n"
             f"Will select: {len(matched)}  ({n_with_id} labeled with a real ID)"
             + ("" if footprint else
                "\n\nNo Wafer Builder map loaded - selecting the Accretech "
                "map's own squares with no ID labels."))
-        wm = self._exec2_overlay_map
+        wm = self._exec_overlay_map
         ids = {(d["row"], d["col"]): "/".join(d["die_ids"]) for d in matched if d["die_ids"]}
-        self._exec2_clear_overlay_labels(wm, self._exec2_overlay_preview_items)
-        self._exec2_overlay_preview_items = self._exec2_draw_overlay_labels_on(wm, ids)
+        self._exec_clear_overlay_labels(wm, self._exec_overlay_preview_items)
+        self._exec_overlay_preview_items = self._exec_draw_overlay_labels_on(wm, ids)
         wm.set_picked([(d["row"], d["col"]) for d in matched])
 
-    def _exec2_overlay_tab_center(self):
-        grid = self._exec2_wafer_builder_grid()
-        accretech_rc = self._exec2_overlay_accretech_rc()
+    def _exec_overlay_tab_center(self):
+        grid = self._exec_wafer_builder_grid()
+        accretech_rc = self._exec_overlay_accretech_rc()
         if not grid or not accretech_rc:
-            self._exec2_overlay_tab_recompute()
+            self._exec_overlay_tab_recompute()
             return
         ro, co = centroid_offset(grid, accretech_rc)
-        self._exec2_overlay_row_var.set(ro)
-        self._exec2_overlay_col_var.set(co)
+        self._exec_overlay_row_var.set(ro)
+        self._exec_overlay_col_var.set(co)
 
-    def _exec2_overlay_tab_confirm(self):
-        if not self._exec2_overlay_accretech_rc():
-            self._exec2_log("[RUN] Overlay: no wafer map loaded")
+    def _exec_overlay_tab_confirm(self):
+        if not self._exec_overlay_accretech_rc():
+            self._exec_log("[RUN] Overlay: no wafer map loaded")
             return
-        self._exec2_overlay_tab_recompute()
-        matched = self._exec2_overlay_tab_matched
-        self._exec2_overlay_row_offset = self._exec2_overlay_row_var.get()
-        self._exec2_overlay_col_offset = self._exec2_overlay_col_var.get()
-        self._exec2_overlay_offset_confirmed = True
-        self._exec2_draw_overlay(matched)
-        self._exec2_persist_overlay_offset()
-        self._exec2_overlay_tab_status_update()
-        self._exec2_log(f"[RUN] Overlaid {len(matched)} die(s) from the "
+        self._exec_overlay_tab_recompute()
+        matched = self._exec_overlay_tab_matched
+        self._exec_overlay_row_offset = self._exec_overlay_row_var.get()
+        self._exec_overlay_col_offset = self._exec_overlay_col_var.get()
+        self._exec_overlay_offset_confirmed = True
+        self._exec_draw_overlay(matched)
+        self._exec_persist_overlay_offset()
+        self._exec_overlay_tab_status_update()
+        self._exec_log(f"[RUN] Overlaid {len(matched)} die(s) from the "
                         "Wafer Builder map onto the wafer map.")
 
-    def _exec2_overlay_tab_clear(self):
-        self._exec2_clear_overlay()
-        self._exec2_wafer_map.clear_picks()
-        self._exec2_on_sites_changed([])
-        self._exec2_overlay_offset_confirmed = False
-        self._exec2_persist_overlay_offset()
-        wm = getattr(self, "_exec2_overlay_map", None)
+    def _exec_overlay_tab_clear(self):
+        self._exec_clear_overlay()
+        self._exec_wafer_map.clear_picks()
+        self._exec_on_sites_changed([])
+        self._exec_overlay_offset_confirmed = False
+        self._exec_persist_overlay_offset()
+        wm = getattr(self, "_exec_overlay_map", None)
         if wm is not None:
-            self._exec2_clear_overlay_labels(wm, self._exec2_overlay_preview_items)
+            self._exec_clear_overlay_labels(wm, self._exec_overlay_preview_items)
             wm.clear_picks()
-        self._exec2_overlay_tab_status_update()
-        self._exec2_log("[RUN] Overlay cleared.")
+        self._exec_overlay_tab_status_update()
+        self._exec_log("[RUN] Overlay cleared.")
 
-    def _exec2_overlay_tab_status_update(self):
-        var = getattr(self, "_exec2_overlay_status_var", None)
+    def _exec_overlay_tab_status_update(self):
+        var = getattr(self, "_exec_overlay_status_var", None)
         if var is None:
             return
-        if self._exec2_overlay_offset_confirmed:
-            var.set(f"✅ confirmed (row {self._exec2_overlay_row_offset:+d}, "
-                    f"col {self._exec2_overlay_col_offset:+d})")
+        if self._exec_overlay_offset_confirmed:
+            var.set(f"✅ confirmed (row {self._exec_overlay_row_offset:+d}, "
+                    f"col {self._exec_overlay_col_offset:+d})")
         else:
             var.set("⚠ not yet confirmed")
 
-    def _exec2_on_wafer_builder_subtab_changed(self, _event=None):
-        widget = getattr(self, "_exec2_overlay_tab_widget", None)
+    def _exec_on_wafer_builder_subtab_changed(self, _event=None):
+        widget = getattr(self, "_exec_overlay_tab_widget", None)
         if widget is None:
             return
         try:
@@ -4861,52 +4861,52 @@ class MainLayout(ttk.Frame):
         except tk.TclError:
             return
         if current == str(widget):
-            self._exec2_overlay_tab_shown()
+            self._exec_overlay_tab_shown()
 
-    def _exec2_overlay_tab_shown(self):
+    def _exec_overlay_tab_shown(self):
         """Called whenever the Wafer Builder > Overlay sub-tab is selected -
         same "always freshly recomputed on arrival" approach Die Map already
         uses (see recipe_gen_panel._on_subtab_changed), so revisiting this
         tab never shows a stale preview from before the ATA folder/Die Map
         last changed."""
-        wm = getattr(self, "_exec2_overlay_map", None)
-        folder = getattr(self, "_exec2_map_folder", None) or getattr(self, "_ata_folder", None)
+        wm = getattr(self, "_exec_overlay_map", None)
+        folder = getattr(self, "_exec_map_folder", None) or getattr(self, "_ata_folder", None)
         if wm is None or not folder:
             return
         gen = getattr(self, "recipe_gen", None)
         pitch = gen._die_pitch() if gen is not None and hasattr(gen, "_die_pitch") else (1.0, 1.0)
         wm.load_from_ata(folder, filename=WAFER_MAP_SOURCES["Accretech"], pitch=pitch)
-        if self._exec2_overlay_offset_confirmed:
-            self._exec2_overlay_row_var.set(self._exec2_overlay_row_offset)
-            self._exec2_overlay_col_var.set(self._exec2_overlay_col_offset)
-            self._exec2_overlay_tab_recompute()
+        if self._exec_overlay_offset_confirmed:
+            self._exec_overlay_row_var.set(self._exec_overlay_row_offset)
+            self._exec_overlay_col_var.set(self._exec_overlay_col_offset)
+            self._exec_overlay_tab_recompute()
         else:
-            self._exec2_overlay_tab_center()
-        self._exec2_overlay_tab_status_update()
+            self._exec_overlay_tab_center()
+        self._exec_overlay_tab_status_update()
 
-    def _exec2_start_test_die(self):
-        if self._exec2_running:
-            self._exec2_log("[RUN] A run is already active.")
+    def _exec_start_test_die(self):
+        if self._exec_running:
+            self._exec_log("[RUN] A run is already active.")
             return
-        if not self._exec2_can_start():
+        if not self._exec_can_start():
             return
-        sites = self._exec2_wafer_map.get_picked()
+        sites = self._exec_wafer_map.get_picked()
         if not sites:
-            self._exec2_randomize_sites()
-            sites = self._exec2_wafer_map.get_picked()
+            self._exec_randomize_sites()
+            sites = self._exec_wafer_map.get_picked()
         if not sites:
-            self._exec2_log("[RUN] No dies available to pick test sites from.")
+            self._exec_log("[RUN] No dies available to pick test sites from.")
             return
         # Full Die/Test Selected are the plain "walk the dies, measure"
         # entry points - Minor Moves is ▶ Run's job now, not theirs. See
-        # _exec2_start_full_die's matching refusal.
-        if self._system == "accretech" and self._exec2_minor_moves_active():
-            self._exec2_log("[RUN] Test Die: this recipe has Minor Moves on — "
+        # _exec_start_full_die's matching refusal.
+        if self._system == "accretech" and self._exec_minor_moves_active():
+            self._exec_log("[RUN] Test Die: this recipe has Minor Moves on — "
                             "use Run instead.")
             return
-        self._exec2_start_site_list(sites, "Test Die", "test")
+        self._exec_start_site_list(sites, "Test Die", "test")
 
-    def _exec2_start_site_list(self, sites: list, mode_label: str, run_mode: str):
+    def _exec_start_site_list(self, sites: list, mode_label: str, run_mode: str):
         """Shared starter for a fixed list of (row, col) touchdowns - Test
         Die/Test Selected's picks, or ▶ Run's saved touchdown list."""
         # enable_picking(0) just below clears the map's picks (so nothing
@@ -4919,96 +4919,96 @@ class MainLayout(ttk.Frame):
         # wiped, so cassette_panel._start_next_run can replay the exact same
         # sites instead of relying on live map state that no longer exists.
         if run_mode == "test":
-            self._exec2_last_test_sites = list(sites)
-        self._exec2_reset_counts(total_dies=len(sites))
-        self._exec2_running  = True
-        self._exec2_set_running_buttons(True)
-        self._exec2_aborted  = False
-        self._exec2_run_mode = run_mode
-        self._exec2_run_token += 1
-        my_token = self._exec2_run_token
-        self._exec2_wafer_map.enable_picking(0)
-        self.after(0, lambda: self._exec2_set_state(f"RUNNING ({mode_label})", "#2563eb"))
-        self._exec2_log(f"[RUN] {mode_label} — {len(sites)} site(s): "
+            self._exec_last_test_sites = list(sites)
+        self._exec_reset_counts(total_dies=len(sites))
+        self._exec_running  = True
+        self._exec_set_running_buttons(True)
+        self._exec_aborted  = False
+        self._exec_run_mode = run_mode
+        self._exec_run_token += 1
+        my_token = self._exec_run_token
+        self._exec_wafer_map.enable_picking(0)
+        self.after(0, lambda: self._exec_set_state(f"RUNNING ({mode_label})", "#2563eb"))
+        self._exec_log(f"[RUN] {mode_label} — {len(sites)} site(s): "
                         + ", ".join(f"R{r}C{c}" for r, c in sites))
-        # Resolved here, on the main thread - see _exec2_prepare_shot_geometry.
+        # Resolved here, on the main thread - see _exec_prepare_shot_geometry.
         # Each site may be ANY die of its shot (not necessarily #1) - that's
         # fine, floor-dividing by the shot dims resolves to the same shot
         # regardless of which one was picked.
-        shot_geom = self._exec2_prepare_shot_geometry()
-        self._exec2_lot_thread = threading.Thread(
-            target=self._exec2_test_die_thread,
+        shot_geom = self._exec_prepare_shot_geometry()
+        self._exec_lot_thread = threading.Thread(
+            target=self._exec_test_die_thread,
             args=(sites, my_token, shot_geom), daemon=True)
-        self._exec2_lot_thread.start()
+        self._exec_lot_thread.start()
 
-    def _exec2_test_die_thread(self, sites, my_token: int, shot_geom=None):
+    def _exec_test_die_thread(self, sites, my_token: int, shot_geom=None):
         prober = self.controller.drivers.get("prober")
         if not (prober and prober.inst):
-            self._exec2_log("[RUN] ERROR: prober not connected")
-            self._exec2_finish_run(my_token, "ERROR: prober not connected", "#dc2626")
+            self._exec_log("[RUN] ERROR: prober not connected")
+            self._exec_finish_run(my_token, "ERROR: prober not connected", "#dc2626")
             return
         error_msg = None
         try:
-            self._exec2_refresh_xy_blocking(prober)
-            self._exec2_log("[RUN] >> D  (Separate)")
+            self._exec_refresh_xy_blocking(prober)
+            self._exec_log("[RUN] >> D  (Separate)")
             prober.z_down()
 
             row, col = sites[0]
-            self._exec2_log(f"[RUN] >> J  (Position die X={col} Y={row})")
+            self._exec_log(f"[RUN] >> J  (Position die X={col} Y={row})")
             stb = prober.move_to_die_xy(col, row)
             if stb == 81:
-                self._exec2_log("[RUN] << STB=81  (wafer end)")
+                self._exec_log("[RUN] << STB=81  (wafer end)")
                 return
             if stb == 90:
-                self._exec2_log("[RUN] << STB=90  (probing stop — <STOP> pushed)")
+                self._exec_log("[RUN] << STB=90  (probing stop — <STOP> pushed)")
                 return
-            self._exec2_log(f"[RUN] << STB={stb}")
-            self._exec2_ensure_separated(prober, stb)
+            self._exec_log(f"[RUN] << STB={stb}")
+            self._exec_ensure_separated(prober, stb)
 
             idx = 0
-            while (self._exec2_running and not self._exec2_aborted
-                   and self._exec2_run_token == my_token and idx < len(sites)):
+            while (self._exec_running and not self._exec_aborted
+                   and self._exec_run_token == my_token and idx < len(sites)):
                 row, col = sites[idx]
                 die_label = f"R{row}C{col}  (X{col} Y{row})"
-                self.after(0, lambda d=die_label: self._exec2_die_var.set(f"Die: {d}"))
+                self.after(0, lambda d=die_label: self._exec_die_var.set(f"Die: {d}"))
                 self.after(0, lambda x=col, y=row:
-                           self._exec2_xy_var.set(f"X: {x} die\nY: {y} die"))
-                self._exec2_highlight_current(row, col)
-                self._exec2_die_num += 1
+                           self._exec_xy_var.set(f"X: {x} die\nY: {y} die"))
+                self._exec_highlight_current(row, col)
+                self._exec_die_num += 1
 
-                ok = self._exec2_zup_measure_zdown(
+                ok = self._exec_zup_measure_zdown(
                     prober, die_label, row=row, col=col, shot_geom=shot_geom)
-                # Pass/Fail counters are updated inside _exec2_zup_measure_zdown
-                # itself now (see _exec2_tally_shot_result) - once per real
+                # Pass/Fail counters are updated inside _exec_zup_measure_zdown
+                # itself now (see _exec_tally_shot_result) - once per real
                 # die in the shot, not once per touchdown.
 
                 idx += 1
-                if (not self._exec2_running or self._exec2_aborted
-                        or self._exec2_run_token != my_token or idx >= len(sites)):
+                if (not self._exec_running or self._exec_aborted
+                        or self._exec_run_token != my_token or idx >= len(sites)):
                     break
 
                 row, col = sites[idx]
-                self._exec2_log(f"[RUN] >> J  (Position die X={col} Y={row})")
+                self._exec_log(f"[RUN] >> J  (Position die X={col} Y={row})")
                 stb = prober.move_to_die_xy(col, row)
                 if stb == 81:
-                    self._exec2_log("[RUN] << STB=81  (wafer end)")
+                    self._exec_log("[RUN] << STB=81  (wafer end)")
                     break
                 if stb == 90:
-                    self._exec2_log("[RUN] << STB=90  (probing stop — <STOP> pushed)")
+                    self._exec_log("[RUN] << STB=90  (probing stop — <STOP> pushed)")
                     break
-                self._exec2_log(f"[RUN] << STB={stb}")
-                self._exec2_ensure_separated(prober, stb)
+                self._exec_log(f"[RUN] << STB={stb}")
+                self._exec_ensure_separated(prober, stb)
         except Exception as e:
             error_msg = str(e)
-            self._exec2_log(f"[RUN] ERROR: {e}")
+            self._exec_log(f"[RUN] ERROR: {e}")
         finally:
             if error_msg:
-                self._exec2_finish_run(my_token, f"ERROR: {error_msg[:60]}", "#dc2626")
+                self._exec_finish_run(my_token, f"ERROR: {error_msg[:60]}", "#dc2626")
             else:
-                self._exec2_finish_run(my_token, "FINISHED (Test Die)", "#16a34a")
+                self._exec_finish_run(my_token, "FINISHED (Test Die)", "#16a34a")
 
 
-    def _exec2_autoload_default_recipe(self, folder_path):
+    def _exec_autoload_default_recipe(self, folder_path):
         """If this ATA folder has a default recipe marked (Recipe tab's ⭐ Set
         as Default), switch to its probe card if needed and load it straight
         into the Run tab — same effect as manually picking it from the
@@ -5016,32 +5016,32 @@ class MainLayout(ttk.Frame):
         card, name = load_default_recipe(folder_path, system=self._system)
         if not card or not name:
             return
-        if not hasattr(self, "recipe_panel") or not hasattr(self, "_exec2_recipe_var"):
+        if not hasattr(self, "recipe_panel") or not hasattr(self, "_exec_recipe_var"):
             return
         if self.pin_wiring.get_active_card() != card:
             valid_cards = self.pin_wiring.get_card_names_for_system()
             if card not in valid_cards:
-                self._exec2_log(f"[RUN] Default recipe '{name}' wants probe card "
+                self._exec_log(f"[RUN] Default recipe '{name}' wants probe card "
                                 f"'{card}', which doesn't exist or isn't wired for "
                                 f"this bench — skipping autoload.")
                 return
             self.pin_wiring.switch_to_card(card)
         if name not in self.recipe_panel.get_recipe_names():
-            self._exec2_log(f"[RUN] Default recipe '{name}' not found on probe card "
+            self._exec_log(f"[RUN] Default recipe '{name}' not found on probe card "
                             f"'{card}' — skipping autoload.")
             return
-        self._exec2_recipe_var.set(name)
-        self._exec2_load_recipe()
-        self._exec2_log(f"[RUN] Auto-loaded default recipe '{name}' (probe card '{card}').")
+        self._exec_recipe_var.set(name)
+        self._exec_load_recipe()
+        self._exec_log(f"[RUN] Auto-loaded default recipe '{name}' (probe card '{card}').")
 
-    def _exec2_apply_recipe_sites(self, name: str):
+    def _exec_apply_recipe_sites(self, name: str):
         """Select the recipe's touchdowns on the map, if it defines any.
 
         This is what makes the touchdown list the recipe's property rather
         than the ATA folder's: loading a recipe re-picks its own dies, so
         switching recipes can no longer inherit the previous one's selection.
         A recipe with no list clears the selection too (the run then walks
-        every die - see _exec2_start_run) - it used to leave the map alone
+        every die - see _exec_start_run) - it used to leave the map alone
         instead, which meant editing the Recipe tab's Touchdowns table down
         to zero (Remove Selected/Clear All) and saving left the PREVIOUS
         selection highlighted on screen, looking like the save had not
@@ -5049,18 +5049,18 @@ class MainLayout(ttk.Frame):
         """
         get_records = getattr(self.recipe_panel, "get_site_records", None)
         records = list(get_records()) if get_records else []
-        sites = self._exec2_resolve_site_cells(records)
+        sites = self._exec_resolve_site_cells(records)
         if not sites:
-            self._exec2_wafer_map.set_picked([])
-            self._exec2_on_sites_changed([])
-            self._exec2_log(f"[RUN] Recipe '{name}' has no touchdown list")
+            self._exec_wafer_map.set_picked([])
+            self._exec_on_sites_changed([])
+            self._exec_log(f"[RUN] Recipe '{name}' has no touchdown list")
             return
-        known = self._exec2_wafer_map.dies
-        on_map = [rc for rc in self._exec2_touchdown_cells(sites) if rc in known]
-        self._exec2_wafer_map.set_picked(on_map)
-        self._exec2_on_sites_changed(on_map)
+        known = self._exec_wafer_map.dies
+        on_map = [rc for rc in self._exec_touchdown_cells(sites) if rc in known]
+        self._exec_wafer_map.set_picked(on_map)
+        self._exec_on_sites_changed(on_map)
         missing = len(sites) - len(on_map)
-        self._exec2_log(
+        self._exec_log(
             f"[RUN] Recipe '{name}' defines {len(sites)} touchdown(s) — "
             f"selected {len(on_map)} on the map."
             + (f"  {missing} are not on this wafer map; check that the loaded "
@@ -5074,13 +5074,13 @@ class MainLayout(ttk.Frame):
         # fell back to the shot-level id (the first die's). The recipe's
         # own site records are the authoritative source for exactly the
         # dies this recipe is about to measure - always adopt them here,
-        # same as _exec2_load_selected_map does, rather than depending on
+        # same as _exec_load_selected_map does, rather than depending on
         # that function happening to run again after a recipe is picked
         # (it does not - it only fires on initial map draw, before a
         # recipe is normally loaded yet, or as a Test Selected fallback
         # that never triggers once cells are already highlighted).
         #
-        # Accretech-only (see the matching note in _exec2_load_selected_map):
+        # Accretech-only (see the matching note in _exec_load_selected_map):
         # on Electroglas the Wafer Builder map is the ground truth for die
         # IDs - loading a recipe (or a PMA-derived one) must only select/
         # highlight squares, never relabel them with its own touchdown data.
@@ -5098,7 +5098,7 @@ class MainLayout(ttk.Frame):
             ids = {(s["row"], s["col"]): s["die_id"] for s in records if s.get("die_id")}
             if ids:
                 # MERGED into the existing overlay, not cleared+replaced -
-                # same fix and same reasoning as _exec2_load_selected_map's
+                # same fix and same reasoning as _exec_load_selected_map's
                 # own version of this. Two Minor Moves recipes on the same
                 # physical wafer can carry different-sized touchdown lists
                 # (e.g. Cenfire's CENFIRE-INLINE_probe08, a filtered subset,
@@ -5108,65 +5108,65 @@ class MainLayout(ttk.Frame):
                 # was picked, even though the two recipes describe the same
                 # real wafer and a recipe is only supposed to select
                 # touchdowns, never redefine what the map itself knows.
-                self._exec2_overlay_die_ids = {**(self._exec2_overlay_die_ids or {}), **ids}
-                self._exec2_redraw_overlay_on_run_map()
-                self._exec2_redraw_overlay_on_results_map()
+                self._exec_overlay_die_ids = {**(self._exec_overlay_die_ids or {}), **ids}
+                self._exec_redraw_overlay_on_run_map()
+                self._exec_redraw_overlay_on_results_map()
 
-    def _exec2_load_recipe_by_name(self, name: str):
+    def _exec_load_recipe_by_name(self, name: str):
         """Save button on the Recipe tab calls this too, so saving a recipe
         also loads it into the Run tab - redundant with picking it from the
         Run tab's own Recipe dropdown, on purpose."""
-        if not name or not hasattr(self, "_exec2_recipe_var"):
+        if not name or not hasattr(self, "_exec_recipe_var"):
             return
-        self._exec2_recipe_var.set(name)
-        self._exec2_load_recipe()
+        self._exec_recipe_var.set(name)
+        self._exec_load_recipe()
 
-    def _exec2_load_recipe(self):
-        name = self._exec2_recipe_var.get()
+    def _exec_load_recipe(self):
+        name = self._exec_recipe_var.get()
         if not name:
-            self._exec2_log("[RUN] Pick a recipe first.")
+            self._exec_log("[RUN] Pick a recipe first.")
             return
         if not self.recipe_panel.select_recipe(name):
-            self._exec2_log(f"[RUN] Recipe '{name}' not found — reload the ATA folder.")
+            self._exec_log(f"[RUN] Recipe '{name}' not found — reload the ATA folder.")
             return
-        self._exec2_steps = self.recipe_panel.get_steps()
+        self._exec_steps = self.recipe_panel.get_steps()
 
-        self._exec2_steps_tree.delete(*self._exec2_steps_tree.get_children())
-        for i, s in enumerate(self._exec2_steps, 1):
-            self._exec2_steps_tree.insert("", "end", values=(
+        self._exec_steps_tree.delete(*self._exec_steps_tree.get_children())
+        for i, s in enumerate(self._exec_steps, 1):
+            self._exec_steps_tree.insert("", "end", values=(
                 i, s.get("name", ""), s.get("type", ""), s.get("conn", "")))
-        self._exec2_steps_var.set(f"{name} — {len(self._exec2_steps)} step(s)")
-        self._exec2_apply_recipe_sites(name)
+        self._exec_steps_var.set(f"{name} — {len(self._exec_steps)} step(s)")
+        self._exec_apply_recipe_sites(name)
 
-        self._exec2_log(f"[RUN] Loaded recipe '{name}' with "
-                        f"{len(self._exec2_steps)} step(s):")
-        for i, s in enumerate(self._exec2_steps, 1):
+        self._exec_log(f"[RUN] Loaded recipe '{name}' with "
+                        f"{len(self._exec_steps)} step(s):")
+        for i, s in enumerate(self._exec_steps, 1):
             extra = (f" target={s['target']}" if s.get("target")
                      else f" {s.get('hi', '')}→{s.get('lo', '')}")
-            self._exec2_log(f"[RUN]   {i}. {s.get('name')} [{s.get('type')}"
+            self._exec_log(f"[RUN]   {i}. {s.get('name')} [{s.get('type')}"
                             f"{('/' + s['mode']) if s.get('mode') else ''}]"
                             f"{extra}  conn={s.get('conn') or '—'}")
         issues = self.recipe_panel.validate_recipe()
         for msg in issues:
-            self._exec2_log(f"[RUN] {msg}")
+            self._exec_log(f"[RUN] {msg}")
         if issues:
-            self._exec2_log(f"[RUN] {len(issues)} validation issue(s) — "
+            self._exec_log(f"[RUN] {len(issues)} validation issue(s) — "
                             "review before Touchdown/Measure")
         if hasattr(self.controller, "check_system_ready"):
             self.controller.check_system_ready()
 
 
-    def _exec2_find_loaded_step(self, ref: str):
+    def _exec_find_loaded_step(self, ref: str):
         ref = (ref or "").strip()
         if ref.isdigit():
             i = int(ref) - 1
-            return self._exec2_steps[i] if 0 <= i < len(self._exec2_steps) else None
-        for s in self._exec2_steps:
+            return self._exec_steps[i] if 0 <= i < len(self._exec_steps) else None
+        for s in self._exec_steps:
             if s.get("name", "").strip().lower() == ref.lower():
                 return s
         return None
 
-    def _exec2_reset_output(self, ref, smu, wgen):
+    def _exec_reset_output(self, ref, smu, wgen):
         if ref is None:
             return ""
         if ref.get("type") == "wave":
@@ -5181,65 +5181,65 @@ class MainLayout(ttk.Frame):
             return f"reset SMU {ref.get('chan') or 'A'}"
         return ""
 
-    def _exec2_touchdown_measure(self):
-        if self._exec2_running:
-            self._exec2_log("[MEASURE] A run is active — stop it first.")
+    def _exec_touchdown_measure(self):
+        if self._exec_running:
+            self._exec_log("[MEASURE] A run is active — stop it first.")
             return
-        if not self._exec2_steps:
-            self._exec2_log("[MEASURE] No recipe loaded")
+        if not self._exec_steps:
+            self._exec_log("[MEASURE] No recipe loaded")
             return
-        # _exec2_run_steps_once refuses to run at all while this is True
+        # _exec_run_steps_once refuses to run at all while this is True
         # (see its own abort check) - every REAL run resets it at start,
         # but this manual one-shot path never went through a run starter,
         # so it kept whatever ⏹ Stop Run last left behind. A single Stop
         # Run press, at any point earlier in the session, permanently
         # broke every later Measure click with "stopped before step 1"
         # until the app was relaunched.
-        self._exec2_aborted = False
+        self._exec_aborted = False
         # Resolved here, on the main thread, not inside the background
-        # thread below - see _exec2_prepare_shot_geometry's own note.
-        shot_geom = self._exec2_prepare_shot_geometry()
-        threading.Thread(target=self._exec2_touchdown_then_measure,
+        # thread below - see _exec_prepare_shot_geometry's own note.
+        shot_geom = self._exec_prepare_shot_geometry()
+        threading.Thread(target=self._exec_touchdown_then_measure,
                          args=(shot_geom,), daemon=True).start()
 
-    def _exec2_touchdown_then_measure(self, shot_geom=None):
+    def _exec_touchdown_then_measure(self, shot_geom=None):
         prober = self.controller.drivers.get("prober")
         if prober and prober.inst:
             try:
-                self._exec2_log("[MEASURE] >> Z  (Touchdown)")
+                self._exec_log("[MEASURE] >> Z  (Touchdown)")
                 prober.z_up()
-                self._exec2_log("[MEASURE] Touchdown complete")
+                self._exec_log("[MEASURE] Touchdown complete")
             except Exception as e:
-                self._exec2_log(f"[MEASURE] Touchdown error: {e} — measuring anyway")
+                self._exec_log(f"[MEASURE] Touchdown error: {e} — measuring anyway")
         else:
-            self._exec2_log("[MEASURE] Prober not connected")
+            self._exec_log("[MEASURE] Prober not connected")
 
         row = col = None
         shot_row = shot_col = None
-        if self._exec2_current_rc is not None:
-            row, col = self._exec2_current_rc
+        if self._exec_current_rc is not None:
+            row, col = self._exec_current_rc
         # File each step's reading against the die it actually measured
         # (by the step's own Die # field), not always the shot's landing
         # square - same publish-before-run pattern every real run uses
-        # (_exec2_zup_measure_zdown). Works with or without Minor Moves -
-        # see _exec2_prepare_shot_geometry.
+        # (_exec_zup_measure_zdown). Works with or without Minor Moves -
+        # see _exec_prepare_shot_geometry.
         if shot_geom is not None and row is not None:
-            shot_row, shot_col = self._exec2_publish_die_slots_at(shot_geom, row, col)
+            shot_row, shot_col = self._exec_publish_die_slots_at(shot_geom, row, col)
         try:
-            overall_ok = self._exec2_run_steps_once()
+            overall_ok = self._exec_run_steps_once()
         finally:
             if shot_geom is not None:
-                self._exec2_die_rc_by_slot = []
-                self._exec2_die_ids_by_slot = []
-                self._exec2_die_shotpos_by_slot = []
+                self._exec_die_rc_by_slot = []
+                self._exec_die_ids_by_slot = []
+                self._exec_die_shotpos_by_slot = []
 
         # Colour the square(s) this measurement actually covered - Measure
         # used to never paint PASS/FAIL at all, only the log line showed
         # anything.
         if row is not None:
-            self._exec2_color_shot_squares(shot_geom, shot_row, shot_col, row, col, overall_ok)
+            self._exec_color_shot_squares(shot_geom, shot_row, shot_col, row, col, overall_ok)
 
-    def _exec2_avg_spec(self, step: dict) -> tuple:
+    def _exec_avg_spec(self, step: dict) -> tuple:
         try:
             count = max(1, int(step.get("avg_count") or 1))
         except ValueError:
@@ -5250,7 +5250,7 @@ class MainLayout(ttk.Frame):
             delay = 0.0
         return count, delay
 
-    def _exec2_settle_ms(self, step: dict) -> float:
+    def _exec_settle_ms(self, step: dict) -> float:
         # How long to wait AFTER the bias/output for THIS step is on but
         # BEFORE its first reading - separate from avg_delay (the gap
         # between averaged readings once already reading). Covers both a
@@ -5262,20 +5262,20 @@ class MainLayout(ttk.Frame):
         except ValueError:
             return 0.0
 
-    def _exec2_settle(self, step: dict, name: str, i: int):
-        ms = self._exec2_settle_ms(step)
+    def _exec_settle(self, step: dict, name: str, i: int):
+        ms = self._exec_settle_ms(step)
         if ms > 0:
-            self._exec2_log(f"[MEASURE] {i}. {name}: settling {ms:.0f} ms")
+            self._exec_log(f"[MEASURE] {i}. {name}: settling {ms:.0f} ms")
             time.sleep(ms / 1000.0)
 
-    def _exec2_nplc_spec(self, step: dict):
+    def _exec_nplc_spec(self, step: dict):
         try:
             nplc = float(step.get("nplc") or 1)
         except ValueError:
             return None
         return nplc if nplc != 1 else None
 
-    def _exec2_should_configure(self, step: dict, sig: tuple) -> bool:
+    def _exec_should_configure(self, step: dict, sig: tuple) -> bool:
         """True if this step's SETUP calls (set_voltage/set_current_limit/
         set_nplc/set_current_range/set_source_delay/... - whatever actually
         configures the instrument, as opposed to triggering a reading)
@@ -5296,14 +5296,14 @@ class MainLayout(ttk.Frame):
         Generic, not hardcoded to any one recipe/step: `step` is keyed by
         Python object identity (id(step)) - the SAME step dict instance is
         what runs on every touchdown of a wafer walk (see
-        _exec2_run_steps_once's `steps` argument), so this cache only ever
+        _exec_run_steps_once's `steps` argument), so this cache only ever
         matches "the same step, run again" - never two different steps
         that merely look similar. `sig` is whatever tuple of the step's
         OWN resolved config values the caller cares about - if a step's
         fields genuinely differ between touchdowns (nothing in this
         codebase does that today, but nothing here assumes it can't), the
         signature changes and this returns True again, same as a brand
-        new step would. Reset every run start - see _exec2_reset_counts.
+        new step would. Reset every run start - see _exec_reset_counts.
 
         Gated on the loaded recipe's own Shortcut checkbox (RecipePanel.
         is_shortcut()) - OFF (always return True, i.e. always configure)
@@ -5318,13 +5318,13 @@ class MainLayout(ttk.Frame):
         if recipe_panel is None or not recipe_panel.is_shortcut():
             return True
         key = id(step)
-        cache = self._exec2_step_config_cache
+        cache = self._exec_step_config_cache
         if cache.get(key) == sig:
             return False
         cache[key] = sig
         return True
 
-    def _exec2_measure_averaged(self, smu, smu_ch, read_one, avg_count: int,
+    def _exec_measure_averaged(self, smu, smu_ch, read_one, avg_count: int,
                                 avg_delay_ms: float, unit: str) -> float:
         """Average a reading, on the instrument itself where it can do it.
 
@@ -5349,25 +5349,25 @@ class MainLayout(ttk.Frame):
         if can_hw:
             try:
                 # Same "don't resend it if it's already set" principle as
-                # _exec2_should_configure, just keyed on (instrument,
+                # _exec_should_configure, just keyed on (instrument,
                 # channel) instead of step identity - this helper has no
                 # step dict to key off of, and avg_count is the only thing
                 # it ever configures.
                 avg_key = (id(smu), smu_ch)
-                if self._exec2_avg_count_cache.get(avg_key) != avg_count:
+                if self._exec_avg_count_cache.get(avg_key) != avg_count:
                     smu.set_averages(smu_ch, avg_count)
-                    self._exec2_avg_count_cache[avg_key] = avg_count
+                    self._exec_avg_count_cache[avg_key] = avg_count
                 value = (smu.read_average() if hasattr(smu, "read_average")
                          else read_one())
-                self._exec2_log(f"[MEASURE]      {avg_count} readings averaged "
+                self._exec_log(f"[MEASURE]      {avg_count} readings averaged "
                                 f"inside the {type(smu).__name__} -> "
                                 f"{value:.6g} {unit}")
                 return value
             except Exception as e:
-                self._exec2_log(f"[MEASURE]      instrument averaging failed "
+                self._exec_log(f"[MEASURE]      instrument averaging failed "
                                 f"({type(e).__name__}: {e}) — averaging in software")
         elif avg_count > 1 and not trusted:
-            self._exec2_log("[MEASURE]      averaging in software")
+            self._exec_log("[MEASURE]      averaging in software")
         # Make sure the instrument is NOT also averaging, or the software loop
         # would average an already-averaged value.
         if smu is not None and hasattr(smu, "set_averages"):
@@ -5375,27 +5375,27 @@ class MainLayout(ttk.Frame):
                 smu.set_averages(smu_ch, 1)
             except Exception:
                 pass
-        return self._exec2_take_average(read_one, avg_count, avg_delay_ms, unit)
+        return self._exec_take_average(read_one, avg_count, avg_delay_ms, unit)
 
-    def _exec2_take_average(self, read_one, avg_count: int, avg_delay_ms: float, unit: str) -> float:
+    def _exec_take_average(self, read_one, avg_count: int, avg_delay_ms: float, unit: str) -> float:
         readings = []
         for k in range(avg_count):
             readings.append(read_one())
             if avg_count > 1:
-                self._exec2_log(f"[MEASURE]      reading {k + 1}/{avg_count} = "
+                self._exec_log(f"[MEASURE]      reading {k + 1}/{avg_count} = "
                                 f"{readings[-1]:.6g} {unit}")
                 if k < avg_count - 1 and avg_delay_ms > 0:
                     time.sleep(avg_delay_ms / 1000.0)
         return sum(readings) / len(readings)
 
-    def _exec2_maybe_abs(self, step: dict, value: float) -> float:
+    def _exec_maybe_abs(self, step: dict, value: float) -> float:
         """recipe_panel's "Absolute Value" checkbox (step field abs_value) -
         applied right after the raw reading comes back, so the target
         calc, pass/fail compare, log line, and recorded/painted value all
         agree on the same (possibly rectified) number."""
         return abs(value) if (step.get("abs_value") or "").strip() else value
 
-    def _exec2_switch_driver(self):
+    def _exec_switch_driver(self):
         """The relay card a recipe's conn channels refer to on this system.
 
         Accretech has one matrix registered as "switch". Electroglas registers
@@ -5410,7 +5410,7 @@ class MainLayout(ttk.Frame):
             return drivers.get("switch")
         return drivers.get("relay1") or drivers.get("switch")
 
-    def _exec2_apply_target(self, s, raw_value: float, raw_unit: str, readings_by_name: dict):
+    def _exec_apply_target(self, s, raw_value: float, raw_unit: str, readings_by_name: dict):
         """Combine a measure step's own raw reading with its Target step's
         already-recorded value into a derived quantity - e.g. force current
         on an earlier step, measure voltage here, get resistance out (see
@@ -5437,7 +5437,7 @@ class MainLayout(ttk.Frame):
         du_symbol = {"ohm": "Ω", "V": "V", "A": "A"}.get(du, du)
         return dv, du, f"  -> {dv:.6g} {du_symbol}  (combined with '{tgt}')"
 
-    def _exec2_resolve_instrument(self, s: dict, family_default_key: str, fallback_driver):
+    def _exec_resolve_instrument(self, s: dict, family_default_key: str, fallback_driver):
         """Which driver object a step's SMU/DMM branch should actually use.
 
         `s["instrument_key"]`, when set (see recipe_panel._refresh_
@@ -5456,7 +5456,7 @@ class MainLayout(ttk.Frame):
         drv = self.controller.drivers.get(key)
         return drv if drv is not None else fallback_driver
 
-    def _exec2_apply_terminals(self, s: dict, drv):
+    def _exec_apply_terminals(self, s: dict, drv):
         """s["terminals"] ("FRONT"/"REAR", set on the Recipe tab only when
         the step is direct-wired - see recipe_panel._apply_route_state)
         applied once at the top of this step, before it sources or
@@ -5475,26 +5475,26 @@ class MainLayout(ttk.Frame):
         try:
             drv.set_terminals(which)
         except Exception as e:
-            self._exec2_log(f"[MEASURE]    could not set terminals to {which}: {e}")
+            self._exec_log(f"[MEASURE]    could not set terminals to {which}: {e}")
 
-    def _exec2_run_steps_once(self, steps: list = None) -> bool:
+    def _exec_run_steps_once(self, steps: list = None) -> bool:
         """Run the loaded recipe's steps once, top to bottom, against
         wherever the chuck currently sits.
 
-        `steps` defaults to every loaded step (self._exec2_steps) - the
+        `steps` defaults to every loaded step (self._exec_steps) - the
         normal case; callers with their own already-resolved subset (e.g.
         a per-die replay) can still pass one explicitly. Minor Moves runs
         the full flat list unchanged - a "move" step is what repositions
         the chuck to a different die within the current shot mid-list (see
-        self._exec2_move_fn, set by _exec2_minor_move_thread /
+        self._exec_move_fn, set by _exec_minor_move_thread /
         eg_pma_run_panel._minor_move_thread before this is called; a "move"
         step with no such context set just logs and is skipped).
         """
         if steps is None:
-            steps = self._exec2_steps
+            steps = self._exec_steps
         import random
         import re
-        switch = self._exec2_switch_driver()
+        switch = self._exec_switch_driver()
         smu    = self.controller.drivers.get("smu")
         dmm    = self.controller.drivers.get("dmm")
         wgen   = self.controller.drivers.get("wave_gen")
@@ -5502,17 +5502,17 @@ class MainLayout(ttk.Frame):
 
         ts = time.strftime("%Y-%m-%d %H:%M:%S")
         recipe_name = self.recipe_panel.get_active_recipe() if hasattr(self, "recipe_panel") else ""
-        # The override first: _exec2_die_num is an Accretech-only counter, so on
+        # The override first: _exec_die_num is an Accretech-only counter, so on
         # Electroglas it is always 0 and this fell through to the XY label -
         # which was unset, so every exported row read "X: — Y: —".
-        die_label = (getattr(self, "_exec2_die_id_override", "")
-                     or (self._exec2_die_var.get().replace("Die: ", "")
-                         if self._exec2_die_num else
-                         self._exec2_xy_var.get().replace("\n", " ")))
+        die_label = (getattr(self, "_exec_die_id_override", "")
+                     or (self._exec_die_var.get().replace("Die: ", "")
+                         if self._exec_die_num else
+                         self._exec_xy_var.get().replace("\n", " ")))
 
-        cur_row, cur_col = self._exec2_current_rc or (None, None)
+        cur_row, cur_col = self._exec_current_rc or (None, None)
         # Two possible die-ID sources, in priority order:
-        #   1. The Overlay dialog's manual die IDs (self._exec2_overlay_die_ids)
+        #   1. The Overlay dialog's manual die IDs (self._exec_overlay_die_ids)
         #      — an explicit user action, so it wins if set.
         #   2. The currently-loaded wafer map's own ID column (e.g.
         #      Electroglas's "device_id"), captured by WaferMapPanel into
@@ -5520,16 +5520,16 @@ class MainLayout(ttk.Frame):
         #      ID and should be used automatically without any extra step.
         # Whichever wins, it's the same "die_id" every export format reads,
         # so the export always matches what the map/overlay actually shows.
-        map_die_id = (self._exec2_wafer_map.die_ids.get((cur_row, cur_col), "")
+        map_die_id = (self._exec_wafer_map.die_ids.get((cur_row, cur_col), "")
                       if cur_row is not None else "")
-        overlay_die_id = (self._exec2_overlay_die_ids.get((cur_row, cur_col), "")
+        overlay_die_id = (self._exec_overlay_die_ids.get((cur_row, cur_col), "")
                           if cur_row is not None else "")
         #   0. A shot-level override set by the Electroglas run, which knows the
         #      whole touchdown ("NA/92-74/NA/93-70") rather than the single die
         #      under one map cell. fldDieID names the SHOT in LaMP's schema -
         #      fldSwitch 1..4 is what picks the die within it - so exporting one
         #      corner's ID made the row claim the wrong device.
-        die_id = (getattr(self, "_exec2_die_id_override", "")
+        die_id = (getattr(self, "_exec_die_id_override", "")
                   or overlay_die_id or map_die_id)
         # Whichever probe card is loaded right now, generic to any system/
         # project - "pin_wiring" is each system's own ProbeCardWiringFrame
@@ -5547,11 +5547,11 @@ class MainLayout(ttk.Frame):
         # die number (from the step's own Die # field) -> verdict. Read by
         # the Electroglas .PMA-stepping pane so each die's own square is
         # coloured.
-        self._exec2_slot_verdicts = {}
+        self._exec_slot_verdicts = {}
         last_reading = None
         readings_by_name = {}
 
-        self._exec2_log(f"[MEASURE] One iteration — {len(steps)} step(s)")
+        self._exec_log(f"[MEASURE] One iteration — {len(steps)} step(s)")
         for i, s in enumerate(steps, 1):
             # Checked per STEP, not per touchdown: ⏹ Stop means stop, and a
             # shot's recipe is a dozen steps across four dies - finishing it
@@ -5559,11 +5559,11 @@ class MainLayout(ttk.Frame):
             # button. The reading already in flight still completes (one
             # blocking GPIB call; abandoning it mid-transfer desyncs the bus
             # for everything after), but nothing new is started.
-            if self._exec2_aborted:
-                self._exec2_log(f"[MEASURE] stopped before step {i} "
+            if self._exec_aborted:
+                self._exec_log(f"[MEASURE] stopped before step {i} "
                                 f"({s.get('name') or 'unnamed'}) — "
                                 "remaining steps skipped.")
-                self._exec2_mark_all_open()
+                self._exec_mark_all_open()
                 return False
             t    = s.get("type")
             name = s.get("name") or f"step {i}"
@@ -5579,7 +5579,7 @@ class MainLayout(ttk.Frame):
             try:
                 if t == "delay":
                     ms = float(lvl or 0)
-                    self._exec2_log(f"[MEASURE] {i}. {name}: wait {ms:.0f} ms")
+                    self._exec_log(f"[MEASURE] {i}. {name}: wait {ms:.0f} ms")
                     time.sleep(ms / 1000.0)
                     continue
 
@@ -5588,7 +5588,7 @@ class MainLayout(ttk.Frame):
                         die_no = int(float(s.get("die") or "1"))
                     except (TypeError, ValueError):
                         die_no = 1
-                    move_fn = getattr(self, "_exec2_move_fn", None)
+                    move_fn = getattr(self, "_exec_move_fn", None)
                     if move_fn is None:
                         # NOT a "skip this one step and keep going" case -
                         # every step after this one assumes the chuck is
@@ -5600,19 +5600,19 @@ class MainLayout(ttk.Frame):
                         # reading, silently mislabeled as a different die
                         # (confirmed: CENFIRE-INLINE's own die-2 steps,
                         # run this way from the Measure button, which
-                        # never sets _exec2_move_fn the way a real Minor
+                        # never sets _exec_move_fn the way a real Minor
                         # Moves run does). Stopping here, same as the
                         # off-wafer-die case just below, means Measure on
                         # a Minor Moves recipe correctly tests only the
                         # first die of the shot instead of quietly
                         # fabricating data for the rest of it.
-                        self._exec2_log(f"[MEASURE] {i}. {name}: move to die {die_no} "
+                        self._exec_log(f"[MEASURE] {i}. {name}: move to die {die_no} "
                                         "— no Minor Moves context active (Measure only "
                                         "tests the first die of a shot; run the recipe "
                                         "for real to walk the whole shot)")
-                        self._exec2_mark_all_open()
+                        self._exec_mark_all_open()
                         return False
-                    self._exec2_log(f"[MEASURE] {i}. {name}: moving to die {die_no}...")
+                    self._exec_log(f"[MEASURE] {i}. {name}: moving to die {die_no}...")
                     try:
                         move_fn(die_no)
                     except RuntimeError as e:
@@ -5625,24 +5625,24 @@ class MainLayout(ttk.Frame):
                         # (the die #1 measurement already taken still
                         # counts) and let the caller move on to the next
                         # shot, same as an aborted run would stop early.
-                        self._exec2_log(f"[MEASURE] {i}. {name}: die {die_no} is off the "
+                        self._exec_log(f"[MEASURE] {i}. {name}: die {die_no} is off the "
                                         f"real wafer map ({e}) — skipping the rest of this shot")
-                        self._exec2_mark_all_open()
+                        self._exec_mark_all_open()
                         return False
                     continue
 
                 if t == "picture":
-                    self._exec2_log(f"[MEASURE] {i}. {name}: take picture "
+                    self._exec_log(f"[MEASURE] {i}. {name}: take picture "
                                     "(not yet implemented — skipped)")
                     continue
 
                 if t == "open":
                     if conn.lower() == "all" or (s.get("target") or "").strip().lower() == "all":
                         if sim:
-                            self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — "
+                            self._exec_log(f"[MEASURE] {i}. {name}: ERROR — "
                                             "switch matrix not connected")
                             return False
-                        self._exec2_log(f"[MEASURE] {i}. {name}: open ALL")
+                        self._exec_log(f"[MEASURE] {i}. {name}: open ALL")
                         switch.open_all()
                         if smu and smu.inst:
                             smu.turn_output_off("smua")
@@ -5650,15 +5650,15 @@ class MainLayout(ttk.Frame):
                         if wgen and wgen.inst:
                             wgen.turn_output_off_ch(1)
                             wgen.turn_output_off_ch(2)
-                        self._exec2_mark_all_open()
+                        self._exec_mark_all_open()
                         continue
                     if not direct and chans and sim:
-                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — "
+                        self._exec_log(f"[MEASURE] {i}. {name}: ERROR — "
                                         "switch matrix not connected")
                         return False
-                    ref = self._exec2_find_loaded_step(s.get("target", ""))
-                    note = self._exec2_reset_output(ref, smu, wgen)
-                    self._exec2_log(f"[MEASURE] {i}. {name}: open {conn or '—'}"
+                    ref = self._exec_find_loaded_step(s.get("target", ""))
+                    note = self._exec_reset_output(ref, smu, wgen)
+                    self._exec_log(f"[MEASURE] {i}. {name}: open {conn or '—'}"
                                     + (f"  ({note})" if note else ""))
                     for ch in chans:
                         # A 707B addresses a crosspoint (row, column); a
@@ -5667,7 +5667,7 @@ class MainLayout(ttk.Frame):
                             switch.open_crosspoint(ch[:2], ch[2:])
                         else:
                             switch.open_channel(ch)
-                    self._exec2_mark_open(chans)
+                    self._exec_mark_open(chans)
                     continue
 
                 if t == "passfail":
@@ -5679,7 +5679,7 @@ class MainLayout(ttk.Frame):
                     # under-counted a quad with a real failing die: its
                     # current-measure step came back with nothing to check
                     # against, this step "continue"d without ever touching
-                    # _exec2_slot_verdicts, and the die was never counted at
+                    # _exec_slot_verdicts, and the die was never counted at
                     # all - not failed, not passed, just missing.
                     try:
                         die_no = int(float(s.get("die") or "1"))
@@ -5693,10 +5693,10 @@ class MainLayout(ttk.Frame):
                         found = (last_reading[1], last_reading[2]) if last_reading else None
                         ref_name = last_reading[0] if last_reading else "(none)"
                     if found is None:
-                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR no reading found "
+                        self._exec_log(f"[MEASURE] {i}. {name}: ERROR no reading found "
                                         f"for '{ref_name}' — FAIL")
                         overall_ok = False
-                        self._exec2_slot_verdicts[die_no] = False
+                        self._exec_slot_verdicts[die_no] = False
                         continue
                     value, unit = found
                     mn, mx = s.get("min") or "", s.get("max") or ""
@@ -5706,9 +5706,9 @@ class MainLayout(ttk.Frame):
                     # Keep each die's verdict as well as the combined one. A
                     # shot's four dies pass or fail independently, so folding
                     # them into a single bool threw away three results.
-                    self._exec2_slot_verdicts[die_no] = verdict
+                    self._exec_slot_verdicts[die_no] = verdict
                     spec = f"[{mn or '-inf'}, {mx or '+inf'}]"
-                    self._exec2_log(f"[MEASURE] {i}. {name}: "
+                    self._exec_log(f"[MEASURE] {i}. {name}: "
                                     f"{'PASS' if verdict else 'FAIL'}  "
                                     f"{ref_name} = {value:.6g} {unit}  spec {spec}")
                     continue
@@ -5718,34 +5718,34 @@ class MainLayout(ttk.Frame):
                 label = f"{i}. {name} [{t}{('/' + mode) if mode else ''} " \
                         f"via {instrument}]"
                 if not direct and chans and sim:
-                    self._exec2_log(f"[MEASURE] {label}: ERROR — "
+                    self._exec_log(f"[MEASURE] {label}: ERROR — "
                                     "switch matrix not connected")
                     return False
-                self._exec2_log(f"[MEASURE] {label}: "
+                self._exec_log(f"[MEASURE] {label}: "
                                 + ("direct wiring — no switchbox" if direct
                                    else f"close {conn or '—'}"))
                 for ch in chans:
                     switch.close_channel(ch)
-                self._exec2_mark_closed(chans)
+                self._exec_mark_closed(chans)
                 smu_ch = "smub" if s.get("chan") == "B" else "smua"
                 wch    = 2 if s.get("chan") == "CH2" else 1
 
                 limit = s.get("limit") or ""
-                avg_count, avg_delay = self._exec2_avg_spec(s)
+                avg_count, avg_delay = self._exec_avg_spec(s)
                 avg_txt = f"  [avg of {avg_count}, {avg_delay:.0f} ms apart]" if avg_count > 1 else ""
 
                 if t == "resistance":
-                    nplc = self._exec2_nplc_spec(s)
-                    do_cfg = self._exec2_should_configure(
+                    nplc = self._exec_nplc_spec(s)
+                    do_cfg = self._exec_should_configure(
                         s, ("resistance", instrument, smu_ch, nplc))
-                    drv = self._exec2_resolve_instrument(
+                    drv = self._exec_resolve_instrument(
                         s, "smu" if instrument == "SMU" else "dmm",
                         smu if instrument == "SMU" else dmm)
                     if not (drv and drv.inst):
-                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — "
+                        self._exec_log(f"[MEASURE] {i}. {name}: ERROR — "
                                         f"{instrument} not connected")
                         return False
-                    self._exec2_apply_terminals(s, drv)
+                    self._exec_apply_terminals(s, drv)
                     if instrument == "SMU":
                         if do_cfg and nplc is not None:
                             drv.set_nplc(smu_ch, nplc)
@@ -5754,7 +5754,7 @@ class MainLayout(ttk.Frame):
                         # Keithley 2400 has an AUTO/MANUAL ohms distinction
                         # (see instruments.keithley2400.measure_resistance's
                         # own comment) - hasattr(drv, "set_terminals") is
-                        # the same 2400-only marker _exec2_apply_terminals
+                        # the same 2400-only marker _exec_apply_terminals
                         # already uses, so a 2636B step's call shape is
                         # untouched.
                         manual_mode = bool(getattr(self, "recipe_panel", None)
@@ -5766,14 +5766,14 @@ class MainLayout(ttk.Frame):
                         read_one = _read_smu_r
                     else:
                         read_one = lambda: drv.measure_resistance()
-                    self._exec2_settle(s, name, i)
-                    r_raw = self._exec2_maybe_abs(s, self._exec2_measure_averaged(
+                    self._exec_settle(s, name, i)
+                    r_raw = self._exec_maybe_abs(s, self._exec_measure_averaged(
                         drv, smu_ch,
                         read_one, avg_count, avg_delay, "Ω"))
-                    r, r_unit, note = self._exec2_apply_target(s, r_raw, "ohm", readings_by_name)
-                    self._exec2_log(f"[MEASURE]    R = {r_raw:.4g} Ω  (via {instrument})"
+                    r, r_unit, note = self._exec_apply_target(s, r_raw, "ohm", readings_by_name)
+                    self._exec_log(f"[MEASURE]    R = {r_raw:.4g} Ω  (via {instrument})"
                                     f"{avg_txt}{note}")
-                    slot_die, slot_row, slot_col, slot_sw, slot_shotpos = self._exec2_slot_identity(
+                    slot_die, slot_row, slot_col, slot_sw, slot_shotpos = self._exec_slot_identity(
                         s.get("die"), die_label, (cur_row, cur_col))
                     # slot_die is the die _this step_ actually measured (Minor
                     # Moves published it per-die) - the shot-level die_id
@@ -5793,31 +5793,31 @@ class MainLayout(ttk.Frame):
                     last_reading = (name, r, r_unit)
                     readings_by_name[name] = (r, r_unit)
                 elif t == "voltage" and mode == "measure":
-                    nplc = self._exec2_nplc_spec(s)
-                    do_cfg = self._exec2_should_configure(
+                    nplc = self._exec_nplc_spec(s)
+                    do_cfg = self._exec_should_configure(
                         s, ("voltage_measure", instrument, smu_ch, nplc))
-                    drv = self._exec2_resolve_instrument(
+                    drv = self._exec_resolve_instrument(
                         s, "smu" if instrument == "SMU" else "dmm",
                         smu if instrument == "SMU" else dmm)
                     if not (drv and drv.inst):
-                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — "
+                        self._exec_log(f"[MEASURE] {i}. {name}: ERROR — "
                                         f"{instrument} not connected")
                         return False
-                    self._exec2_apply_terminals(s, drv)
+                    self._exec_apply_terminals(s, drv)
                     if instrument == "SMU":
                         if do_cfg and nplc is not None:
                             drv.set_nplc(smu_ch, nplc)
                         read_one = lambda: drv.measure_voltage(smu_ch)
                     else:
                         read_one = lambda: drv.measure_voltage_dc()
-                    self._exec2_settle(s, name, i)
-                    v_raw = self._exec2_maybe_abs(s, self._exec2_measure_averaged(
+                    self._exec_settle(s, name, i)
+                    v_raw = self._exec_maybe_abs(s, self._exec_measure_averaged(
                         drv, smu_ch,
                         read_one, avg_count, avg_delay, "V"))
-                    v, v_unit, note = self._exec2_apply_target(s, v_raw, "V", readings_by_name)
-                    self._exec2_log(f"[MEASURE]    V = {v_raw:.4g} V  (via {instrument})"
+                    v, v_unit, note = self._exec_apply_target(s, v_raw, "V", readings_by_name)
+                    self._exec_log(f"[MEASURE]    V = {v_raw:.4g} V  (via {instrument})"
                                     f"{avg_txt}{note}")
-                    slot_die, slot_row, slot_col, slot_sw, slot_shotpos = self._exec2_slot_identity(
+                    slot_die, slot_row, slot_col, slot_sw, slot_shotpos = self._exec_slot_identity(
                         s.get("die"), die_label, (cur_row, cur_col))
                     # See the resistance-step case above for why slot_die (not
                     # the shot-level die_id) is preferred here.
@@ -5832,9 +5832,9 @@ class MainLayout(ttk.Frame):
                     readings_by_name[name] = (v, v_unit)
                 elif t == "voltage":
                     if not (smu and smu.inst):
-                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — SMU not connected")
+                        self._exec_log(f"[MEASURE] {i}. {name}: ERROR — SMU not connected")
                         return False
-                    do_cfg = self._exec2_should_configure(
+                    do_cfg = self._exec_should_configure(
                         s, ("voltage_apply", smu_ch, lvl, limit))
                     if do_cfg:
                         smu.set_voltage(smu_ch, float(lvl or 0))
@@ -5848,17 +5848,17 @@ class MainLayout(ttk.Frame):
                     smu.turn_output_on(smu_ch)
                     last_set_voltage_by_ch[smu_ch] = float(lvl or 0)
                     lim_txt = f", current limit {limit} A" if limit else ""
-                    self._exec2_log(f"[MEASURE]    forcing {lvl or 0} V on SMU "
+                    self._exec_log(f"[MEASURE]    forcing {lvl or 0} V on SMU "
                                     f"{s.get('chan') or 'A'}{lim_txt}")
                     last_reading = (name, float(lvl or 0), "V")
                     readings_by_name[name] = (float(lvl or 0), "V")
                 elif t == "current" and mode == "apply":
                     if not (smu and smu.inst):
-                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — SMU not connected")
+                        self._exec_log(f"[MEASURE] {i}. {name}: ERROR — SMU not connected")
                         return False
                     actual_current = None
                     actual_voltage = None
-                    do_cfg = self._exec2_should_configure(
+                    do_cfg = self._exec_should_configure(
                         s, ("current_apply", smu_ch, lvl, limit))
                     # Force a known OFF state before reconfiguring - part
                     # of the exact per-die command sequence confirmed on
@@ -5928,16 +5928,16 @@ class MainLayout(ttk.Frame):
                         except Exception:
                             actual_voltage = None
                     if actual_current is None:
-                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — "
+                        self._exec_log(f"[MEASURE] {i}. {name}: ERROR — "
                                         "SMU readback failed")
                         return False
                     lim_txt = f", voltage limit {limit} V" if limit else ""
                     readback_txt = (f"  readback I={actual_current:.6g} A"
                                     + (f", V={actual_voltage:.6g} V"
                                        if actual_voltage is not None else ""))
-                    self._exec2_log(f"[MEASURE]    forcing {lvl or 0} A on SMU "
+                    self._exec_log(f"[MEASURE]    forcing {lvl or 0} A on SMU "
                                     f"{s.get('chan') or 'A'}{lim_txt}" + readback_txt)
-                    slot_die, slot_row, slot_col, slot_sw, slot_shotpos = self._exec2_slot_identity(
+                    slot_die, slot_row, slot_col, slot_sw, slot_shotpos = self._exec_slot_identity(
                         s.get("die"), die_label, (cur_row, cur_col))
                     # See the resistance-step case above for why slot_die (not
                     # the shot-level die_id) is preferred here.
@@ -5960,7 +5960,7 @@ class MainLayout(ttk.Frame):
                     _combined_reading = {}
                     # Only an "apply" step (a different type/mode entirely)
                     # is meant to leave the instrument supplying power past
-                    # its own step - see _exec2_reset_output's mode=="apply"
+                    # its own step - see _exec_reset_output's mode=="apply"
                     # check, which is what an "open" step's turn_output_off
                     # is actually gated on. A "measure" step (this one) that
                     # forces a bias to take its own reading has to turn that
@@ -5968,25 +5968,25 @@ class MainLayout(ttk.Frame):
                     # through however many later steps until something else
                     # happens to target it.
                     did_bias = False
-                    drv = self._exec2_resolve_instrument(
+                    drv = self._exec_resolve_instrument(
                         s, "smu" if instrument == "SMU" else "dmm",
                         smu if instrument == "SMU" else dmm)
                     if not (drv and drv.inst):
-                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — "
+                        self._exec_log(f"[MEASURE] {i}. {name}: ERROR — "
                                         f"{instrument} not connected")
                         return False
-                    self._exec2_apply_terminals(s, drv)
+                    self._exec_apply_terminals(s, drv)
                     if instrument == "SMU":
-                        nplc = self._exec2_nplc_spec(s)
+                        nplc = self._exec_nplc_spec(s)
                         mrange = (s.get("mrange") or "").strip()
-                        # See _exec2_should_configure's own docstring -
+                        # See _exec_should_configure's own docstring -
                         # this is the "resend setup once per wafer, not
                         # once per die" fix. lvl/limit/nplc/mrange/
                         # avg_delay together are everything below
                         # actually configures on the instrument; the
                         # bias/output-on/read/off sequence itself still
                         # runs every touchdown regardless.
-                        do_cfg = self._exec2_should_configure(
+                        do_cfg = self._exec_should_configure(
                             s, ("current_measure", smu_ch, lvl, limit,
                                s.get("nplc"), mrange, avg_delay))
                         if lvl:
@@ -6044,7 +6044,7 @@ class MainLayout(ttk.Frame):
                                 try:
                                     drv.set_current_range(smu_ch, float(mrange))
                                 except (TypeError, ValueError) as e:
-                                    self._exec2_log(f"[MEASURE]    ignoring bad "
+                                    self._exec_log(f"[MEASURE]    ignoring bad "
                                                     f"meter range {mrange!r}: {e}")
                             # sour:clear:auto on drops the output after every
                             # :READ?, so each of the averaged readings
@@ -6068,15 +6068,15 @@ class MainLayout(ttk.Frame):
                     else:
                         read_one = lambda: drv.measure_current_dc()
                         bias_txt = "  (via DMM)"
-                    self._exec2_settle(s, name, i)
-                    i_raw = self._exec2_maybe_abs(s, self._exec2_measure_averaged(
+                    self._exec_settle(s, name, i)
+                    i_raw = self._exec_maybe_abs(s, self._exec_measure_averaged(
                         drv, smu_ch,
                         read_one, avg_count, avg_delay, "A"))
                     if instrument == "SMU" and drv and drv.inst:
                         if "v" in _combined_reading:
                             # read_one() above already captured this as part
                             # of the same acquisition that produced i_raw -
-                            # _exec2_measure_averaged/_exec2_take_average
+                            # _exec_measure_averaged/_exec_take_average
                             # always call read_one() at least once, so this
                             # is populated by the time we get here whenever
                             # the combined-read path was used.
@@ -6103,15 +6103,15 @@ class MainLayout(ttk.Frame):
                         try:
                             drv.turn_output_off(smu_ch)
                         except Exception as e:
-                            self._exec2_log(f"[MEASURE]    could not turn off SMU "
+                            self._exec_log(f"[MEASURE]    could not turn off SMU "
                                             f"{s.get('chan') or 'A'} after measuring: {e}")
-                    i_a, i_unit, note = self._exec2_apply_target(s, i_raw, "A", readings_by_name)
-                    self._exec2_log(f"[MEASURE]    I = {i_raw:.4g} A{bias_txt}{avg_txt}{note}"
+                    i_a, i_unit, note = self._exec_apply_target(s, i_raw, "A", readings_by_name)
+                    self._exec_log(f"[MEASURE]    I = {i_raw:.4g} A{bias_txt}{avg_txt}{note}"
                                     + ("  (bias off)" if did_bias else "")
                                     + ("  SMU REPORTS COMPLIANCE" if in_compliance else ""))
                     if actual_voltage is None:
                         actual_voltage = set_voltage
-                    slot_die, slot_row, slot_col, slot_sw, slot_shotpos = self._exec2_slot_identity(
+                    slot_die, slot_row, slot_col, slot_sw, slot_shotpos = self._exec_slot_identity(
                         s.get("die"), die_label, (cur_row, cur_col))
                     # See the resistance-step case above for why slot_die (not
                     # the shot-level die_id) is preferred here.
@@ -6129,7 +6129,7 @@ class MainLayout(ttk.Frame):
                     readings_by_name[name] = (i_a, i_unit)
                 elif t == "wave":
                     if not (wgen and wgen.inst):
-                        self._exec2_log(f"[MEASURE] {i}. {name}: ERROR — "
+                        self._exec_log(f"[MEASURE] {i}. {name}: ERROR — "
                                         "wave generator not connected")
                         return False
                     shape = s.get("shape") or "SIN"
@@ -6139,17 +6139,17 @@ class MainLayout(ttk.Frame):
                         wgen.set_voltage_limit_ch(wch, float(limit))
                     wgen.turn_output_on_ch(wch)
                     lim_txt = f", clamp ±{limit} V" if limit else ""
-                    self._exec2_log(f"[MEASURE]    WGEN CH{wch} ON — {shape} "
+                    self._exec_log(f"[MEASURE]    WGEN CH{wch} ON — {shape} "
                                     f"{lvl or 1.0} Vpp @ {freq:.4g} Hz{lim_txt}")
             except Exception as e:
-                self._exec2_log(f"[MEASURE] {i}. {name}: ERROR {e} — iteration aborted")
+                self._exec_log(f"[MEASURE] {i}. {name}: ERROR {e} — iteration aborted")
                 return False
-        self._exec2_log(f"[MEASURE] Iteration complete — "
+        self._exec_log(f"[MEASURE] Iteration complete — "
                         f"{'PASS' if overall_ok else 'FAIL'}")
         return overall_ok
 
 
-    def _exec2_slot_identity(self, die_no, fallback_die, fallback_rc):
+    def _exec_slot_identity(self, die_no, fallback_die, fallback_rc):
         """(die label, row, col, switch, shotpos) for a step's own Die #
         field. shotpos is (shot_row, shot_col, intra_row, intra_col) or
         None when nothing published one (non-Minor-Moves, or a system/
@@ -6162,7 +6162,7 @@ class MainLayout(ttk.Frame):
         The Electroglas run publishes the shot's die IDs and map cells in
         QUAD_ORDER before each touchdown, and Accretech Minor Moves
         publishes the shot's real per-die coordinates/reticle position
-        (_exec2_minor_move_thread.publish_die_slots), before each
+        (_exec_minor_move_thread.publish_die_slots), before each
         touchdown, so a per-die step can be filed against the die it
         actually measured rather than against the shot's anchor cell.
 
@@ -6179,9 +6179,9 @@ class MainLayout(ttk.Frame):
             switch = int(float(die_no))
         except (TypeError, ValueError):
             switch = 1
-        ids = getattr(self, "_exec2_die_ids_by_slot", None) or []
-        rcs = getattr(self, "_exec2_die_rc_by_slot", None) or []
-        shotpos_list = getattr(self, "_exec2_die_shotpos_by_slot", None) or []
+        ids = getattr(self, "_exec_die_ids_by_slot", None) or []
+        rcs = getattr(self, "_exec_die_rc_by_slot", None) or []
+        shotpos_list = getattr(self, "_exec_die_shotpos_by_slot", None) or []
         slot = switch - 1
         if switch < 1 or not (slot < len(ids) or slot < len(rcs)):
             return fallback_die, fallback_rc[0], fallback_rc[1], None, None
@@ -6204,7 +6204,7 @@ class MainLayout(ttk.Frame):
                "row": die_row, "col": die_col,
                # Blank on any run that never resolved a shot for this die
                # (non-Minor-Moves, or a system with no shot concept at
-               # all) - see _exec2_slot_identity/_exec2_minor_move_thread.
+               # all) - see _exec_slot_identity/_exec_minor_move_thread.
                "shot_row": shot_row if shot_row is not None else "",
                "shot_col": shot_col if shot_col is not None else "",
                "intra_row": intra_row if intra_row is not None else "",
@@ -6219,11 +6219,11 @@ class MainLayout(ttk.Frame):
                 kids = self._results_tree.get_children()
                 if kids:
                     self._results_tree.see(kids[-1])
-            self._exec2_safe_after(_ui)
+            self._exec_safe_after(_ui)
 
     def clear_results(self):
         self.controller.results_data.clear()
-        self._exec2_last_run_start_idx = 0
+        self._exec_last_run_start_idx = 0
         if hasattr(self, "_results_tree"):
             self._results_tree.delete(*self._results_tree.get_children())
 
@@ -6232,74 +6232,74 @@ class MainLayout(ttk.Frame):
         Die/Test Selected) — what export formats other than plain
         "Save as CSV" should write, so re-running doesn't accumulate old
         runs' rows into a new export."""
-        return self.controller.results_data[self._exec2_last_run_start_idx:]
+        return self.controller.results_data[self._exec_last_run_start_idx:]
 
 
-    def _exec2_manual_z_up(self):
+    def _exec_manual_z_up(self):
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log("[RUN] Z Up: prober not connected.")
+            self._exec_log("[RUN] Z Up: prober not connected.")
             return
         def _run():
             try:
-                self.after(0, lambda: self._exec2_log("[RUN] >> Z  (Contact)"))
+                self.after(0, lambda: self._exec_log("[RUN] >> Z  (Contact)"))
                 prober.z_up()
-                self.after(0, lambda: self._exec2_log("[RUN] Z Up complete."))
+                self.after(0, lambda: self._exec_log("[RUN] Z Up complete."))
             except Exception as e:
-                self.after(0, lambda e=e: self._exec2_log(f"[RUN] Z Up error: {e}"))
+                self.after(0, lambda e=e: self._exec_log(f"[RUN] Z Up error: {e}"))
         threading.Thread(target=_run, daemon=True).start()
 
-    def _exec2_manual_z_down(self):
+    def _exec_manual_z_down(self):
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log("[RUN] Z Down: prober not connected.")
+            self._exec_log("[RUN] Z Down: prober not connected.")
             return
         def _run():
             try:
-                self.after(0, lambda: self._exec2_log("[RUN] >> D  (Separate)"))
+                self.after(0, lambda: self._exec_log("[RUN] >> D  (Separate)"))
                 prober.z_down()
-                self.after(0, lambda: self._exec2_log("[RUN] Z Down complete."))
+                self.after(0, lambda: self._exec_log("[RUN] Z Down complete."))
             except Exception as e:
-                self.after(0, lambda e=e: self._exec2_log(f"[RUN] Z Down error: {e}"))
+                self.after(0, lambda e=e: self._exec_log(f"[RUN] Z Down error: {e}"))
         threading.Thread(target=_run, daemon=True).start()
 
-    def _exec2_manual_go_to_start(self):
+    def _exec_manual_go_to_start(self):
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log("[RUN] First Die: prober not connected.")
+            self._exec_log("[RUN] First Die: prober not connected.")
             return
-        threading.Thread(target=self._exec2_go_to_start_thread, args=(prober,),
+        threading.Thread(target=self._exec_go_to_start_thread, args=(prober,),
                          daemon=True).start()
 
-    def _exec2_go_to_start_thread(self, prober):
+    def _exec_go_to_start_thread(self, prober):
         try:
-            self._exec2_log("[RUN] >> G  (Position start die)")
+            self._exec_log("[RUN] >> G  (Position start die)")
             stb = prober.move_to_start_die()
-            self._exec2_log(f"[RUN] << STB={stb}  (start die positioned, chuck "
+            self._exec_log(f"[RUN] << STB={stb}  (start die positioned, chuck "
                             f"{'UP — CONTACT' if stb == 67 else 'DOWN'})")
-            self._exec2_get_xy()
+            self._exec_get_xy()
         except Exception as e:
-            self._exec2_log(f"[RUN] First Die error: {e}")
+            self._exec_log(f"[RUN] First Die error: {e}")
 
-    def _exec2_manual_unload(self):
+    def _exec_manual_unload(self):
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log("[RUN] Unload: prober not connected.")
+            self._exec_log("[RUN] Unload: prober not connected.")
             return
-        threading.Thread(target=self._exec2_unload_thread, args=(prober,),
+        threading.Thread(target=self._exec_unload_thread, args=(prober,),
                          daemon=True).start()
 
-    def _exec2_unload_thread(self, prober):
+    def _exec_unload_thread(self, prober):
         try:
-            self._exec2_log("[RUN] >> U  (Unload wafer)")
+            self._exec_log("[RUN] >> U  (Unload wafer)")
             stb = prober.unload_wafer()
-            self._exec2_log(f"[RUN] << STB={stb}  (wafer unloaded)")
+            self._exec_log(f"[RUN] << STB={stb}  (wafer unloaded)")
         except Exception as e:
-            self._exec2_log(f"[RUN] Unload error: {e}")
+            self._exec_log(f"[RUN] Unload error: {e}")
 
-    def _exec2_manual_prev_die(self):
+    def _exec_manual_prev_die(self):
         """Back: no native "previous die" GPIB command exists on this
-        hardware (only "J" Next Die - see _exec2_manual_next_die), so this
+        hardware (only "J" Next Die - see _exec_manual_next_die), so this
         is the closest die-mode equivalent - a plain relative die-index
         step backward (S command, X-1), not a walk through any GUI-side
         site list. Bounded/verified the same way every other relative
@@ -6307,19 +6307,19 @@ class MainLayout(ttk.Frame):
         handling in instruments/accretech_uf200r.py)."""
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log("[RUN] Back: prober not connected.")
+            self._exec_log("[RUN] Back: prober not connected.")
             return
         def _run():
             try:
-                self.after(0, lambda: self._exec2_log("[RUN] >> S  (X-1, previous die)"))
+                self.after(0, lambda: self._exec_log("[RUN] >> S  (X-1, previous die)"))
                 stb = prober.move_xy_relative(-1, 0)
-                self.after(0, lambda: self._exec2_log(f"[RUN] << STB={stb}"))
-                self.after(0, self._exec2_get_xy)
+                self.after(0, lambda: self._exec_log(f"[RUN] << STB={stb}"))
+                self.after(0, self._exec_get_xy)
             except Exception as e:
-                self.after(0, lambda e=e: self._exec2_log(f"[RUN] Back error: {e}"))
+                self.after(0, lambda e=e: self._exec_log(f"[RUN] Back error: {e}"))
         threading.Thread(target=_run, daemon=True).start()
 
-    def _exec2_manual_next_die(self):
+    def _exec_manual_next_die(self):
         """Next: plain native J - the prober's own "next die" per its
         internal wafer map. Nothing to do with shots, the picked-sites
         list, or Minor Moves - just the bare hardware command, same as
@@ -6327,19 +6327,19 @@ class MainLayout(ttk.Frame):
         step, not a shot-aware move."""
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log("[RUN] Next: prober not connected.")
+            self._exec_log("[RUN] Next: prober not connected.")
             return
         def _run():
             try:
-                self.after(0, lambda: self._exec2_log("[RUN] >> J  (next die)"))
+                self.after(0, lambda: self._exec_log("[RUN] >> J  (next die)"))
                 stb = prober.next_die()
-                self.after(0, lambda: self._exec2_log(f"[RUN] << STB={stb}"))
-                self.after(0, self._exec2_get_xy)
+                self.after(0, lambda: self._exec_log(f"[RUN] << STB={stb}"))
+                self.after(0, self._exec_get_xy)
             except Exception as e:
-                self.after(0, lambda e=e: self._exec2_log(f"[RUN] Next error: {e}"))
+                self.after(0, lambda e=e: self._exec_log(f"[RUN] Next error: {e}"))
         threading.Thread(target=_run, daemon=True).start()
 
-    def _exec2_shot_step_setup(self, label: str):
+    def _exec_shot_step_setup(self, label: str):
         """Shared preflight for Next Shot/Previous Shot: the prober, Wafer
         Builder, confirmed Overlay alignment, shot size, and the sorted
         (row-major) shot list all need to exist before either can compute
@@ -6347,101 +6347,101 @@ class MainLayout(ttk.Frame):
         row_off, col_off) or None (already logged why) if not."""
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log(f"[RUN] {label}: prober not connected.")
+            self._exec_log(f"[RUN] {label}: prober not connected.")
             return None
         gen = getattr(self, "recipe_gen", None)
         if gen is None:
-            self._exec2_log(f"[RUN] {label}: the Wafer Builder tab is not available.")
+            self._exec_log(f"[RUN] {label}: the Wafer Builder tab is not available.")
             return None
-        if not self._exec2_overlay_offset_confirmed:
-            self._exec2_log(f"[RUN] {label}: no confirmed Overlay alignment")
+        if not self._exec_overlay_offset_confirmed:
+            self._exec_log(f"[RUN] {label}: no confirmed Overlay alignment")
             return None
         try:
             shot_rows, shot_cols = gen._shot_dims()
         except Exception:
-            self._exec2_log(f"[RUN] {label}: could not read the Wafer Builder shot size.")
+            self._exec_log(f"[RUN] {label}: could not read the Wafer Builder shot size.")
             return None
         shots = sorted((sr, sc) for (sr, sc), present in gen._shotmap_cells.items() if present)
         if not shots:
-            self._exec2_log(f"[RUN] {label}: no shots on the Wafer Builder Shot Map tab.")
+            self._exec_log(f"[RUN] {label}: no shots on the Wafer Builder Shot Map tab.")
             return None
         return (prober, gen, shots, shot_rows, shot_cols,
-               self._exec2_overlay_row_offset, self._exec2_overlay_col_offset)
+               self._exec_overlay_row_offset, self._exec_overlay_col_offset)
 
-    def _exec2_go_to_shot(self, prober, gen, shot_row: int, shot_col: int,
+    def _exec_go_to_shot(self, prober, gen, shot_row: int, shot_col: int,
                           shot_rows: int, shot_cols: int, row_off: int, col_off: int,
                           label: str):
         """Separate, jump to (shot_row, shot_col)'s die #1, same as Minor
-        Moves' own landing (_exec2_minor_move_thread's goto_shot_die)."""
+        Moves' own landing (_exec_minor_move_thread's goto_shot_die)."""
         r, c = shot_die_rc(dict(gen._shot_cells), shot_rows, shot_cols, 1) or (0, 0)
         die_x = shot_col * shot_cols + c + col_off
         die_y = shot_row * shot_rows + r + row_off
         def _run():
             try:
-                self.after(0, lambda: self._exec2_log("[RUN] >> D  (Separate)"))
+                self.after(0, lambda: self._exec_log("[RUN] >> D  (Separate)"))
                 prober.z_down()
-                self.after(0, lambda: self._exec2_log(
+                self.after(0, lambda: self._exec_log(
                     f"[RUN] >> J  ({label} -> shot R{shot_row}C{shot_col}, "
                     f"die #1, X={die_x} Y={die_y})"))
                 stb = prober.move_to_die_xy(die_x, die_y)
-                self.after(0, lambda: self._exec2_log(f"[RUN] << STB={stb}"))
-                self.after(0, self._exec2_get_xy)
-                self.after(0, lambda: self._exec2_highlight_current(die_y, die_x))
+                self.after(0, lambda: self._exec_log(f"[RUN] << STB={stb}"))
+                self.after(0, self._exec_get_xy)
+                self.after(0, lambda: self._exec_highlight_current(die_y, die_x))
             except Exception as e:
-                self.after(0, lambda e=e: self._exec2_log(f"[RUN] {label} error: {e}"))
+                self.after(0, lambda e=e: self._exec_log(f"[RUN] {label} error: {e}"))
         threading.Thread(target=_run, daemon=True).start()
 
-    def _exec2_current_shot_index(self, shots: list, shot_rows: int, shot_cols: int,
+    def _exec_current_shot_index(self, shots: list, shot_rows: int, shot_cols: int,
                                   row_off: int, col_off: int) -> "int | None":
         """Index into `shots` of whichever shot the current real die
         position falls in, or None if unknown/not on the list."""
-        if self._exec2_current_rc is None:
+        if self._exec_current_rc is None:
             return None
-        wb_row = self._exec2_current_rc[0] - row_off
-        wb_col = self._exec2_current_rc[1] - col_off
+        wb_row = self._exec_current_rc[0] - row_off
+        wb_col = self._exec_current_rc[1] - col_off
         cur_shot = (wb_row // shot_rows, wb_col // shot_cols)
         try:
             return shots.index(cur_shot)
         except ValueError:
             return None
 
-    def _exec2_manual_next_shot(self):
+    def _exec_manual_next_shot(self):
         """Advance to die #1 of the NEXT shot (Wafer Builder Shot Map tab's
         shots, row-major order) - an absolute die-coordinate move, not a
         native command - Accretech has none that understands "shot"."""
-        setup = self._exec2_shot_step_setup("Next Shot")
+        setup = self._exec_shot_step_setup("Next Shot")
         if setup is None:
             return
         prober, gen, shots, shot_rows, shot_cols, row_off, col_off = setup
-        cur_idx = self._exec2_current_shot_index(shots, shot_rows, shot_cols, row_off, col_off)
+        cur_idx = self._exec_current_shot_index(shots, shot_rows, shot_cols, row_off, col_off)
         idx = 0 if cur_idx is None else cur_idx + 1
         if idx >= len(shots):
-            self._exec2_log("[RUN] Next Shot: already at the last shot.")
+            self._exec_log("[RUN] Next Shot: already at the last shot.")
             return
         shot_row, shot_col = shots[idx]
-        self._exec2_go_to_shot(prober, gen, shot_row, shot_col, shot_rows, shot_cols,
+        self._exec_go_to_shot(prober, gen, shot_row, shot_col, shot_rows, shot_cols,
                                row_off, col_off, "Next Shot")
 
-    def _exec2_manual_prev_shot(self):
+    def _exec_manual_prev_shot(self):
         """Same as Next Shot, one shot back instead."""
-        setup = self._exec2_shot_step_setup("Previous Shot")
+        setup = self._exec_shot_step_setup("Previous Shot")
         if setup is None:
             return
         prober, gen, shots, shot_rows, shot_cols, row_off, col_off = setup
-        cur_idx = self._exec2_current_shot_index(shots, shot_rows, shot_cols, row_off, col_off)
+        cur_idx = self._exec_current_shot_index(shots, shot_rows, shot_cols, row_off, col_off)
         idx = (len(shots) - 1) if cur_idx is None else cur_idx - 1
         if idx < 0:
-            self._exec2_log("[RUN] Previous Shot: already at the first shot.")
+            self._exec_log("[RUN] Previous Shot: already at the first shot.")
             return
         shot_row, shot_col = shots[idx]
-        self._exec2_go_to_shot(prober, gen, shot_row, shot_col, shot_rows, shot_cols,
+        self._exec_go_to_shot(prober, gen, shot_row, shot_col, shot_rows, shot_cols,
                                row_off, col_off, "Previous Shot")
 
     _EXEC2_MOVE_TARGET_COLOR = "#1e3a8a"  # dark blue - distinct from the pick color
 
-    def _exec2_move_selected_button(self):
+    def _exec_move_selected_button(self):
         """➡ Move to Selected is a self-contained arm/target toggle, NOT a
-        reader of the normal pick system (_exec2_wafer_map.get_picked(),
+        reader of the normal pick system (_exec_wafer_map.get_picked(),
         which Test Selected/Take from map selection/Overlay all share and
         which this must never disturb):
 
@@ -6450,7 +6450,7 @@ class MainLayout(ttk.Frame):
               highlighted dark blue ("➡ Move")
 
         While armed, clicking dies is intercepted via set_click_handler
-        (see _exec2_move_target_click) instead of going through picking -
+        (see _exec_move_target_click) instead of going through picking -
         picking itself is suspended (not cleared) for the duration, so any
         real Test Selected picks are exactly as they were once this is
         done. Clicking the target again deselects it (back to "Cancel
@@ -6458,62 +6458,62 @@ class MainLayout(ttk.Frame):
         one target at a time. Pressing the button with a target executes
         the move and returns to idle; with no target, it cancels.
         """
-        wm = self._exec2_wafer_map
-        if not self._exec2_move_armed:
-            self._exec2_move_armed = True
-            self._exec2_move_target_rc = None
-            self._exec2_move_prev_click_handler = wm._click_handler
-            self._exec2_move_prev_picking_enabled = wm._picking_enabled
+        wm = self._exec_wafer_map
+        if not self._exec_move_armed:
+            self._exec_move_armed = True
+            self._exec_move_target_rc = None
+            self._exec_move_prev_click_handler = wm._click_handler
+            self._exec_move_prev_picking_enabled = wm._picking_enabled
             wm._picking_enabled = False
-            wm.set_click_handler(self._exec2_move_target_click)
-            self._exec2_move_selected_btn.config(text="✕ Cancel Move")
+            wm.set_click_handler(self._exec_move_target_click)
+            self._exec_move_selected_btn.config(text="✕ Cancel Move")
             return
-        target = self._exec2_move_target_rc
-        self._exec2_disarm_move_selected()
+        target = self._exec_move_target_rc
+        self._exec_disarm_move_selected()
         if target is None:
-            self._exec2_log("[RUN] Move to Selected: cancelled.")
+            self._exec_log("[RUN] Move to Selected: cancelled.")
             return
-        self._exec2_do_move_to(*target)
+        self._exec_do_move_to(*target)
 
-    def _exec2_move_target_click(self, row: int, col: int):
-        if not self._exec2_move_armed:
+    def _exec_move_target_click(self, row: int, col: int):
+        if not self._exec_move_armed:
             return
-        wm = self._exec2_wafer_map
+        wm = self._exec_wafer_map
         rc = (row, col)
         if rc not in wm.dies:
             return
-        if rc == self._exec2_move_target_rc:
-            self._exec2_restore_move_target_color()
-            self._exec2_move_target_rc = None
-            self._exec2_move_selected_btn.config(text="✕ Cancel Move")
+        if rc == self._exec_move_target_rc:
+            self._exec_restore_move_target_color()
+            self._exec_move_target_rc = None
+            self._exec_move_selected_btn.config(text="✕ Cancel Move")
             return
-        self._exec2_restore_move_target_color()
+        self._exec_restore_move_target_color()
         item = wm.dies[rc]
-        self._exec2_move_target_prev_fill = wm.canvas.itemcget(item, "fill")
+        self._exec_move_target_prev_fill = wm.canvas.itemcget(item, "fill")
         wm.canvas.itemconfig(item, fill=self._EXEC2_MOVE_TARGET_COLOR)
-        self._exec2_move_target_rc = rc
-        self._exec2_move_selected_btn.config(text="➡ Move")
+        self._exec_move_target_rc = rc
+        self._exec_move_selected_btn.config(text="➡ Move")
 
-    def _exec2_restore_move_target_color(self):
-        wm = self._exec2_wafer_map
-        rc = self._exec2_move_target_rc
-        if rc is not None and rc in wm.dies and self._exec2_move_target_prev_fill is not None:
+    def _exec_restore_move_target_color(self):
+        wm = self._exec_wafer_map
+        rc = self._exec_move_target_rc
+        if rc is not None and rc in wm.dies and self._exec_move_target_prev_fill is not None:
             try:
-                wm.canvas.itemconfig(wm.dies[rc], fill=self._exec2_move_target_prev_fill)
+                wm.canvas.itemconfig(wm.dies[rc], fill=self._exec_move_target_prev_fill)
             except tk.TclError:
                 pass
 
-    def _exec2_disarm_move_selected(self):
-        self._exec2_restore_move_target_color()
-        self._exec2_move_target_rc = None
-        self._exec2_move_target_prev_fill = None
-        wm = self._exec2_wafer_map
-        wm.set_click_handler(self._exec2_move_prev_click_handler)
-        wm._picking_enabled = self._exec2_move_prev_picking_enabled
-        self._exec2_move_armed = False
-        self._exec2_move_selected_btn.config(text="➡ Move to Selected")
+    def _exec_disarm_move_selected(self):
+        self._exec_restore_move_target_color()
+        self._exec_move_target_rc = None
+        self._exec_move_target_prev_fill = None
+        wm = self._exec_wafer_map
+        wm.set_click_handler(self._exec_move_prev_click_handler)
+        wm._picking_enabled = self._exec_move_prev_picking_enabled
+        self._exec_move_armed = False
+        self._exec_move_selected_btn.config(text="➡ Move to Selected")
 
-    def _exec2_do_move_to(self, row: int, col: int):
+    def _exec_do_move_to(self, row: int, col: int):
         """Move straight to (row, col) - Z down first (never travel in X/Y
         while contacted), then the absolute die-coordinate move.
         Deliberately does NOT Z up afterward - this is a positioning aid
@@ -6521,51 +6521,51 @@ class MainLayout(ttk.Frame):
         its own."""
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log("[RUN] Move to Selected: prober not connected.")
+            self._exec_log("[RUN] Move to Selected: prober not connected.")
             return
         def _run():
             try:
-                self.after(0, lambda: self._exec2_log("[RUN] >> D  (Separate)"))
+                self.after(0, lambda: self._exec_log("[RUN] >> D  (Separate)"))
                 prober.z_down()
-                self.after(0, lambda: self._exec2_log(
+                self.after(0, lambda: self._exec_log(
                     f"[RUN] >> J  (X={col} Y={row})"))
                 stb = prober.move_to_die_xy(col, row)
-                self.after(0, lambda: self._exec2_log(f"[RUN] << STB={stb}"))
-                self.after(0, self._exec2_get_xy)
-                self.after(0, lambda: self._exec2_highlight_current(row, col))
+                self.after(0, lambda: self._exec_log(f"[RUN] << STB={stb}"))
+                self.after(0, self._exec_get_xy)
+                self.after(0, lambda: self._exec_highlight_current(row, col))
             except Exception as e:
-                self.after(0, lambda e=e: self._exec2_log(
+                self.after(0, lambda e=e: self._exec_log(
                     f"[RUN] Move to Selected error: {e}"))
         threading.Thread(target=_run, daemon=True).start()
 
-    def _exec2_refresh_xy_blocking(self, prober):
+    def _exec_refresh_xy_blocking(self, prober):
         """The automatic, run-thread version of the ↻ Refresh XY button -
         called right before a run's first move (Full Die/Test Die/Test
         Selected/Minor Moves), so the displayed X/Y, the highlighted die,
-        and self._exec2_current_rc are read fresh rather than left over
+        and self._exec_current_rc are read fresh rather than left over
         from whatever happened before Start was pressed (a manual jog, the
         previous run's last die, ...). Runs ON the calling thread (already
         off the main thread by the time any of those call this) - blocking
         here is the point, unlike the ↻ Refresh XY button's own fire-and-
-        forget _exec2_get_xy.
+        forget _exec_get_xy.
         """
         try:
             raw = prober.get_xy_position()
             x, y = _parse_q_response(raw)
-            self._exec2_safe_after(lambda: self._exec2_xy_var.set(f"X: {x:.0f} die\nY: {y:.0f} die"))
-            self._exec2_safe_after(lambda: self._exec2_log(f"[RUN] Q → die X={x:.0f}  Y={y:.0f}"))
-            self._exec2_safe_after(lambda: self._exec2_highlight_current(int(y), int(x)))
+            self._exec_safe_after(lambda: self._exec_xy_var.set(f"X: {x:.0f} die\nY: {y:.0f} die"))
+            self._exec_safe_after(lambda: self._exec_log(f"[RUN] Q → die X={x:.0f}  Y={y:.0f}"))
+            self._exec_safe_after(lambda: self._exec_highlight_current(int(y), int(x)))
         except Exception as e:
-            self._exec2_log(f"[RUN] Refresh XY before run failed: {e}")
+            self._exec_log(f"[RUN] Refresh XY before run failed: {e}")
 
-    def _exec2_refresh_die_size(self):
+    def _exec_refresh_die_size(self):
         """Electroglas only. Infers the prober's current SP1 die size (no
         direct query exists - see electroglas_2001x.infer_die_size) and
         shows it on the Run tab. Called once whenever the prober connects
         (app.py._connect_instruments_eg) and again whenever a Die Size
         write goes out from Prober Debug (eg_prober_debug_panel._send_setup),
         so the label never has to be trusted stale."""
-        var = getattr(self, "_exec2_die_size_var", None)
+        var = getattr(self, "_exec_die_size_var", None)
         if var is None:
             return
         prober = self.controller.drivers.get("prober")
@@ -6579,50 +6579,50 @@ class MainLayout(ttk.Frame):
                 self.after(0, lambda: var.set(f"Prober die size: could not infer ({e})"))
         threading.Thread(target=_run, daemon=True).start()
 
-    def _exec2_get_xy(self):
+    def _exec_get_xy(self):
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_xy_var.set("X: —\nY: —")
-            self._exec2_log("[RUN] XY: prober not connected.")
+            self._exec_xy_var.set("X: —\nY: —")
+            self._exec_log("[RUN] XY: prober not connected.")
             return
         def _run():
             try:
                 raw = prober.get_xy_position()
                 x, y = _parse_q_response(raw)
-                self.after(0, lambda: self._exec2_xy_var.set(f"X: {x:.0f} die\nY: {y:.0f} die"))
-                self.after(0, lambda: self._exec2_log(f"[RUN] Q → die X={x:.0f}  Y={y:.0f}"))
-                self.after(0, lambda: self._exec2_highlight_current(int(y), int(x)))
+                self.after(0, lambda: self._exec_xy_var.set(f"X: {x:.0f} die\nY: {y:.0f} die"))
+                self.after(0, lambda: self._exec_log(f"[RUN] Q → die X={x:.0f}  Y={y:.0f}"))
+                self.after(0, lambda: self._exec_highlight_current(int(y), int(x)))
             except Exception as e:
-                self.after(0, lambda e=e: self._exec2_log(f"[RUN] XY error: {e}"))
-                self.after(0, lambda: self._exec2_xy_var.set("X: ERROR\nY: ERROR"))
+                self.after(0, lambda e=e: self._exec_log(f"[RUN] XY error: {e}"))
+                self.after(0, lambda: self._exec_xy_var.set("X: ERROR\nY: ERROR"))
         threading.Thread(target=_run, daemon=True).start()
 
-    def _exec2_highlight_current(self, row: int, col: int):
-        wm = self._exec2_wafer_map
-        prev = self._exec2_current_rc
+    def _exec_highlight_current(self, row: int, col: int):
+        wm = self._exec_wafer_map
+        prev = self._exec_current_rc
         if prev is not None and prev != (row, col) and prev in wm.dies:
             try:
                 if wm.canvas.itemcget(wm.dies[prev], "fill") == "#dbeafe":
                     wm.update_die(prev[0], prev[1], "UNTESTED")
             except Exception:
                 pass
-        self._exec2_current_rc = (row, col)
+        self._exec_current_rc = (row, col)
         if (row, col) in wm.dies:
             wm.update_die(row, col, "CURRENT")
         if self._system == "accretech":
-            self._exec2_update_shot_window()
+            self._exec_update_shot_window()
 
-    def _exec2_clear_shot_window(self):
-        wm = getattr(self, "_exec2_wafer_map", None)
+    def _exec_clear_shot_window(self):
+        wm = getattr(self, "_exec_wafer_map", None)
         if wm is not None:
-            for item in self._exec2_shot_window_items:
+            for item in self._exec_shot_window_items:
                 try:
                     wm.canvas.delete(item)
                 except Exception:
                     pass
-        self._exec2_shot_window_items = []
+        self._exec_shot_window_items = []
 
-    def _exec2_update_shot_window(self):
+    def _exec_update_shot_window(self):
         """Outline, on the Run tab's wafer map, the block of REAL dies the
         current shot spans - the Accretech equivalent of NanoZ's 1x20
         window and Electroglas's 2x2 quad window (see
@@ -6640,11 +6640,11 @@ class MainLayout(ttk.Frame):
         genuinely absent from the real Accretech extraction (wafer edge)
         just narrows the box instead of guessing.
         """
-        self._exec2_clear_shot_window()
-        wm = getattr(self, "_exec2_wafer_map", None)
+        self._exec_clear_shot_window()
+        wm = getattr(self, "_exec_wafer_map", None)
         gen = getattr(self, "recipe_gen", None)
-        if (wm is None or gen is None or self._exec2_current_rc is None
-                or not self._exec2_overlay_offset_confirmed):
+        if (wm is None or gen is None or self._exec_current_rc is None
+                or not self._exec_overlay_offset_confirmed):
             return
         try:
             shot_rows, shot_cols = gen._shot_dims()
@@ -6652,9 +6652,9 @@ class MainLayout(ttk.Frame):
             return
         if shot_rows <= 1 and shot_cols <= 1:
             return
-        cur_row, cur_col = self._exec2_current_rc
-        row_off = self._exec2_overlay_row_offset
-        col_off = self._exec2_overlay_col_offset
+        cur_row, cur_col = self._exec_current_rc
+        row_off = self._exec_overlay_row_offset
+        col_off = self._exec_overlay_col_offset
         wb_row, wb_col = cur_row - row_off, cur_col - col_off
         shot_r0 = (wb_row // shot_rows) * shot_rows
         shot_c0 = (wb_col // shot_cols) * shot_cols
@@ -6668,22 +6668,22 @@ class MainLayout(ttk.Frame):
               max(b[2] for b in boxes), max(b[3] for b in boxes))
         rect = wm.canvas.create_rectangle(*box, outline="#7c3aed", width=2, dash=(4, 3))
         wm.canvas.tag_raise(rect)
-        self._exec2_shot_window_items = [rect]
+        self._exec_shot_window_items = [rect]
 
-    def _exec2_add_pass(self):
-        self._exec2_pass_var.set(self._exec2_pass_var.get() + 1)
-        self._exec2_update_yield()
-        self._exec2_push_stats()
+    def _exec_add_pass(self):
+        self._exec_pass_var.set(self._exec_pass_var.get() + 1)
+        self._exec_update_yield()
+        self._exec_push_stats()
 
-    def _exec2_add_fail(self):
-        self._exec2_fail_var.set(self._exec2_fail_var.get() + 1)
-        self._exec2_update_yield()
-        self._exec2_push_stats()
+    def _exec_add_fail(self):
+        self._exec_fail_var.set(self._exec_fail_var.get() + 1)
+        self._exec_update_yield()
+        self._exec_push_stats()
 
-    def _exec2_reset_counts(self, total_dies=None):
-        self._exec2_last_run_start_idx = len(self.controller.results_data)
-        self._exec2_pass_var.set(0)
-        self._exec2_fail_var.set(0)
+    def _exec_reset_counts(self, total_dies=None):
+        self._exec_last_run_start_idx = len(self.controller.results_data)
+        self._exec_pass_var.set(0)
+        self._exec_fail_var.set(0)
         # The PMA runner keeps its own verdict-per-touchdown record and paints
         # the map from it; zeroing the counters without clearing that would
         # leave green/red squares that nothing counts any more.
@@ -6701,36 +6701,36 @@ class MainLayout(ttk.Frame):
             self.controller.die_status.clear()
         except Exception:
             pass
-        for wm in (getattr(self, "_exec2_wafer_map", None),
+        for wm in (getattr(self, "_exec_wafer_map", None),
                   getattr(self, "_results_wafer_map", None)):
             if wm is not None and hasattr(wm, "reset_all_statuses"):
                 try:
                     wm.reset_all_statuses()
                 except Exception:
                     pass
-        self._exec2_die_num = 0
-        self._exec2_step_config_cache = {}
-        self._exec2_avg_count_cache = {}
+        self._exec_die_num = 0
+        self._exec_step_config_cache = {}
+        self._exec_avg_count_cache = {}
         if total_dies is not None:
-            self._exec2_total_dies = total_dies
-        self._exec2_pct_var.set("Yield:  —")
-        self._exec2_die_var.set("Die: —")
-        self._exec2_step_var.set("Step: —")
-        self._exec2_push_stats()
+            self._exec_total_dies = total_dies
+        self._exec_pct_var.set("Yield:  —")
+        self._exec_die_var.set("Die: —")
+        self._exec_step_var.set("Step: —")
+        self._exec_push_stats()
 
-    def _exec2_push_stats(self):
+    def _exec_push_stats(self):
         if not hasattr(self.controller, "on_exec_stats_change"):
             return
-        p = self._exec2_pass_var.get()
-        f = self._exec2_fail_var.get()
-        self.controller.on_exec_stats_change(p + f, p, f, self._exec2_total_dies)
+        p = self._exec_pass_var.get()
+        f = self._exec_fail_var.get()
+        self.controller.on_exec_stats_change(p + f, p, f, self._exec_total_dies)
 
-    def _exec2_update_yield(self):
-        p = self._exec2_pass_var.get()
-        f = self._exec2_fail_var.get()
+    def _exec_update_yield(self):
+        p = self._exec_pass_var.get()
+        f = self._exec_fail_var.get()
         total = p + f
         pct = (p / total * 100) if total else 0.0
-        self._exec2_pct_var.set(f"Yield:  {pct:.1f}%  ({p}/{total})")
+        self._exec_pct_var.set(f"Yield:  {pct:.1f}%  ({p}/{total})")
 
 
     def _tab_results(self, nb):
@@ -7128,7 +7128,7 @@ class MainLayout(ttk.Frame):
         row, col = rc
         matches = [r for r in self.controller.results_data
                   if r.get("row") == row and r.get("col") == col]
-        die_id = (self._exec2_overlay_die_ids.get(rc, "")
+        die_id = (self._exec_overlay_die_ids.get(rc, "")
                  or wm.die_ids.get(rc, ""))
         if not die_id:
             # The recorded per-die name, NOT die_id - die_id is the whole shot

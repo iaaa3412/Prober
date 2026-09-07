@@ -41,7 +41,7 @@ _STEP_FIELDS   = ("name", "type", "mode", "instrument", "chan", "target", "hi", 
                   # settle before its first reading is trustworthy" and "I'm
                   # biasing while measuring and want the bias to actually
                   # settle before the first sample" - see
-                  # instrument_panel._exec2_run_steps_once.
+                  # instrument_panel._exec_run_steps_once.
                   "settle_delay",
                   # Take abs() of the reading before it's compared to a
                   # target or recorded/painted on the map. "1" = on, blank
@@ -57,7 +57,7 @@ _STEP_FIELDS   = ("name", "type", "mode", "instrument", "chan", "target", "hi", 
                   # 1-based) this step's measurement belongs to. Replaces the
                   # old "(Die N)" name-suffix convention as the source of
                   # truth for per-die results attribution - see
-                  # instrument_panel._exec2_run_steps_once. Blank/unparsable
+                  # instrument_panel._exec_run_steps_once. Blank/unparsable
                   # defaults to 1, so a single-die shot needs nothing set.
                   "die",
                   # "switch" (the default) or "direct". A direct step is
@@ -74,8 +74,8 @@ _STEP_FIELDS   = ("name", "type", "mode", "instrument", "chan", "target", "hi", 
                   # "dmm_vxi". Blank (the default, and every recipe saved
                   # before this field existed) means "whichever slot
                   # 'instrument' has always meant" - see
-                  # instrument_panel._exec2_run_steps_once's
-                  # _exec2_resolve_instrument.
+                  # instrument_panel._exec_run_steps_once's
+                  # _exec_resolve_instrument.
                   "instrument_key",
                   # "" (default - send nothing, every recipe saved before
                   # this existed), "FRONT", or "REAR" - which physical
@@ -86,7 +86,7 @@ _STEP_FIELDS   = ("name", "type", "mode", "instrument", "chan", "target", "hi", 
                   # one is typically hand-clipped to FRONT instead).
                   # Applied once at the top of this step, before it
                   # sources/measures anything - see
-                  # instrument_panel._exec2_run_steps_once.
+                  # instrument_panel._exec_run_steps_once.
                   "terminals")
 
 # A step is either routed through the switch matrix (pins name the crosspoints
@@ -313,7 +313,7 @@ def _normalize_step(step: dict) -> dict:
     # column at all) defaults to 1 - the common single-die-per-shot case
     # then needs nothing set. Passfail still carries its own die number (it
     # tracks a per-die verdict for shot coloring - see
-    # instrument_panel._exec2_run_steps_once's _exec2_slot_verdicts), so it
+    # instrument_panel._exec_run_steps_once's _exec_slot_verdicts), so it
     # defaults the same way. Delay/open/picture touch no die at all - a wait,
     # a channel release, and a not-yet-implemented photo aren't "of" any
     # die - so they get no number rather than a misleading "1".
@@ -406,7 +406,7 @@ def _normalize_step(step: dict) -> dict:
         # quantity combines with this step's own reading into a derived
         # value (resistance, or - for a plain "resistance" step - the other
         # quantity via Ohm's law; see compute_target_derived /
-        # instrument_panel._exec2_run_steps_once). Blank is legitimate -
+        # instrument_panel._exec_run_steps_once). Blank is legitimate -
         # most measurements need nothing applied elsewhere to already mean
         # what they say. 4-wire ohms never combines with a Target at all -
         # see _on_type_change's own comment on why it's excluded here too.
@@ -693,7 +693,7 @@ def repeat_steps_per_die(steps: list, dies_per_shot: int, channels=None,
                 s2["target"] = s2["target"] + suffix
             # Every step in this block belongs to die i, whether or not it
             # touches the wafer itself (delay/open/passfail included) - this
-            # is what _exec2_slot_identity reads to file a measurement
+            # is what _exec_slot_identity reads to file a measurement
             # against the right square. Previously left unset here, so
             # every step kept whatever "die" the single-die source steps
             # had (normalized to "1"), and a whole multi-die shot's worth
@@ -840,7 +840,7 @@ def recipes_to_rows(recipes: dict) -> list:
                      # here so a reload does not lose it.
                      "minor_moves": "1" if rec.get("minor_moves") else "",
                      # Shortcut: see RecipePanel._on_shortcut_toggle /
-                     # instrument_panel._exec2_should_configure. Off by
+                     # instrument_panel._exec_should_configure. Off by
                      # default (a recipe saved before this existed comes
                      # back with shortcut=False, same as a fresh one) -
                      # opt IN per recipe, never assumed safe.
@@ -993,7 +993,7 @@ class RecipePanel(ttk.Frame):
         # Shortcut: skip resending a step's SMU/DMM configuration (level,
         # limit, NPLC, range, source delay) on a touchdown where it would
         # be identical to what was already sent - see
-        # instrument_panel._exec2_should_configure. Off by default and
+        # instrument_panel._exec_should_configure. Off by default and
         # opt-in PER RECIPE, not global - a real-hardware test surfaced a
         # case (Maddy TL, Keithley 2400) where skipping a resend left
         # voltage compliance at the instrument's own default instead of
@@ -1319,7 +1319,7 @@ class RecipePanel(ttk.Frame):
 
     def is_shortcut(self) -> bool:
         """Whether the CURRENTLY LOADED recipe has Shortcut checked - read
-        by instrument_panel._exec2_should_configure's own caller to decide
+        by instrument_panel._exec_should_configure's own caller to decide
         whether a repeat-config send can be skipped at all. False (the
         safe default) for any recipe that has never had this box checked."""
         return self._shortcut_var.get()
@@ -1365,10 +1365,10 @@ class RecipePanel(ttk.Frame):
             return
         if self._system == "accretech":
             ui = self.controller._by_system.get("accretech", {}).get("ui")
-            confirmed = bool(getattr(ui, "_exec2_overlay_offset_confirmed", False))
+            confirmed = bool(getattr(ui, "_exec_overlay_offset_confirmed", False))
             if confirmed:
-                ro = getattr(ui, "_exec2_overlay_row_offset", 0)
-                co = getattr(ui, "_exec2_overlay_col_offset", 0)
+                ro = getattr(ui, "_exec_overlay_row_offset", 0)
+                co = getattr(ui, "_exec_overlay_col_offset", 0)
                 self._shot_origin_status_var.set(
                     f"using Overlay alignment (row {ro:+d}, col {co:+d})")
             else:
@@ -1513,7 +1513,7 @@ class RecipePanel(ttk.Frame):
 
     def _sites_from_map(self):
         ui = self._run_panel()
-        wm = getattr(ui, "_exec2_wafer_map", None)
+        wm = getattr(ui, "_exec_wafer_map", None)
         if wm is None:
             messagebox.showinfo("Touchdowns", "The Run tab's wafer map is not available.")
             return
@@ -1527,11 +1527,11 @@ class RecipePanel(ttk.Frame):
         # the chuck lands once per shot, so four picked dies of one shot
         # must collapse to ONE touchdown, not four. Accretech: a no-op
         # (a square already is a touchdown there) - see
-        # instrument_panel._exec2_picks_as_touchdowns's own docstring.
-        collapse = getattr(ui, "_exec2_picks_as_touchdowns", None)
+        # instrument_panel._exec_picks_as_touchdowns's own docstring.
+        collapse = getattr(ui, "_exec_picks_as_touchdowns", None)
         if collapse:
             picks = collapse(picks)
-        overlay = getattr(ui, "_exec2_overlay_die_ids", None) or {}
+        overlay = getattr(ui, "_exec_overlay_die_ids", None) or {}
         sites = []
         for rc in picks:
             rc = (int(rc[0]), int(rc[1]))
@@ -1554,11 +1554,11 @@ class RecipePanel(ttk.Frame):
 
     def _sites_from_die_ids(self):
         ui = self._run_panel()
-        wm = getattr(ui, "_exec2_wafer_map", None)
+        wm = getattr(ui, "_exec_wafer_map", None)
         if wm is None:
             messagebox.showinfo("Touchdowns", "The Run tab's wafer map is not available.")
             return
-        overlay = getattr(ui, "_exec2_overlay_die_ids", None) or {}
+        overlay = getattr(ui, "_exec_overlay_die_ids", None) or {}
         ided = {}
         for rc in wm.dies:
             die_id = overlay.get(rc) or wm.die_ids.get(rc, "")
@@ -1589,10 +1589,10 @@ class RecipePanel(ttk.Frame):
         map - the die Wafer Builder's Shot tab numbers #1 in each. Only
         fills the table below (➡ Push to map / 💾 Save stay separate,
         explicit steps) - matches the "any die within the shot" touchdown
-        style (see instrument_panel._exec2_prepare_shot_geometry), just
+        style (see instrument_panel._exec_prepare_shot_geometry), just
         picking THE specific one that is #1."""
         ui = self._run_panel()
-        wm = getattr(ui, "_exec2_wafer_map", None)
+        wm = getattr(ui, "_exec_wafer_map", None)
         if wm is None:
             messagebox.showinfo("Touchdowns", "The Run tab's wafer map is not available.")
             return
@@ -1606,7 +1606,7 @@ class RecipePanel(ttk.Frame):
                 "Touchdowns",
                 "The Wafer Builder Shot template is a single die.")
             return
-        if not getattr(ui, "_exec2_overlay_offset_confirmed", False):
+        if not getattr(ui, "_exec_overlay_offset_confirmed", False):
             messagebox.showinfo(
                 "Touchdowns",
                 "No confirmed Overlay alignment - go to Wafer Builder > Overlay "
@@ -1623,9 +1623,9 @@ class RecipePanel(ttk.Frame):
                                 "The Wafer Builder Shot template has no die #1 defined.")
             return
         slot_r1, slot_c1 = die1_rc
-        row_offset = ui._exec2_overlay_row_offset
-        col_offset = ui._exec2_overlay_col_offset
-        overlay = getattr(ui, "_exec2_overlay_die_ids", None) or {}
+        row_offset = ui._exec_overlay_row_offset
+        col_offset = ui._exec_overlay_col_offset
+        overlay = getattr(ui, "_exec_overlay_die_ids", None) or {}
         picks = []
         for row, col in wm.dies:
             wb_row, wb_col = row - row_offset, col - col_offset
@@ -1670,7 +1670,7 @@ class RecipePanel(ttk.Frame):
         ID exactly matches the typed text. Only fills the table below,
         same as 🎯 Pull shots - no map highlighting, no auto-save."""
         ui = self._run_panel()
-        wm = getattr(ui, "_exec2_wafer_map", None)
+        wm = getattr(ui, "_exec_wafer_map", None)
         if wm is None:
             messagebox.showinfo("Touchdowns", "The Run tab's wafer map is not available.")
             return
@@ -1678,7 +1678,7 @@ class RecipePanel(ttk.Frame):
         if not target:
             messagebox.showinfo("Touchdowns", "Type a die ID to search for first.")
             return
-        overlay = getattr(ui, "_exec2_overlay_die_ids", None) or {}
+        overlay = getattr(ui, "_exec_overlay_die_ids", None) or {}
         picks = []
         for rc in wm.dies:
             die_id = overlay.get(rc) or wm.die_ids.get(rc, "")
@@ -1700,7 +1700,7 @@ class RecipePanel(ttk.Frame):
 
     def _sites_to_map(self):
         ui = self._run_panel()
-        wm = getattr(ui, "_exec2_wafer_map", None)
+        wm = getattr(ui, "_exec_wafer_map", None)
         if wm is None:
             messagebox.showinfo("Touchdowns", "The Run tab's wafer map is not available.")
             return
@@ -1710,15 +1710,15 @@ class RecipePanel(ttk.Frame):
         # Electroglas: resolve each site's die_id against the loaded map
         # (ground truth) rather than trusting the recipe's own (row, col) -
         # same reasoning/helper as the Run tab's own recipe-load path (see
-        # instrument_panel._exec2_resolve_site_cells). Accretech falls
+        # instrument_panel._exec_resolve_site_cells). Accretech falls
         # straight through to the site's own row/col, unchanged.
-        resolve = getattr(ui, "_exec2_resolve_site_cells", None)
+        resolve = getattr(ui, "_exec_resolve_site_cells", None)
         picks = resolve(self._sites) if resolve else [
             (s["row"], s["col"]) for s in self._sites]
         missing = [rc for rc in picks if rc not in wm.dies]
         wm.set_picked(picks)
-        if hasattr(ui, "_exec2_on_sites_changed"):
-            ui._exec2_on_sites_changed(picks)
+        if hasattr(ui, "_exec_on_sites_changed"):
+            ui._exec_on_sites_changed(picks)
         note = (f" ({len(missing)} not on the loaded map — wrong wafer map for "
                 "this recipe?)" if missing else "")
         self.controller.log(f"[RECIPE] '{self._current}': highlighted "
@@ -1984,7 +1984,7 @@ class RecipePanel(ttk.Frame):
         # for an instrument whose driver actually supports switching
         # (Keithley2400.set_terminals) - harmless no-op logged, not an
         # error, if the step's resolved driver doesn't have one (see
-        # instrument_panel._exec2_run_steps_once).
+        # instrument_panel._exec_run_steps_once).
         term_row = ttk.Frame(editor)
         term_row.grid(row=7, column=0, columnspan=3, sticky="w",
                       padx=(6, 2), pady=(2, 0))

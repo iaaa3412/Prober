@@ -77,7 +77,7 @@ class CassettePanel(ttk.Frame):
         # "full" (▶ Full Die), "test" (▶ Test Selected), or "run" (▶ Run -
         # the recipe's own saved touchdown list, Minor Moves included) -
         # which one to repeat on every later slot, set from the first
-        # wafer's actual run (see _on_wafer_finished/_exec2_start_site_list's
+        # wafer's actual run (see _on_wafer_finished/_exec_start_site_list's
         # own run_mode strings). Defaults to "full" so arming before that
         # first run has even finished once still falls back to the old
         # Full Die behavior.
@@ -121,7 +121,7 @@ class CassettePanel(ttk.Frame):
         # sequential unload+load-next), just to any slot instead of always
         # #1 - for a slot the operator skipped after an error, or one they
         # want to re-run. Same arm/target-toggle pattern as the Run tab's
-        # own ➡ Move to Selected (instrument_panel._exec2_move_selected_
+        # own ➡ Move to Selected (instrument_panel._exec_move_selected_
         # button): click to arm, click a slot ROW below, click again
         # ("📍 Move") to confirm.
         self._move_slot_btn = ttk.Button(bar, text="Move to Selected Slot",
@@ -486,7 +486,7 @@ class CassettePanel(ttk.Frame):
         # (same as ⏹ Stop Automation: clear _armed, unhook _on_wafer_
         # finished) - it is software bookkeeping only. No hardware
         # emergency-stop (K) command is sent, same as ⏹ Stop Run on the
-        # Run tab (see _exec2_abort's own comment) - K stays reserved for
+        # Run tab (see _exec_abort's own comment) - K stays reserved for
         # Prober Debug's dedicated Emergency Stop button.
         drv = self._drv()
         if not drv:
@@ -564,14 +564,14 @@ class CassettePanel(ttk.Frame):
             messagebox.showerror("No Export Format", "Pick an export format above, or "
                                  "turn off auto-export.")
             return
-        if getattr(self.ui, "_exec2_on_run_finished", None) not in (None, self._on_wafer_finished):
+        if getattr(self.ui, "_exec_on_run_finished", None) not in (None, self._on_wafer_finished):
             messagebox.showerror("Arm Blocked", "Another automation is already watching "
                                  "for the run to finish.")
             return
 
         self._armed = True
         self._set_paused_for_yield(False)
-        self.ui._exec2_on_run_finished = self._on_wafer_finished
+        self.ui._exec_on_run_finished = self._on_wafer_finished
         self._set_locked(True)
         self._set_state("ARMED — waiting for the current/next run to finish", "#2563eb")
         self._redraw_slots()
@@ -623,7 +623,7 @@ class CassettePanel(ttk.Frame):
             self._show_lot_summary()
             return
         self._armed = True
-        self.ui._exec2_on_run_finished = self._on_wafer_finished
+        self.ui._exec_on_run_finished = self._on_wafer_finished
         self._set_locked(True)
         self._set_state("SWAPPING CASSETTE", "#f97316")
         self._redraw_slots()
@@ -645,7 +645,7 @@ class CassettePanel(ttk.Frame):
         self._set_paused_for_error(False)
         lot_id = self._lot_id()
         self._armed = True
-        self.ui._exec2_on_run_finished = self._on_wafer_finished
+        self.ui._exec_on_run_finished = self._on_wafer_finished
         self._set_locked(True)
         self._redraw_slots()
         if self._error_retry_kind == "start":
@@ -668,8 +668,8 @@ class CassettePanel(ttk.Frame):
         # it right after calling this, for those specific cases.
         self._set_paused_for_yield(False)
         self._set_paused_for_error(False)
-        if getattr(self.ui, "_exec2_on_run_finished", None) is self._on_wafer_finished:
-            self.ui._exec2_on_run_finished = None
+        if getattr(self.ui, "_exec_on_run_finished", None) is self._on_wafer_finished:
+            self.ui._exec_on_run_finished = None
         self._set_locked(False)
         self._redraw_slots()
         if reason:
@@ -858,7 +858,7 @@ class CassettePanel(ttk.Frame):
         if not self._armed:
             return
         # Repeat whatever mode the first wafer was actually started in - the
-        # three _exec2_start_site_list callers report themselves as "full"
+        # three _exec_start_site_list callers report themselves as "full"
         # (▶ Full Die), "test" (▶ Test Selected), or "run" (▶ Run - the
         # recipe's own saved touchdown list, Minor Moves included). Falling
         # into Full Die for an unrecognized mode used to be the ONLY
@@ -867,11 +867,11 @@ class CassettePanel(ttk.Frame):
         try:
             if self._run_mode == "test":
                 # get_picked() is already empty by the time a run finishes
-                # (see _exec2_start_site_list's own comment) - replay the
+                # (see _exec_start_site_list's own comment) - replay the
                 # exact sites the first wafer's Test Selected actually used,
                 # not whatever happens to be picked on the map right now
                 # (nothing), which used to fall back to 5 random sites.
-                sites = list(getattr(self.ui, "_exec2_last_test_sites", None) or [])
+                sites = list(getattr(self.ui, "_exec_last_test_sites", None) or [])
                 if not sites:
                     self._log_event(self._slot_idx + 1, "",
                                     "Could not auto-start the next run: no remembered "
@@ -883,11 +883,11 @@ class CassettePanel(ttk.Frame):
                         f"PAUSED (slot {self._slot_idx + 1} — auto-start failed) — "
                         "fix the issue, then ▶ Continue to retry", "#dc2626")
                     return
-                self.ui._exec2_start_site_list(sites, "Test Die", "test")
+                self.ui._exec_start_site_list(sites, "Test Die", "test")
             elif self._run_mode == "run":
-                self.ui._exec2_start_run()
+                self.ui._exec_start_run()
             else:
-                self.ui._exec2_start_full_die()
+                self.ui._exec_start_full_die()
         except Exception as e:
             self._log_event(self._slot_idx + 1, "",
                             f"Could not auto-start the next run: {e}. Fix and press "

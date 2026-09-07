@@ -1185,7 +1185,7 @@ class EgPmaRunPanel(ttk.Frame):
                 for rc, d in getattr(self, "_die_at_rc", {}).items()}
 
     def _run_map(self):
-        return getattr(self._main_layout, "_exec2_wafer_map", None)
+        return getattr(self._main_layout, "_exec_wafer_map", None)
 
     def _results_map(self):
         return getattr(self._main_layout, "_results_wafer_map", None)
@@ -1391,7 +1391,7 @@ class EgPmaRunPanel(ttk.Frame):
         self._die_results[key] = "PASS" if passed else "FAIL"
         self._paint_cells([rc], self._die_results[key], also_results=True)
         self._tally(was, self._die_results[key])
-        # Persisted the same way instrument_panel._exec2_update_die_color
+        # Persisted the same way instrument_panel._exec_update_die_color
         # does, so cmd_save_csv/cmd_import_results_csv see LaMP's per-die
         # verdicts too, not just the Accretech/generic Run tab's.
         try:
@@ -1425,14 +1425,14 @@ class EgPmaRunPanel(ttk.Frame):
         if was == now:
             return
         layout = self._main_layout
-        add_pass = getattr(layout, "_exec2_add_pass", None)
-        add_fail = getattr(layout, "_exec2_add_fail", None)
+        add_pass = getattr(layout, "_exec_add_pass", None)
+        add_fail = getattr(layout, "_exec_add_fail", None)
         if not (add_pass and add_fail):
             return
         try:
             if was in ("PASS", "FAIL"):
-                var = (layout._exec2_pass_var if was == "PASS"
-                       else layout._exec2_fail_var)
+                var = (layout._exec_pass_var if was == "PASS"
+                       else layout._exec_fail_var)
                 var.set(max(0, var.get() - 1))
             (add_pass if now == "PASS" else add_fail)()
         except Exception as e:
@@ -1506,7 +1506,7 @@ class EgPmaRunPanel(ttk.Frame):
         if not self._touchdowns:
             messagebox.showinfo("Run map", "Load a recipe first.")
             return
-        folder = getattr(layout, "_exec2_map_folder", None) or \
+        folder = getattr(layout, "_exec_map_folder", None) or \
             getattr(layout, "_ata_folder", None)
         if not folder or not os.path.isdir(folder):
             messagebox.showinfo("Run map", "Load an ATA folder on the Run tab first.")
@@ -1632,7 +1632,7 @@ class EgPmaRunPanel(ttk.Frame):
         """Touchdown seqs the loaded recipe restricts the run to, or None.
 
         Resolved the SAME way the Run tab map highlight already is (see
-        instrument_panel._exec2_resolve_site_cells) - each site's die_id is
+        instrument_panel._exec_resolve_site_cells) - each site's die_id is
         looked up against the loaded wafer map first, falling back to the
         recipe's own (row, col) only when that die_id is not on the map.
         This used to go straight to the recipe's raw (row, col)
@@ -1653,7 +1653,7 @@ class EgPmaRunPanel(ttk.Frame):
             return None
         if not records:
             return None
-        resolve = getattr(self._main_layout, "_exec2_resolve_site_cells", None)
+        resolve = getattr(self._main_layout, "_exec_resolve_site_cells", None)
         sites = resolve(records) if resolve else [
             (r["row"], r["col"]) for r in records]
         seqs = {self._seq_at_rc[rc] for rc in sites if rc in self._seq_at_rc}
@@ -1772,7 +1772,7 @@ class EgPmaRunPanel(ttk.Frame):
     # goto_die() (bounded/verified relative stepping under the hood, see
     # that method's docstring in instruments/electroglas_2001x.py) - to
     # whichever die # a recipe step calls for, measures just that step, and
-    # moves on. Mirrors instrument_panel.py's _exec2_minor_move_thread
+    # moves on. Mirrors instrument_panel.py's _exec_minor_move_thread
     # (Accretech) using goto_die() instead of move_to_die_xy(). Off by
     # default (Recipe tab's Minor Moves checkbox) and not yet exercised
     # against a real Electroglas single-die-shot project - see that
@@ -1815,7 +1815,7 @@ class EgPmaRunPanel(ttk.Frame):
             return
         self._running = True
         try:
-            self._main_layout._exec2_set_running_buttons(True)
+            self._main_layout._exec_set_running_buttons(True)
         except Exception:
             pass
         self._abort = False
@@ -1833,7 +1833,7 @@ class EgPmaRunPanel(ttk.Frame):
         die #1 automatically, then the loaded recipe's steps run flat, top
         to bottom, once: a "move" step (recipe_panel._STEP_TYPES) is what
         repositions to any OTHER die # within that same shot. Mirrors
-        instrument_panel.py's _exec2_minor_move_thread (Accretech) using
+        instrument_panel.py's _exec_minor_move_thread (Accretech) using
         goto_die() instead of move_to_die_xy() - see that method for the
         fuller design note.
         """
@@ -1883,12 +1883,12 @@ class EgPmaRunPanel(ttk.Frame):
                     goto_shot_die(shot_row, shot_col, 1)
                 except _Stop:
                     break
-                layout._exec2_move_fn = (
+                layout._exec_move_fn = (
                     lambda die_num, sr=shot_row, sc=shot_col: goto_shot_die(sr, sc, die_num))
                 try:
-                    ok = bool(layout._exec2_run_steps_once())
+                    ok = bool(layout._exec_run_steps_once())
                 finally:
-                    layout._exec2_move_fn = None
+                    layout._exec_move_fn = None
                 drv.z_down()
                 self._ui(lambda p=ok, sr=shot_row, sc=shot_col: self._log(
                     f"[RESULTS] {'PASS' if p else 'FAIL'}  shot R{sr}C{sc}"))
@@ -1896,9 +1896,9 @@ class EgPmaRunPanel(ttk.Frame):
             error_msg = str(e)
             self._ui(lambda: self._log(f"[PMA] ERROR: {e}"))
         finally:
-            layout._exec2_move_fn = None
+            layout._exec_move_fn = None
             self._running = False
-            self._ui(lambda: self._main_layout._exec2_set_running_buttons(False))
+            self._ui(lambda: self._main_layout._exec_set_running_buttons(False))
             try:
                 self._make_safe(drv)
             except Exception:
@@ -1947,7 +1947,7 @@ class EgPmaRunPanel(ttk.Frame):
         through an entire wafer.
         """
         layout = self._main_layout
-        setter = getattr(layout, "_exec2_set_state", None)
+        setter = getattr(layout, "_exec_set_state", None)
         if setter is None:
             return
         try:
@@ -1958,7 +1958,7 @@ class EgPmaRunPanel(ttk.Frame):
     def _make_safe(self, drv):
         """Open every channel and separate the chuck. Safe to call twice."""
         layout = self._main_layout
-        opener = getattr(layout, "_exec2_open_all_channels", None)
+        opener = getattr(layout, "_exec_open_all_channels", None)
         if opener is not None:
             try:
                 opener()
@@ -1978,7 +1978,7 @@ class EgPmaRunPanel(ttk.Frame):
     def _publish_total_dies(self) -> int:
         """Tell the stats panel how many DIES this run measures.
 
-        _exec2_total_dies was never set on Electroglas, so "untested" was
+        _exec_total_dies was never set on Electroglas, so "untested" was
         computed as 0 - tested and went negative. It also has to be dies rather
         than touchdowns: three probed shots is twelve die results, and NA
         corners are not dies at all.
@@ -1989,8 +1989,8 @@ class EgPmaRunPanel(ttk.Frame):
             total += sum(1 for d in devs
                          if (d or "").strip().upper() not in ("", "NA"))
         try:
-            self._main_layout._exec2_total_dies = total
-            self._main_layout._exec2_push_stats()
+            self._main_layout._exec_total_dies = total
+            self._main_layout._exec_push_stats()
         except Exception as e:
             self._log(f"[PMA] Could not publish the die total — "
                       f"{type(e).__name__}: {e}")
@@ -1999,7 +1999,7 @@ class EgPmaRunPanel(ttk.Frame):
     def _start(self, count: int):
         self._running = True
         try:
-            self._main_layout._exec2_set_running_buttons(True)
+            self._main_layout._exec_set_running_buttons(True)
         except Exception:
             pass
         self._abort = False
@@ -2008,7 +2008,7 @@ class EgPmaRunPanel(ttk.Frame):
         # steps, so a previous stop would make every later run bail on its
         # very first step until something else happened to clear it.
         try:
-            self._main_layout._exec2_aborted = False
+            self._main_layout._exec_aborted = False
         except Exception:
             pass
         self._publish_total_dies()
@@ -2041,7 +2041,7 @@ class EgPmaRunPanel(ttk.Frame):
                 # Cleared here, not in the Tk callback: if the window is gone the
                 # callback never runs and the panel would be dead for good.
                 self._running = False
-                self._ui(lambda: self._main_layout._exec2_set_running_buttons(False))
+                self._ui(lambda: self._main_layout._exec_set_running_buttons(False))
 
             stopped, paused = self._abort, self._paused
             if stopped:
@@ -2112,7 +2112,7 @@ class EgPmaRunPanel(ttk.Frame):
         dies of the quad are measured before the chuck moves on.
         """
         layout = self._main_layout
-        run_steps = getattr(layout, "_exec2_run_steps_once", None)
+        run_steps = getattr(layout, "_exec_run_steps_once", None)
         if run_steps is None:
             self._ui(lambda: self._log(
                 "[PMA] No measurement engine on this layout — run stopped."))
@@ -2123,20 +2123,20 @@ class EgPmaRunPanel(ttk.Frame):
         seq, dev = t["seq"], t["device_id"]
         rc = self._anchor_rc.get(seq)
         if rc is not None:
-            layout._exec2_current_rc = rc
+            layout._exec_current_rc = rc
         # device_id is already the slash-joined quad ("NA/92-74/NA/93-70"),
         # which is exactly what LaMP's fldDieID holds. Without this the export
         # took the die ID of whichever single cell anchored the shot.
-        layout._exec2_die_id_override = dev
+        layout._exec_die_id_override = dev
         # Per-slot die ID and map cell, indexed by QUAD_ORDER so slot N is
         # fldSwitch N. The recipe's step names carry "(Die N)", so this is what
         # turns a result into "this reading belongs to die 83-71, at that
         # square" instead of four readings all filed under the shot's corner.
         slots = self._slot_rc.get(seq, {})
-        layout._exec2_die_ids_by_slot = list(t.get("devices") or [])
+        layout._exec_die_ids_by_slot = list(t.get("devices") or [])
         order = slot_names(*self.shot_layout())
-        layout._exec2_die_rc_by_slot = [slots.get(q) for q in order]
-        self._ui(lambda: layout._exec2_die_var.set(f"Die: {dev}"))
+        layout._exec_die_rc_by_slot = [slots.get(q) for q in order]
+        self._ui(lambda: layout._exec_die_var.set(f"Die: {dev}"))
         try:
             ok = bool(run_steps())
         except Exception as e:
@@ -2146,7 +2146,7 @@ class EgPmaRunPanel(ttk.Frame):
             return False
         # Per-die verdicts when the recipe produced them, so each die's own
         # square goes green or red and the totals count dies rather than shots.
-        slot_verdicts = dict(getattr(layout, "_exec2_slot_verdicts", None) or {})
+        slot_verdicts = dict(getattr(layout, "_exec_slot_verdicts", None) or {})
         if slot_verdicts:
             ids = t.get("devices") or []
 
@@ -2407,7 +2407,7 @@ class EgPmaRunPanel(ttk.Frame):
 
     def toggle_move_armed(self):
         """➡ Move to Selected - same arm/target process as Accretech's own
-        button (instrument_panel._exec2_move_selected_button):
+        button (instrument_panel._exec_move_selected_button):
 
           IDLE ("➡ Move to Selected") --click--> ARMED, no target
               ("✕ Cancel Move") --click a square OR a Die list row-->

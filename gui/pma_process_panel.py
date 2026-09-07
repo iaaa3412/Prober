@@ -681,7 +681,7 @@ class PmaProcessPanel(ttk.Frame):
         and the whole-wafer recipes must produce an identical map.
         """
         layout = self._main_layout
-        folder = getattr(layout, "_exec2_map_folder", None) or \
+        folder = getattr(layout, "_exec_map_folder", None) or \
             getattr(layout, "_ata_folder", None)
         if not folder or not os.path.isdir(folder):
             self._log("[PMA] LOAD ALL: no ATA folder")
@@ -701,7 +701,7 @@ class PmaProcessPanel(ttk.Frame):
                   else "the PMA's touchdowns")
         self._log(f"[PMA] LOAD ALL: wafer map built from {source} — "
                   f"{len(shots)} shot(s), {n} die(s)")
-        layout._exec2_map_folder = folder
+        layout._exec_map_folder = folder
 
         # The Run tab is not the only place this wafer is drawn. The Wafer Map
         # tab and its Wafer View page read the map from the file, so without

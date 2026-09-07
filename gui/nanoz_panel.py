@@ -1421,7 +1421,7 @@ class NanoZPanel(ttk.Frame):
 
     def _wafer_builder_dies(self) -> list:
         """The Wafer Builder tab's Die Map, at die-pitch resolution - the
-        same data instrument_panel._exec2_wafer_builder_grid overlays onto
+        same data instrument_panel._exec_wafer_builder_grid overlays onto
         the Run tab's map, reused here so NanoZ shows whatever die IDs were
         actually set there instead of a separate CSV/plan import.
         """
@@ -1526,7 +1526,7 @@ class NanoZPanel(ttk.Frame):
 
     def _draw_overlay_labels_on(self, wm, die_ids_by_rc: dict) -> list:
         # Same pattern as the Accretech Run tab's overlay
-        # (_exec2_draw_overlay_labels_on in instrument_panel.py) - draws
+        # (_exec_draw_overlay_labels_on in instrument_panel.py) - draws
         # text items directly on the WaferMapPanel canvas, not matplotlib,
         # since self.wafer_map (this Run tab's map) is the same canvas-based
         # WaferMapPanel class Accretech uses.
@@ -3976,14 +3976,14 @@ class NanoZPanel(ttk.Frame):
             # the very same MainLayout instance the normal tab uses (see
             # nanoz_mode.py), already carrying it once an operator has
             # pressed Overlay on Map for this folder (there, or via
-            # load_ata_folder's own automatic _exec2_reapply_overlay for
+            # load_ata_folder's own automatic _exec_reapply_overlay for
             # a folder that already had a confirmed offset saved). Keyed
             # by the SAME (row, col) both wafer maps use - this panel's
             # own map and the normal tab's both load the identical
             # ata_wafer_map_accretech.csv, so no offset translation is
             # needed here (only the separate Wafer Plan grid, see
             # _wafer_plan_offset, needs that).
-            overlay_ids = getattr(self._main_layout, "_exec2_overlay_die_ids", None)
+            overlay_ids = getattr(self._main_layout, "_exec_overlay_die_ids", None)
             if overlay_ids:
                 self.wafer_map.die_ids.update(overlay_ids)
                 # load_from_ata already ran its own on_redraw (via
@@ -4462,7 +4462,7 @@ class NanoZPanel(ttk.Frame):
         """Separate, jump straight to the one picked die, contact NOT
         restored afterward - a positioning aid, same contract as
         Accretech's Run tab button of the same name (see
-        instrument_panel._exec2_move_to_selected)."""
+        instrument_panel._exec_move_to_selected)."""
         row, col = rc
         if not self._do_manual_call("Separate", lambda p: p.z_down(), ">> D  (Separate)"):
             return
