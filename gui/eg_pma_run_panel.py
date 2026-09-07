@@ -131,7 +131,7 @@ class EgPmaRunPanel(ttk.Frame):
         self._sel_rc = None         # the exact cell clicked, so we can name the corner
         self._shot_window_items = []   # canvas ids for the 2x2 "you are here" box
         self._sel_window_items = []    # canvas ids for the selected touchdown's box
-        # ➡ Move to Selected arm/target toggle - see toggle_move_armed. Map/
+        # → Move to Selected arm/target toggle - see toggle_move_armed. Map/
         # table clicks only pick a target while armed (self._move_armed),
         # same "press the button first" process Accretech's own Move to
         # Selected uses. self._goto_btn is created and assigned by
@@ -210,7 +210,7 @@ class EgPmaRunPanel(ttk.Frame):
         lf = ttk.LabelFrame(self, text="Run", padding=6)
         lf.grid(row=3, column=0, sticky="ew", padx=6, pady=2)
 
-        # ⏮ Back / ⏭ Next moved to the Chuck Position section, ▶ Run / ⏹ Stop
+        # ◀ Back / ▶ Next moved to the Chuck Position section, ▶ Run / ⏹ Stop
         # to the top bar (▶ Run next to Test Die; ⏹ Stop Run there now also
         # stops this pane's run) - see instrument_panel._tab_execution2.
         btns = ttk.Frame(lf)
@@ -261,7 +261,7 @@ class EgPmaRunPanel(ttk.Frame):
         # "Selected die" (heading/help text/status line/➤ Move to selected
         # button) used to live here - moved to the Chuck Position section
         # instead (instrument_panel._tab_execution2 builds the actual
-        # ➡ Move to Selected button there and assigns it to self._goto_btn),
+        # → Move to Selected button there and assigns it to self._goto_btn),
         # matching where Accretech's own Move to Selected lives. It is now
         # an arm/target toggle rather than a passive "click updates a status
         # line" control - see toggle_move_armed.
@@ -2624,12 +2624,12 @@ class EgPmaRunPanel(ttk.Frame):
     # -- selection: pick a die on the map or in the table --------------------
 
     def toggle_move_armed(self):
-        """➡ Move to Selected - same arm/target process as Accretech's own
+        """→ Move to Selected - same arm/target process as Accretech's own
         button (instrument_panel._exec_move_selected_button):
 
-          IDLE ("➡ Move to Selected") --click--> ARMED, no target
+          IDLE ("→ Move to Selected") --click--> ARMED, no target
               ("✕ Cancel Move") --click a square OR a Die list row-->
-              ARMED, one target, highlighted dark blue ("➡ Move to #N")
+              ARMED, one target, highlighted dark blue ("→ Move to #N")
 
         While armed, _on_map_click/_on_table_click are the only things that
         can change the target - clicking elsewhere on the map or in the
@@ -2655,7 +2655,7 @@ class EgPmaRunPanel(ttk.Frame):
         if btn is None:
             return
         if not self._move_armed:
-            btn.config(text="➡ Move to Selected")
+            btn.config(text="→ Move to Selected")
             return
         if self._selected is None:
             btn.config(text="✕ Cancel Move")
@@ -2663,7 +2663,7 @@ class EgPmaRunPanel(ttk.Frame):
         t = self._touchdowns[self._selected]
         here = "" if self._index is None else \
             f"  ({self._selected - self._index:+d} from here)"
-        btn.config(text=f"➡ Move to #{t['seq']}{here}")
+        btn.config(text=f"→ Move to #{t['seq']}{here}")
 
     def _on_map_click(self, row: int, col: int):
         """A die was clicked on the Run tab's wafer map - only picks a Move

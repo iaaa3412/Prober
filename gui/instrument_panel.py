@@ -2582,7 +2582,7 @@ class MainLayout(ttk.Frame):
         # Accretech's equivalent of NanoZ's 1x20 window / Electroglas's 2x2
         # quad window - see _exec_update_shot_window.
         self._exec_shot_window_items: list = []
-        # ➡ Move to Selected's own arm/target state - see
+        # → Move to Selected's own arm/target state - see
         # _exec_move_selected_button. Deliberately separate from the
         # normal pick system (_exec_wafer_map._picked/get_picked()).
         self._exec_move_armed = False
@@ -2745,29 +2745,29 @@ class MainLayout(ttk.Frame):
         self._exec_measure_btn.grid(
                    row=4, column=0, sticky="ew", padx=(0, 1), pady=1)
         self._exec_first_die_btn = ttk.Button(
-            pos_lf, text="⏮ First Die", command=self._exec_manual_go_to_start)
+            pos_lf, text="◀ First Die", command=self._exec_manual_go_to_start)
         self._exec_first_die_btn.grid(
                    row=4, column=1, sticky="ew", padx=(1, 0), pady=1)
         self._exec_zup_btn = ttk.Button(
-            pos_lf, text="⬆ Z Up", command=self._exec_manual_z_up)
+            pos_lf, text="↑ Z Up", command=self._exec_manual_z_up)
         self._exec_zup_btn.grid(
                    row=5, column=0, sticky="ew", padx=(0, 1), pady=1)
         self._exec_zdown_btn = ttk.Button(
-            pos_lf, text="⬇ Z Down", command=self._exec_manual_z_down)
+            pos_lf, text="↓ Z Down", command=self._exec_manual_z_down)
         self._exec_zdown_btn.grid(
                    row=5, column=1, sticky="ew", padx=(1, 0), pady=1)
         if self._system == "electroglas":
             # ▶▶ Next Die (an Accretech-shaped "advance one die" action) is
-            # replaced by EgPmaRunPanel's own ⏭ Next/⏮ Back - moved in from
+            # replaced by EgPmaRunPanel's own ▶ Next/◀ Back - moved in from
             # that pane's former Run section, since single-die-step
             # advancing through the touchdown list IS what Back/Next mean
             # for a .PMA step-through.
             self._exec_back_btn = ttk.Button(
-                pos_lf, text="⏮ Back", command=lambda: self.eg_pma_run._step_back())
+                pos_lf, text="◀ Back", command=lambda: self.eg_pma_run._step_back())
             self._exec_back_btn.grid(
                        row=6, column=0, sticky="ew", padx=(0, 1), pady=1)
             self._exec_next_btn = ttk.Button(
-                pos_lf, text="⏭ Next", command=lambda: self.eg_pma_run._step_once())
+                pos_lf, text="▶ Next", command=lambda: self.eg_pma_run._step_once())
             self._exec_next_btn.grid(
                        row=6, column=1, sticky="ew", padx=(1, 0), pady=1)
             # Same arm/target process as Accretech's own Move to Selected
@@ -2775,7 +2775,7 @@ class MainLayout(ttk.Frame):
             # widget itself lives here (Chuck Position), same placement as
             # Accretech, but its state/text is owned by eg_pma_run.
             self.eg_pma_run._goto_btn = ttk.Button(
-                pos_lf, text="➡ Move to Selected",
+                pos_lf, text="→ Move to Selected",
                 command=self.eg_pma_run.toggle_move_armed)
             self.eg_pma_run._goto_btn.grid(
                 row=7, column=0, columnspan=2, sticky="ew", pady=1)
@@ -2796,26 +2796,26 @@ class MainLayout(ttk.Frame):
             # Next's bare J. Neither touches the picked-sites list or shots
             # - see _exec_manual_prev_die/_exec_manual_next_die.
             self._exec_back_btn = ttk.Button(
-                pos_lf, text="⏮ Back", command=self._exec_manual_prev_die)
+                pos_lf, text="◀ Back", command=self._exec_manual_prev_die)
             self._exec_back_btn.grid(
                        row=6, column=0, sticky="ew", padx=(0, 1), pady=1)
             self._exec_next_btn = ttk.Button(
-                pos_lf, text="⏭ Next", command=self._exec_manual_next_die)
+                pos_lf, text="▶ Next", command=self._exec_manual_next_die)
             self._exec_next_btn.grid(
                        row=6, column=1, sticky="ew", padx=(1, 0), pady=1)
             self._exec_prev_shot_btn = ttk.Button(
-                pos_lf, text="⏮⏮ Previous Shot", command=self._exec_manual_prev_shot)
+                pos_lf, text="◀◀ Previous Shot", command=self._exec_manual_prev_shot)
             self._exec_prev_shot_btn.grid(
                        row=7, column=0, sticky="ew", padx=(0, 1), pady=1)
             self._exec_next_shot_btn = ttk.Button(
-                pos_lf, text="⏭⏭ Next Shot", command=self._exec_manual_next_shot)
+                pos_lf, text="▶▶ Next Shot", command=self._exec_manual_next_shot)
             self._exec_next_shot_btn.grid(
                        row=7, column=1, sticky="ew", padx=(1, 0), pady=1)
             # Its own separate arm/target system - see
             # _exec_move_selected_button's docstring - deliberately not
             # tied to the normal pick system (Test Selected's picks) at all.
             self._exec_move_selected_btn = ttk.Button(
-                pos_lf, text="➡ Move to Selected",
+                pos_lf, text="→ Move to Selected",
                 command=self._exec_move_selected_button)
             self._exec_move_selected_btn.grid(
                 row=8, column=0, columnspan=2, sticky="ew", pady=1)
@@ -6494,14 +6494,14 @@ class MainLayout(ttk.Frame):
     _EXEC2_MOVE_TARGET_COLOR = "#1e3a8a"  # dark blue - distinct from the pick color
 
     def _exec_move_selected_button(self):
-        """➡ Move to Selected is a self-contained arm/target toggle, NOT a
+        """→ Move to Selected is a self-contained arm/target toggle, NOT a
         reader of the normal pick system (_exec_wafer_map.get_picked(),
         which Test Selected/Take from map selection/Overlay all share and
         which this must never disturb):
 
-          IDLE ("➡ Move to Selected") --click--> ARMED, no target
+          IDLE ("→ Move to Selected") --click--> ARMED, no target
               ("✕ Cancel Move") --click a die--> ARMED, one target,
-              highlighted dark blue ("➡ Move")
+              highlighted dark blue ("→ Move")
 
         While armed, clicking dies is intercepted via set_click_handler
         (see _exec_move_target_click) instead of going through picking -
@@ -6546,7 +6546,7 @@ class MainLayout(ttk.Frame):
         self._exec_move_target_prev_fill = wm.canvas.itemcget(item, "fill")
         wm.canvas.itemconfig(item, fill=self._EXEC2_MOVE_TARGET_COLOR)
         self._exec_move_target_rc = rc
-        self._exec_move_selected_btn.config(text="➡ Move")
+        self._exec_move_selected_btn.config(text="→ Move")
 
     def _exec_restore_move_target_color(self):
         wm = self._exec_wafer_map
@@ -6565,7 +6565,7 @@ class MainLayout(ttk.Frame):
         wm.set_click_handler(self._exec_move_prev_click_handler)
         wm._picking_enabled = self._exec_move_prev_picking_enabled
         self._exec_move_armed = False
-        self._exec_move_selected_btn.config(text="➡ Move to Selected")
+        self._exec_move_selected_btn.config(text="→ Move to Selected")
 
     def _exec_do_move_to(self, row: int, col: int):
         """Move straight to (row, col) - Z down first (never travel in X/Y
