@@ -4298,6 +4298,22 @@ class MainLayout(ttk.Frame):
                 rc = own_rc
             else:
                 rc = unique_id_to_rc.get(die_id) if die_id else None
+                if rc is None and "/" in die_id:
+                    # A site saved when a touchdown WAS a whole shot names
+                    # the quad ("93-01/83-71/93-02/83-72"), and no single
+                    # die on the map is called that - the electrical gauge
+                    # recipe's 13 sites are all of this form. A touchdown
+                    # is one die now, so resolve it to the first real die
+                    # the shot names, in slot order. That is the same die
+                    # Pull Shots would pick for the shot today, and the run
+                    # measures the whole shot from whichever of its dies
+                    # the chuck lands on, so nothing else has to change.
+                    for part in (p.strip() for p in die_id.split("/")):
+                        if not part or part.upper() in ("NA", "TARGET"):
+                            continue
+                        rc = unique_id_to_rc.get(part)
+                        if rc is not None:
+                            break
                 if rc is None:
                     rc = own_rc
                     if die_id:

@@ -1587,6 +1587,73 @@ class RecipePanel(ttk.Frame):
             + (f" and saved to probe card '{card}'." if saved
                else " — NOT saved (no probe card); press 💾 Save."))
 
+    def _sites_pull_shots_eg(self, ui, wm):
+        """Pull Shots, Electroglas: die #1 of every shot on the published map.
+
+        Same intent as the Accretech path below - one pick per shot, at the
+        shot's first die - but it needs none of that path's machinery. The
+        Accretech version derives which shot a square is in by
+        floor-dividing (row, col) by the Shot tab's live dims and a
+        confirmed Overlay offset. On Electroglas the published Wafer
+        Builder map states it outright: every die row carries the seq of
+        its shot and the slot it occupies. So there is no Overlay to
+        confirm, no Tk entry box to have open, and no arithmetic that can
+        drift out of alignment with the map.
+
+        Die #1 is the shot's first canonical slot (slot_names()[0] - the
+        top-left for every layout), falling back to the first slot the shot
+        actually has a die in, since real shots have NA corners (LaMP has
+        many) and the top-left is often one of them. Which die of the shot
+        gets picked does not change what is measured: the run publishes the
+        whole shot's slots from whichever die it lands on - the "any die
+        within the shot" style the Accretech docstring below describes.
+
+        Selection ONLY. This fills the touchdown table and nothing else -
+        it never writes to the wafer map, which is the source of truth.
+        """
+        run = getattr(ui, "eg_pma_run", None)
+        slots_fn = getattr(run, "_builder_shot_slots", None)
+        if slots_fn is None:
+            messagebox.showinfo("Touchdowns", "The Electroglas Run tab is "
+                                              "not available.")
+            return
+        dies = getattr(wm, "_last_dies", None) or []
+        if not dies:
+            messagebox.showinfo("Touchdowns", "No wafer map is published yet "
+                                              "- build and save one on the "
+                                              "Wafer Builder tab first.")
+            return
+        by_shot, _rc_to_shot = slots_fn()
+        if not by_shot:
+            messagebox.showinfo("Touchdowns", "The published map does not say "
+                                              "which shot each die belongs to.")
+            return
+        die_id_by_rc = {(d["row"], d["col"]): (d.get("die_id") or "").strip()
+                        for d in dies
+                        if d.get("row") is not None and d.get("col") is not None}
+        from electroglas_pma import slot_names as _slot_names
+        order = _slot_names(*run.shot_layout())
+        picks = []
+        for _seq, slots in sorted(by_shot.items()):
+            for q in order:
+                rc = slots.get(q)
+                if rc is None:
+                    continue
+                die_id = die_id_by_rc.get(rc) or ""
+                if not die_id or die_id.upper() == "NA":
+                    continue
+                picks.append((rc, die_id))
+                break
+        if not picks:
+            messagebox.showinfo("Touchdowns", "No shot on the published map "
+                                              "has a real die in it.")
+            return
+        picks.sort(key=lambda p: p[0])
+        self._sites[:] = [{"die_id": die_id, "row": rc[0], "col": rc[1]}
+                          for rc, die_id in picks]
+        self._store_form()
+        self._refresh_sites()
+
     def _sites_pull_shots(self):
         """Basic touchdown-list builder: one pick per shot on the loaded
         map - the die Wafer Builder's Shot tab numbers #1 in each. Only
@@ -1598,6 +1665,9 @@ class RecipePanel(ttk.Frame):
         wm = getattr(ui, "_exec_wafer_map", None)
         if wm is None:
             messagebox.showinfo("Touchdowns", "The Run tab's wafer map is not available.")
+            return
+        if self._system == "electroglas":
+            self._sites_pull_shots_eg(ui, wm)
             return
         gen = getattr(ui, "recipe_gen", None)
         if gen is None:
