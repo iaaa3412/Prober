@@ -471,13 +471,22 @@ class EgPmaRunPanel(ttk.Frame):
                 rc = slots.get(q)
                 if rc is None:
                     continue
-                die_id = die_id_by_rc.get(rc) or ""
-                # An NA or unlabelled slot is not a die: nothing to drive
-                # to and nothing to list. It stays in `devices` so slot N
-                # keeps lining up with fldSwitch N.
-                if not die_id or die_id.upper() == "NA":
-                    continue
+                # EVERY cell the map has is a die. This used to skip a cell
+                # whose label was "NA" or blank, which was reading a LABEL
+                # as an absence: "NA" is just what LaMP calls those dies,
+                # and the map marks all 2536 of them enabled=1 the same as
+                # any other. On Cenfire it was worse - 12505 of its 12915
+                # dies carry no label at all, and every one of them was
+                # dropped, leaving 410. What is or is not a die is the
+                # map's "enabled" column, which WaferMapPanel._parse_die_
+                # list has already applied by the time these reach us.
                 d = die_by_rc[rc]
+                die_id = die_id_by_rc.get(rc) or ""
+                # An unlabelled die still has to be namable in the Die list
+                # and the chuck dropdown, so fall back to its position -
+                # the same thing Accretech does when a map carries no IDs.
+                if not die_id:
+                    die_id = f"({rc[0]},{rc[1]})"
                 # The map's own coordinates, in the sign convention the
                 # rest of this module uses for a touchdown's x/y (the
                 # published CSV negates y for drawing - see

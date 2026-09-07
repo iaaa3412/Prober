@@ -4308,8 +4308,12 @@ class MainLayout(ttk.Frame):
                     # Pull Shots would pick for the shot today, and the run
                     # measures the whole shot from whichever of its dies
                     # the chuck lands on, so nothing else has to change.
+                    # Whichever component the map can actually place. No
+                    # label is special-cased: a name like "NA" or "TARGET"
+                    # simply is not unique on the map, so it does not
+                    # resolve, and the next component is tried.
                     for part in (p.strip() for p in die_id.split("/")):
-                        if not part or part.upper() in ("NA", "TARGET"):
+                        if not part:
                             continue
                         rc = unique_id_to_rc.get(part)
                         if rc is not None:

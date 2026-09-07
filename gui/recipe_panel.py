@@ -1694,12 +1694,16 @@ class RecipePanel(ttk.Frame):
         drift out of alignment with the map.
 
         Die #1 is the shot's first canonical slot (slot_names()[0] - the
-        top-left for every layout), falling back to the first slot the shot
-        actually has a die in, since real shots have NA corners (LaMP has
-        many) and the top-left is often one of them. Which die of the shot
-        gets picked does not change what is measured: the run publishes the
-        whole shot's slots from whichever die it lands on - the "any die
-        within the shot" style the Accretech docstring below describes.
+        top-left for every layout), and only falls past it when the shot
+        genuinely has no cell there.
+
+        It does NOT look at the label. An earlier version skipped a slot
+        whose die ID was "NA" or blank, which made the picks jump around
+        the shot for no reason an operator could see - "NA" is simply what
+        LaMP calls some of its dies, and on a map with no IDs at all
+        (Cenfire: 12505 of 12915 dies unlabelled) every slot would have
+        been skipped. A die is a cell the map marks enabled; what it is
+        called has nothing to do with it.
 
         Selection ONLY. This fills the touchdown table and nothing else -
         it never writes to the wafer map, which is the source of truth.
@@ -1732,14 +1736,16 @@ class RecipePanel(ttk.Frame):
                 rc = slots.get(q)
                 if rc is None:
                     continue
-                die_id = die_id_by_rc.get(rc) or ""
-                if not die_id or die_id.upper() == "NA":
-                    continue
+                # Whatever the map calls it, including "NA" and nothing at
+                # all - see the docstring. An unlabelled die is named by
+                # its position, the same fallback the Run tab's Die list
+                # uses (eg_pma_run_panel.adopt_from_wafer_builder).
+                die_id = die_id_by_rc.get(rc) or f"({rc[0]},{rc[1]})"
                 picks.append((rc, die_id))
                 break
         if not picks:
             messagebox.showinfo("Touchdowns", "No shot on the published map "
-                                              "has a real die in it.")
+                                              "has any dies in it.")
             return
         picks.sort(key=lambda p: p[0])
         self._sites[:] = [{"die_id": die_id, "row": rc[0], "col": rc[1]}
