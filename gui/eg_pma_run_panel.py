@@ -643,7 +643,19 @@ class EgPmaRunPanel(ttk.Frame):
         # Move to Selected's own target - self._selected would otherwise
         # outlive the touchdowns list it indexed into, and stay armed
         # pointing nowhere for a wafer the operator just left.
-        self._move_armed = False
+        #
+        # Through _disarm_move, NOT by assigning _move_armed here: arming
+        # takes the map's click handler over and suspends its picking
+        # (toggle_move_armed), and clearing the flag on its own left both
+        # of those installed forever. _on_map_click then early-returns
+        # because the flag is False, so map clicks went silently dead and
+        # Test Selected picking stayed off until the operator happened to
+        # arm and disarm again - the same symptom installing the handler
+        # was meant to fix, reached by a different route.
+        try:
+            self._disarm_move()
+        except Exception:
+            self._move_armed = False
         self._selected = None
         self._sel_rc = None
         try:
@@ -945,7 +957,17 @@ class EgPmaRunPanel(ttk.Frame):
         anchored = (self._anchored and self._index is not None
                    and 0 <= self._index < len(self._touchdowns))
         prev = self._table_position(self._touchdowns[self._index]) if anchored else None
+        # Every row's iid is its index, so an index appearing twice would
+        # raise Tk's "Item N already exists" - and because THIS loop runs
+        # first, that exception (caught two frames up, in
+        # pma_process_panel._push_to_run_tab) took the second loop with it,
+        # so one duplicate cost the entire rest of the wafer rather than one
+        # misplaced row. _pma_order/_enabled_indices dedupe upstream now;
+        # this makes the table itself unable to be destroyed that way again,
+        # whatever a future caller hands it.
         for i in run_order:
+            if self._tree.exists(str(i)):
+                continue
             t = self._touchdowns[i]
             qx, qy = self._table_position(t)
             step = f"{qx - prev[0]:+d},{qy - prev[1]:+d}" if anchored else ""
@@ -955,7 +977,7 @@ class EgPmaRunPanel(ttk.Frame):
             prev = (qx, qy)
         n_off = 0
         for i, t in enumerate(self._touchdowns):
-            if i in in_run:
+            if i in in_run or self._tree.exists(str(i)):
                 continue
             qx, qy = self._table_position(t)
             self._tree.insert("", "end", iid=str(i), tags=("offrun",),
@@ -2113,12 +2135,29 @@ class EgPmaRunPanel(ttk.Frame):
         index_of = {self._grid_xy(t): i for i, t in enumerate(self._touchdowns)}
         seen = set()
         order = []
+        dropped = []
         for k in getattr(self, "_pma_order_keys", []):
             i = index_of.get(k)
-            if i is None or i in seen:
+            if i is None:
+                continue
+            if i in seen:
+                dropped.append(i)
                 continue
             seen.add(i)
             order.append(i)
+        # Say so. A dropped index is a touchdown this run will NOT probe -
+        # the collision is resolved in favour of not corrupting the table,
+        # but silently losing a die from the route is exactly the kind of
+        # thing that has to be visible when the results come up short.
+        if dropped and dropped != getattr(self, "_pma_order_dropped", None):
+            self._pma_order_dropped = dropped
+            seqs = ", ".join(f"#{self._touchdowns[i]['seq']}" for i in dropped[:8])
+            more = f" (+{len(dropped) - 8} more)" if len(dropped) > 8 else ""
+            self._log(
+                f"[PMA] {len(dropped)} touchdown(s) share a grid position with "
+                f"an earlier one and were dropped from the run order: {seqs}"
+                f"{more}. This is the ambiguous-shot-corner case "
+                "_builder_grid_xy warns about — those dies will NOT be probed.")
         return order
 
     def _enabled_indices(self):
@@ -2949,6 +2988,9 @@ class EgPmaRunPanel(ttk.Frame):
                 # while armed silently did nothing.
                 self._prev_click_handler = wmap._click_handler
                 self._prev_picking_enabled = wmap._picking_enabled
+                # Only what was actually saved may be restored - see
+                # _disarm_move.
+                self._click_state_saved = True
                 wmap._picking_enabled = False
                 wmap.set_click_handler(self._on_map_click)
             self._select(None)
@@ -2959,10 +3001,20 @@ class EgPmaRunPanel(ttk.Frame):
         self._goto_selected()
 
     def _disarm_move(self):
+        """Idle the Move to Selected toggle and give the map back.
+
+        The restore is gated on this pane having actually taken the map
+        over. Restoring unconditionally meant a _disarm_move that ran
+        without a matching arm (which _clear now does, deliberately) would
+        install None as the click handler and force picking back on -
+        clobbering whatever another feature had set up, on the strength of
+        a getattr default rather than anything that was ever saved.
+        """
         wmap = self._run_map()
-        if wmap is not None:
-            wmap.set_click_handler(getattr(self, "_prev_click_handler", None))
-            wmap._picking_enabled = getattr(self, "_prev_picking_enabled", True)
+        if wmap is not None and getattr(self, "_click_state_saved", False):
+            wmap.set_click_handler(self._prev_click_handler)
+            wmap._picking_enabled = self._prev_picking_enabled
+        self._click_state_saved = False
         self._move_armed = False
         self._select(None)
 
