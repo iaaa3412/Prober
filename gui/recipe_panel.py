@@ -855,6 +855,14 @@ def recipes_to_rows(recipes: dict) -> list:
                      # default, opt IN per recipe, same as shortcut/
                      # fast_current_settle above.
                      "manual_mode": "1" if rec.get("manual_mode") else "",
+                     # Align die: purely a convenience - it preselects the
+                     # Run tab's "Chuck is on" dropdown when this recipe
+                     # loads and the chuck is not already set, so the
+                     # operator does not scroll a list of thousands to
+                     # find the die they always start at. It has no effect
+                     # on the run itself. See RecipePanel._on_align_die_pick
+                     # and instrument_panel._exec_preselect_align_die.
+                     "align_die": rec.get("align_die") or "",
                      "shot_origin_x": "" if origin is None else str(origin[0]),
                      "shot_origin_y": "" if origin is None else str(origin[1])})
         for i, step in enumerate(rec.get("steps", []), 1):
@@ -890,6 +898,7 @@ def rows_to_recipes(rows: list) -> dict:
                                   "minor_moves": False, "shortcut": False,
                                   "fast_current_settle": False,
                                   "manual_mode": False,
+                                  "align_die": "",
                                   "shot_origin": None})
         if kind == "RECIPE":
             bench = (row.get("bench") or "").strip()
@@ -900,6 +909,7 @@ def rows_to_recipes(rows: list) -> dict:
             recipes[name]["fast_current_settle"] = (
                 row.get("fast_current_settle") or "").strip() == "1"
             recipes[name]["manual_mode"] = (row.get("manual_mode") or "").strip() == "1"
+            recipes[name]["align_die"] = (row.get("align_die") or "").strip()
             ox = (row.get("shot_origin_x") or "").strip()
             oy = (row.get("shot_origin_y") or "").strip()
             if ox and oy:
@@ -1480,6 +1490,35 @@ class RecipePanel(ttk.Frame):
         ttk.Entry(bar, textvariable=self._find_all_var, width=14).pack(
             side="left", padx=(4, 0))
 
+        # Align die. Saved with the recipe and otherwise inert: it does not
+        # anchor anything, does not move the chuck and takes no part in the
+        # run. All it does is preselect the Run tab's "Chuck is on"
+        # dropdown when this recipe loads and the chuck is not already set,
+        # so the operator does not scroll thousands of entries to reach the
+        # die they always start from. See _on_align_die_pick and
+        # instrument_panel._exec_preselect_align_die.
+        #
+        # Electroglas only, because the box it preselects is: Accretech has
+        # no "Chuck is on" dropdown to point at, so the control would be
+        # inert there. The var is still created either way, so the save/
+        # load path does not have to test for it.
+        self._align_die_var = tk.StringVar(value="")
+        self._align_die_cb = None
+        if self._system == "electroglas":
+            ttk.Label(bar, text="Align die:").pack(side="left", padx=(16, 0))
+            self._align_die_cb = ttk.Combobox(
+                bar, textvariable=self._align_die_var, width=22)
+            self._align_die_cb.pack(side="left", padx=(4, 0))
+            # Editable and filtered as you type, for the same reason the
+            # Run tab's own anchor box is (EgPmaRunPanel._build_controls):
+            # a whole-wafer map has thousands of dies and scrolling to one
+            # is hopeless.
+            self._align_die_cb.bind("<KeyRelease>", self._on_align_die_typed)
+            self._align_die_cb.bind("<<ComboboxSelected>>", self._on_align_die_pick)
+            self._align_die_cb.bind("<FocusOut>", self._on_align_die_pick)
+            self._align_die_cb.bind("<Button-1>", self._fill_align_die_choices,
+                                    add="+")
+
         cols = ("n", "die_id", "row", "col")
         self._site_tree = ttk.Treeview(sf, columns=cols, show="headings", height=6)
         for cid, text, width, anchor in (("n", "#", 40, "center"),
@@ -1586,6 +1625,60 @@ class RecipePanel(ttk.Frame):
             f"die(s) with an ID from the map"
             + (f" and saved to probe card '{card}'." if saved
                else " — NOT saved (no probe card); press 💾 Save."))
+
+    # -- align die (a Run tab convenience, saved with the recipe) ----------
+
+    def _align_die_choices(self) -> list:
+        """The same entries the Run tab's "Chuck is on" box offers.
+
+        Taken from that box's own list wherever it exists, so the two can
+        never drift apart or format an entry differently - the whole point
+        is that what is picked here is what gets preselected there. Falls
+        back to the published map's die IDs when the Run tab has not built
+        its list yet (a recipe can be edited before a map is loaded).
+        """
+        run = getattr(self._run_panel(), "eg_pma_run", None)
+        choices = list(getattr(run, "_anchor_choices", None) or [])
+        if choices:
+            return choices
+        wm = getattr(self._run_panel(), "_exec_wafer_map", None)
+        dies = getattr(wm, "_last_dies", None) or []
+        return [d["die_id"] for d in dies if (d.get("die_id") or "").strip()]
+
+    def _fill_align_die_choices(self, _event=None):
+        cb = getattr(self, "_align_die_cb", None)
+        if cb is not None:
+            cb.config(values=self._align_die_choices())
+
+    def _on_align_die_typed(self, _event=None):
+        """Filter the list to what has been typed, same as the Run tab's
+        anchor box - then persist, so typing a die ID straight in counts
+        as picking it."""
+        text = (self._align_die_var.get() or "").strip().lower()
+        allc = self._align_die_choices()
+        shown = [c for c in allc if text in c.lower()] if text else allc
+        cb = getattr(self, "_align_die_cb", None)
+        if cb is not None:
+            cb.config(values=shown[:400])
+        self._on_align_die_pick()
+
+    def _on_align_die_pick(self, _event=None):
+        rec = self._recipes.get(self._current)
+        if rec is None:
+            return
+        value = (self._align_die_var.get() or "").strip()
+        if value == (rec.get("align_die") or ""):
+            return
+        rec["align_die"] = value
+        card = self._get_active_card()
+        if card:
+            self._save_recipes(card, self._recipes)
+
+    def get_align_die(self) -> str:
+        """The loaded recipe's align die, or "" - read by
+        instrument_panel._exec_preselect_align_die."""
+        rec = self._recipes.get(self._current) or {}
+        return (rec.get("align_die") or "").strip()
 
     def _sites_pull_shots_eg(self, ui, wm):
         """Pull Shots, Electroglas: die #1 of every shot on the published map.
@@ -3357,6 +3450,9 @@ class RecipePanel(ttk.Frame):
         self._shortcut_var.set(bool(rec.get("shortcut")))
         self._fast_current_settle_var.set(bool(rec.get("fast_current_settle")))
         self._manual_mode_var.set(bool(rec.get("manual_mode")))
+        if getattr(self, "_align_die_var", None) is not None:
+            self._align_die_var.set(rec.get("align_die") or "")
+            self._fill_align_die_choices()
         if self._shot_origin_btn is not None:
             self._shot_origin_btn.config(
                 state="normal" if self._minor_moves_var.get() else "disabled")
@@ -3395,6 +3491,8 @@ class RecipePanel(ttk.Frame):
             self._shortcut_var.set(False)
             self._fast_current_settle_var.set(False)
             self._manual_mode_var.set(False)
+            if getattr(self, "_align_die_var", None) is not None:
+                self._align_die_var.set("")
             if self._shot_origin_btn is not None:
                 self._shot_origin_btn.config(state="disabled")
             self._shot_origin_status_var.set("")
