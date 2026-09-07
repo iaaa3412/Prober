@@ -220,21 +220,26 @@ class EgPmaRunPanel(ttk.Frame):
         # stops this pane's run) - see instrument_panel._tab_execution2.
         btns = ttk.Frame(lf)
         btns.pack(fill="x", pady=(6, 0))
-        # ONE Sync button. There used to be three controls here - "Sync ?P",
-        # "Sync Run map" and "Build from Wafer Builder Map" - which made
-        # the operator responsible for knowing which of them a given
-        # symptom needed. They are all one action now (see _sync_all), and
-        # the Die list half of it also happens by itself on every map load
-        # (instrument_panel._exec_seed_die_list_from_map), so this button is
-        # only ever a manual re-check rather than a required step.
+        # Two buttons, two jobs, kept apart deliberately. Sync asks the
+        # PROBER where it is (?P) and changes nothing on screen but the
+        # position; Reload Map re-reads the published Wafer Builder map and
+        # rebuilds the Die list from it. Folding the map reload into Sync
+        # made a position check silently redraw the wafer, which is a much
+        # bigger action than the button appeared to offer.
         #
-        # The old "Sync Run map" is deliberately NOT part of it: that one
-        # ran the opposite direction, rebuilding the Wafer Builder map FROM
-        # the recipe's touchdowns. The map is the source of truth for die
-        # IDs and positions now, so nothing may overwrite it from a .PMA.
-        # _sync_run_map itself is left in place but unbound, the same way
+        # Reload Map is a manual re-check, not a required step - the same
+        # rebuild already happens by itself on every map load, see
+        # instrument_panel._exec_seed_die_list_from_map.
+        #
+        # Neither is the old "Sync Run map", which ran the opposite
+        # direction: rebuilding the Wafer Builder map FROM the recipe's
+        # touchdowns. The map is the source of truth for die IDs and
+        # positions now, so nothing may overwrite it from a .PMA.
+        # _sync_run_map is left in place but unbound, the same way
         # _load_recipe/_use_loaded_pma already are.
-        ttk.Button(btns, text="↻ Sync", command=self._sync_all).pack(side="left")
+        ttk.Button(btns, text="↻ Sync", command=self._sync_position).pack(side="left")
+        ttk.Button(btns, text="🗺 Reload Map", command=self._reload_map).pack(
+            side="left", padx=(6, 0))
 
         mode = ttk.Frame(lf)
         mode.pack(fill="x", pady=(6, 0))
@@ -1976,23 +1981,26 @@ class EgPmaRunPanel(ttk.Frame):
         grid = (real[0] - ox, real[1] - oy)
         return self._grid_index_map().get(grid), grid
 
-    def _sync_all(self):
-        """Everything the operator means by "sync", in one press.
+    def _reload_map(self):
+        """Re-read the published Wafer Builder map and rebuild from it.
 
-        Re-reads the published Wafer Builder map (which rebuilds the Die
-        list from it), then reads ?P and re-locates the chuck on that map.
-        Map first, because where the chuck IS only means something in terms
-        of the map it is being located on.
+        Deliberately separate from Sync. Sync is a question put to the
+        prober; this redraws the wafer and rebuilds the Die list
+        (instrument_panel._exec_seed_die_list_from_map runs off the map
+        load), which is a far larger thing to do than checking a position -
+        large enough that it has to be its own press rather than a side
+        effect of one.
         """
-        layout = self._main_layout
-        redraw = getattr(layout, "_exec_draw_wafer_map", None)
-        if redraw is not None:
-            try:
-                redraw(quiet_if_missing=True)
-            except Exception as e:
-                self._log(f"[PMA] Sync: could not reload the wafer map — "
-                          f"{type(e).__name__}: {e}")
-        self._sync_position()
+        redraw = getattr(self._main_layout, "_exec_draw_wafer_map", None)
+        if redraw is None:
+            messagebox.showinfo("Reload Map",
+                                "The Run tab's wafer map is not available.")
+            return
+        try:
+            redraw(quiet_if_missing=True)
+        except Exception as e:
+            self._log(f"[PMA] Could not reload the wafer map — "
+                      f"{type(e).__name__}: {e}")
 
     def _sync_position(self):
         drv = self._prober()
