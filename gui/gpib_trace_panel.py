@@ -112,7 +112,7 @@ class GpibTracePanel(ttk.Frame):
         # Fires from whichever thread made the instrument call - often the
         # background measurement run thread, never safe to touch a Tk
         # widget from directly. Hop to the main loop, same pattern
-        # instrument_panel._exec2_safe_after uses elsewhere.
+        # instrument_panel._exec_safe_after uses elsewhere.
         try:
             self.after(0, lambda l=line: self._append(l))
         except Exception:

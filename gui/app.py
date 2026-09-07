@@ -186,7 +186,7 @@ class AtomicaDashboard(tk.Tk):
         self.active_system = "accretech"
         self._by_system = {
             # die_status: (row, col) -> "PASS"/"FAIL", set by
-            # instrument_panel._exec2_update_die_color as a run paints the
+            # instrument_panel._exec_update_die_color as a run paints the
             # wafer map - the only record of per-die verdicts outside the
             # map widgets themselves, so cmd_save_csv can write them out
             # and cmd_import_results_csv can repaint them on import.
@@ -400,9 +400,8 @@ class AtomicaDashboard(tk.Tk):
                                      foreground="#1d4ed8")
                 self._refresh_ata_picker()
                 self._ata_picker_var.set(self._ata_display_name(folder_name))
-                ui.exec_panel.set_wafer_map(ui.wafer_map, wafer_id=folder_name)
                 ui.wafer_id_var.set(folder_name)
-            ui.exec_panel.log(
+            self.log(
                 f"[SYSTEM] Default ATA folder '{folder_name}'.")
 
     @property
@@ -459,7 +458,7 @@ class AtomicaDashboard(tk.Tk):
         toggle (switching system tears down and rebuilds self.ui mid-run),
         the ATA folder picker, and the prober bench picker (both reconnect
         instruments on selection). Called from
-        instrument_panel._exec2_set_running_buttons (Accretech/EG runs) and
+        instrument_panel._exec_set_running_buttons (Accretech/EG runs) and
         cassette_panel's own lock (cassette automation) - one place so a
         run started from either doesn't leave the other's entry points
         live. Real per-run controls (Recipe tab, Run tab's own buttons)
@@ -552,8 +551,8 @@ class AtomicaDashboard(tk.Tk):
         # BACK to an Accretech that was already connected, where
         # init_hardware never runs again.
         if system == "accretech" and system in self._connected_systems \
-                and hasattr(self.ui, "_exec2_get_xy"):
-            self.ui._exec2_get_xy()
+                and hasattr(self.ui, "_exec_get_xy"):
+            self.ui._exec_get_xy()
         # First time this system is actually selected, connect its own
         # instruments - not before, and never the other system's. Deferred
         # so the tab swap above finishes redrawing first.
@@ -677,10 +676,10 @@ class AtomicaDashboard(tk.Tk):
 
     def _any_run_in_progress(self) -> bool:
         ui = self.ui
-        if getattr(ui, "_exec2_running", False):
+        if getattr(ui, "_exec_running", False):
             return True
         # CassettePanel never sets a "_running" attribute of its own - the
-        # actual per-wafer run is one of the _exec2_running/eg_run checks
+        # actual per-wafer run is one of the _exec_running/eg_run checks
         # above/below, this only tracks the automation LOOP watching for
         # wafers to finish (armed, or paused waiting on a yield/error
         # decision) - all three still mean "don't let go of this folder/
@@ -1167,8 +1166,8 @@ class AtomicaDashboard(tk.Tk):
             # Each row settles as it is pinged rather than all at the end, so a
             # slow instrument reads as "still going" instead of "hung".
             self.update_idletasks()
-        if "prober" in drivers and hasattr(ui, "_exec2_refresh_die_size"):
-            ui._exec2_refresh_die_size()
+        if "prober" in drivers and hasattr(ui, "_exec_refresh_die_size"):
+            ui._exec_refresh_die_size()
 
     def _startup_sweep(self):
         """Connect whichever system is active (Accretech, unless a default
@@ -1335,8 +1334,8 @@ class AtomicaDashboard(tk.Tk):
             except Exception as e:
                 self.log(f"[SYSTEM] SW_MATRIX open-all failed: {e}")
         if "prober" in self._by_system["accretech"]["drivers"] \
-                and hasattr(acc_ui, "_exec2_get_xy"):
-            acc_ui._exec2_get_xy()
+                and hasattr(acc_ui, "_exec_get_xy"):
+            acc_ui._exec_get_xy()
 
     # Driver per profile key. Which of these actually get connected depends on
     # the active bench profile - see GUI System/eg_probers.yaml. A key marked
@@ -1420,7 +1419,7 @@ class AtomicaDashboard(tk.Tk):
         # refresh_bench_instruments() above only updates the Recipe TAB's
         # own display (it already re-picks/clears itself for the new
         # bench via _refresh_picker). The Run tab keeps its own separate
-        # cached copy (_exec2_steps/_exec2_recipe_var, loaded once when a
+        # cached copy (_exec_steps/_exec_recipe_var, loaded once when a
         # recipe was picked from ITS OWN dropdown) that nothing was
         # telling to reload - so switching probe02 -> probe03 left the
         # Run tab still armed with probe02's recipe/steps, runnable
@@ -1431,17 +1430,17 @@ class AtomicaDashboard(tk.Tk):
             active_recipe = panel.get_active_recipe() if panel else ""
         except Exception:
             pass
-        if hasattr(ui, "_exec2_recipe_var"):
+        if hasattr(ui, "_exec_recipe_var"):
             try:
                 if active_recipe:
-                    ui._exec2_load_recipe_by_name(active_recipe)
+                    ui._exec_load_recipe_by_name(active_recipe)
                 else:
-                    ui._exec2_recipe_var.set("")
-                    ui._exec2_steps = []
-                    if hasattr(ui, "_exec2_steps_tree"):
-                        ui._exec2_steps_tree.delete(*ui._exec2_steps_tree.get_children())
-                    if hasattr(ui, "_exec2_steps_var"):
-                        ui._exec2_steps_var.set(f"No recipe for bench '{name}' yet")
+                    ui._exec_recipe_var.set("")
+                    ui._exec_steps = []
+                    if hasattr(ui, "_exec_steps_tree"):
+                        ui._exec_steps_tree.delete(*ui._exec_steps_tree.get_children())
+                    if hasattr(ui, "_exec_steps_var"):
+                        ui._exec_steps_var.set(f"No recipe for bench '{name}' yet")
             except Exception as e:
                 self.log(f"[SYSTEM] Run tab recipe refresh failed: {e}")
         # During startup the scheduled sweep has not run yet and will pick this
@@ -1508,7 +1507,7 @@ class AtomicaDashboard(tk.Tk):
                 self.log(f"[SYSTEM] Recipe tab instrument refresh failed: {e}")
         # refresh_bench_instruments() above only updates the Recipe TAB's
         # own display. The Run tab keeps its own separate cached copy
-        # (_exec2_steps/_exec2_recipe_var, loaded once when a recipe was
+        # (_exec_steps/_exec_recipe_var, loaded once when a recipe was
         # picked from ITS OWN dropdown) that nothing was telling to
         # reload - so switching probe08 -> probe08new left the Run tab
         # still armed with probe08's recipe/steps, runnable against the
@@ -1519,17 +1518,17 @@ class AtomicaDashboard(tk.Tk):
             active_recipe = panel.get_active_recipe() if panel else ""
         except Exception:
             pass
-        if hasattr(acc_ui, "_exec2_recipe_var"):
+        if hasattr(acc_ui, "_exec_recipe_var"):
             try:
                 if active_recipe:
-                    acc_ui._exec2_load_recipe_by_name(active_recipe)
+                    acc_ui._exec_load_recipe_by_name(active_recipe)
                 else:
-                    acc_ui._exec2_recipe_var.set("")
-                    acc_ui._exec2_steps = []
-                    if hasattr(acc_ui, "_exec2_steps_tree"):
-                        acc_ui._exec2_steps_tree.delete(*acc_ui._exec2_steps_tree.get_children())
-                    if hasattr(acc_ui, "_exec2_steps_var"):
-                        acc_ui._exec2_steps_var.set(f"No recipe for bench '{name}' yet")
+                    acc_ui._exec_recipe_var.set("")
+                    acc_ui._exec_steps = []
+                    if hasattr(acc_ui, "_exec_steps_tree"):
+                        acc_ui._exec_steps_tree.delete(*acc_ui._exec_steps_tree.get_children())
+                    if hasattr(acc_ui, "_exec_steps_var"):
+                        acc_ui._exec_steps_var.set(f"No recipe for bench '{name}' yet")
             except Exception as e:
                 self.log(f"[SYSTEM] Run tab recipe refresh failed: {e}")
         # During startup the scheduled sweep has not run yet and will pick this
@@ -1572,7 +1571,7 @@ class AtomicaDashboard(tk.Tk):
         flexible Setup tab - a bench can drop a slot, or carry more than
         one of a kind, e.g. a second DMM) must not need it connected to be
         READY or to start a run - see check_system_ready and
-        instrument_panel._exec2_can_start, which both call this instead
+        instrument_panel._exec_can_start, which both call this instead
         of hardcoding the five. Falls back to the fixed list if the
         profile can't be read at all."""
         try:
@@ -1585,10 +1584,10 @@ class AtomicaDashboard(tk.Tk):
 
     def check_system_ready(self):
         missing = []
-        exec2_wm = getattr(self.ui, "_exec2_wafer_map", None)
-        if not (exec2_wm and exec2_wm._last_dies):
+        exec_wm = getattr(self.ui, "_exec_wafer_map", None)
+        if not (exec_wm and exec_wm._last_dies):
             missing.append("wafer map")
-        if not getattr(self.ui, "_exec2_steps", None):
+        if not getattr(self.ui, "_exec_steps", None):
             missing.append("recipe")
         required_instruments = (self.accretech_required_drivers(accretech_profiles.active_name())
                                 if self.active_system == "accretech"
@@ -1604,9 +1603,9 @@ class AtomicaDashboard(tk.Tk):
 
         if ready != self._sys_ready_prev:
             if ready:
-                self.ui.exec_panel.log("[SYSTEM] System ready.")
+                self.log("[SYSTEM] System ready.")
             elif self._sys_ready_prev is not None:
-                self.ui.exec_panel.log(f"[SYSTEM] No longer ready — missing: {', '.join(missing)}")
+                self.log(f"[SYSTEM] No longer ready — missing: {', '.join(missing)}")
             self._sys_ready_prev = ready
 
         self._update_prober_status_label()
@@ -1860,8 +1859,7 @@ class AtomicaDashboard(tk.Tk):
                              foreground="#1d4ed8")
         self._refresh_ata_picker()
         self._ata_picker_var.set(self._ata_display_name(folder_name))
-        self.ui.exec_panel.log(f"[SYSTEM] ATA folder '{folder_name}' loaded — {n_dies} dies found.")
-        self.ui.exec_panel.set_wafer_map(self.ui.wafer_map, wafer_id=folder_name)
+        self.log(f"[SYSTEM] ATA folder '{folder_name}' loaded — {n_dies} dies found.")
         self.ui.wafer_id_var.set(folder_name)
         self.check_system_ready()
 
@@ -1924,10 +1922,8 @@ class AtomicaDashboard(tk.Tk):
         if not folder:
             return
         n_pads = self.ui.load_pad_layout(folder)
-        self.ui.exec_panel.load_recipe()
-        self.ui.exec_panel.lbl_route.config(text="P1 (VDD)  -> SMU_HI\nP2 (GND)  -> SMU_LO\nP6 (OUT)  -> DMM_HI")
         folder_name = os.path.basename(folder)
-        self.ui.exec_panel.log(f"[SYSTEM] Pad layout loaded from '{folder_name}' — {n_pads} pads.")
+        self.log(f"[SYSTEM] Pad layout loaded from '{folder_name}' — {n_pads} pads.")
 
     def cmd_browse_export(self):
         selected_dir = filedialog.askdirectory(initialdir=self.ui.export_path_var.get(), title="Select Export Directory")
@@ -1999,13 +1995,13 @@ class AtomicaDashboard(tk.Tk):
         export_dir = self.ui.export_path_var.get()
         current_lot = self.ui.lot_id.get()
         if not os.path.exists(export_dir):
-            self.ui.exec_panel.log("[ERROR] The selected export directory does not exist.")
+            self.log("[ERROR] The selected export directory does not exist.")
             return None
         if not current_lot:
-            self.ui.exec_panel.log("[ERROR] Please enter a valid Lot ID.")
+            self.log("[ERROR] Please enter a valid Lot ID.")
             return None
         if not self.results_data:
-            self.ui.exec_panel.log("[ERROR] No measurement results yet.")
+            self.log("[ERROR] No measurement results yet.")
             return None
         wafer_id = self.ui.wafer_id_var.get().strip()
         name_parts = [current_lot] + ([wafer_id] if wafer_id else []) + ["results"]
@@ -2026,12 +2022,12 @@ class AtomicaDashboard(tk.Tk):
                     "kind": "META",
                     "system": self.active_system,
                     "ata_folder": getattr(self.ui, "_ata_folder", "") or "",
-                    "map_source": getattr(self.ui, "_exec2_map_source_var", None).get()
-                                  if hasattr(self.ui, "_exec2_map_source_var") else "",
+                    "map_source": getattr(self.ui, "_exec_map_source_var", None).get()
+                                  if hasattr(self.ui, "_exec_map_source_var") else "",
                     "probe_card": self.ui.pin_wiring.get_active_card()
                                   if hasattr(self.ui, "pin_wiring") else "",
-                    "recipe": getattr(self.ui, "_exec2_recipe_var", None).get()
-                              if hasattr(self.ui, "_exec2_recipe_var") else "",
+                    "recipe": getattr(self.ui, "_exec_recipe_var", None).get()
+                              if hasattr(self.ui, "_exec_recipe_var") else "",
                     "lot_id": current_lot,
                     "wafer_id": wafer_id,
                     "total_dies": self.total_dies,
@@ -2047,12 +2043,12 @@ class AtomicaDashboard(tk.Tk):
                     writer.writerow({"kind": "DIE", "row": row, "col": col,
                                      "status": status})
 
-            self.ui.exec_panel.log(
+            self.log(
                 f"[RESULTS] Export Succesful {len(self.results_data)} result(s), "
                 f"{len(self.die_status)} die verdict(s)")
             return filepath
         except Exception as e:
-            self.ui.exec_panel.log(f"[ERROR] Failed to save CSV file: {e}")
+            self.log(f"[ERROR] Failed to save CSV file: {e}")
             return None
 
     def cmd_import_results_csv(self):
@@ -2076,7 +2072,7 @@ class AtomicaDashboard(tk.Tk):
             with open(path, newline='', encoding='utf-8') as f:
                 rows = list(csv.DictReader(f))
         except Exception as e:
-            self.ui.exec_panel.log(f"[ERROR] Could not read {os.path.basename(path)}: {e}")
+            self.log(f"[ERROR] Could not read {os.path.basename(path)}: {e}")
             return
         meta = next((r for r in rows if r.get("kind") == "META"), None)
         if meta is None:
@@ -2122,11 +2118,10 @@ class AtomicaDashboard(tk.Tk):
                                      foreground="#1d4ed8")
                 self._refresh_ata_picker()
                 self._ata_picker_var.set(self._ata_display_name(os.path.basename(folder)))
-                ui.exec_panel.set_wafer_map(ui.wafer_map, wafer_id=os.path.basename(folder))
             except Exception as e:
-                ui.exec_panel.log(f"[SETUP] Could not load ATA folder {os.path.basename(folder)!r}: {e}")
+                self.log(f"[SETUP] Could not load ATA folder {os.path.basename(folder)!r}: {e}")
         elif folder:
-            ui.exec_panel.log(
+            self.log(
                 f"[SETUP] ATA folder {os.path.basename(folder)!r} not found on this machine - "
                 "continuing without it.")
 
@@ -2135,15 +2130,15 @@ class AtomicaDashboard(tk.Tk):
             try:
                 ui.pin_wiring.switch_to_card(probe_card)
             except Exception as e:
-                ui.exec_panel.log(f"[SETUP] Could not switch to probe card "
+                self.log(f"[SETUP] Could not switch to probe card "
                                   f"{probe_card!r}: {e}")
 
         recipe = (meta.get("recipe") or "").strip()
-        if recipe and hasattr(ui, "_exec2_load_recipe_by_name"):
+        if recipe and hasattr(ui, "_exec_load_recipe_by_name"):
             try:
-                ui._exec2_load_recipe_by_name(recipe)
+                ui._exec_load_recipe_by_name(recipe)
             except Exception as e:
-                ui.exec_panel.log(f"[SETUP] Could not load recipe {recipe!r}: {e}")
+                self.log(f"[SETUP] Could not load recipe {recipe!r}: {e}")
 
         lot_id = (meta.get("lot_id") or "").strip()
         wafer_id = (meta.get("wafer_id") or "").strip()
@@ -2194,9 +2189,9 @@ class AtomicaDashboard(tk.Tk):
                     row.get("die", ""), row.get("step", ""), row.get("type", ""),
                     row.get("value", ""), row.get("unit", "")))
         for (r, c), status in die_status.items():
-            if hasattr(ui, "_exec2_update_die_color"):
+            if hasattr(ui, "_exec_update_die_color"):
                 try:
-                    ui._exec2_update_die_color(r, c, status == "PASS")
+                    ui._exec_update_die_color(r, c, status == "PASS")
                 except Exception:
                     pass
 
@@ -2213,7 +2208,7 @@ class AtomicaDashboard(tk.Tk):
                                 sum(1 for s in die_status.values() if s == "FAIL"))
         self.update_statistics_visuals()
         self.check_system_ready()
-        ui.exec_panel.log(
+        self.log(
             f"[SETUP] Loaded {len(results)} result(s), {len(die_status)} die "
             f"verdict(s) — recipe '{recipe or '?'}', "
             f"probe card '{probe_card or '?'}'.")
@@ -2222,14 +2217,14 @@ class AtomicaDashboard(tk.Tk):
         export_dir = self.ui.export_path_var.get()
         current_lot = self.ui.lot_id.get()
         if not os.path.exists(export_dir):
-            self.ui.exec_panel.log("[ERROR] The selected export directory does not exist.")
+            self.log("[ERROR] The selected export directory does not exist.")
             return None
         if not current_lot:
-            self.ui.exec_panel.log("[ERROR] Please enter a valid Lot ID.")
+            self.log("[ERROR] Please enter a valid Lot ID.")
             return None
         fmt = self.ui.get_selected_export_format()
         if not fmt:
-            self.ui.exec_panel.log("[ERROR] No export format selected")
+            self.log("[ERROR] No export format selected")
             return None
         wafer_id = self.ui.wafer_id_var.get().strip()
         fmt_type = fmt.get("type", "sql")
@@ -2237,7 +2232,7 @@ class AtomicaDashboard(tk.Tk):
         # session's history) only ever cover the most recently started run —
         # re-running shouldn't silently pile old runs' rows into a new export.
         # A run that never actually started (e.g. the Full Die/Minor Moves
-        # refusal - see _exec2_start_full_die) leaves this at zero rows,
+        # refusal - see _exec_start_full_die) leaves this at zero rows,
         # which lands here and returns None with no file written - if a
         # caller (cassette_panel) expected a run to have happened for this
         # wafer and didn't get one, this is silently why nothing exported.
@@ -2248,7 +2243,7 @@ class AtomicaDashboard(tk.Tk):
             else:
                 reason = ("readings that carry a device-ID string"
                          if fmt.get("requires_die_id", True) else "measurement results")
-            self.ui.exec_panel.log(
+            self.log(
                 f"[ERROR] No matching results yet from the last run for '{fmt['name']}' — "
                 f"this format needs {reason}.")
             return None
@@ -2290,7 +2285,7 @@ class AtomicaDashboard(tk.Tk):
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
                     writer.writerows(rows)
-                self.ui.exec_panel.log(
+                self.log(
                     f"[RESULTS] Export Succesful {len(rows)} '{fmt['name']}' row(s)")
                 return filepath
             else:
@@ -2301,11 +2296,11 @@ class AtomicaDashboard(tk.Tk):
                 # 0x97 byte - not valid UTF-8, so the export would not reopen.
                 with open(filepath, "w", newline="", encoding="utf-8") as f:
                     f.write("\n".join(statements) + "\n")
-                self.ui.exec_panel.log(
+                self.log(
                     f"[RESULTS] Export Succesful {len(statements)} '{fmt['name']}' row(s)")
                 return filepath
         except Exception as e:
-            self.ui.exec_panel.log(f"[ERROR] Failed to save {ext.upper()} file: {e}")
+            self.log(f"[ERROR] Failed to save {ext.upper()} file: {e}")
             return None
 
     def cmd_buzzer_clear(self):
@@ -2328,7 +2323,7 @@ class AtomicaDashboard(tk.Tk):
         threading.Thread(target=_run, daemon=True).start()
 
     def cmd_abort(self):
-        self.ui.exec_panel.abort()
+        self.log("[PROBER] Run Stopped.")
         drv = self.drivers.get("prober")
         if drv and drv.inst and self.active_system != "accretech":
             self.log(f"[PROBER] {self.active_system.capitalize()} prober stop command "

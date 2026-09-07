@@ -438,6 +438,37 @@ worth a second look / decision later.
    calls and would need to be kept or redirected), or was ExecutionDashboard
    supposed to be wired in somewhere and got dropped by accident?
 
+   RESOLVED 2026-09-07: confirmed _tab_execution2 fully replaced it -
+   ExecutionDashboard had exactly one consumer anywhere in the repo
+   (instrument_panel.py's _build_exec_panel, confirmed by grep) and its
+   own dead widget tree was never shown. Removed gui/execution_panel.py
+   entirely, plus _build_exec_panel/the ExecutionDashboard import/its
+   call site in MainLayout.__init__. Every app.py call site was checked
+   individually for a real side effect before deciding what to do with
+   it, not just deleted blindly:
+   - ~23 exec_panel.log(...) calls -> self.log(...) directly (MainLayout
+     always passes controller=self, so ui.controller.log/self.log were
+     always the exact same call - confirmed via app.py's MainLayout
+     construction sites before assuming this).
+   - exec_panel.set_wafer_map()/load_recipe()/lbl_route.config() calls
+     deleted outright - traced each definition first: set_wafer_map
+     only fed ExecutionDashboard's own dead wafer-map widget/dict state
+     (zero external effect), load_recipe() was a literal `pass` stub.
+   - exec_panel.abort() (cmd_abort, the real emergency-stop handler) was
+     NOT a pure no-op - its body called self.log("[PROBER] Run
+     Stopped."), a real, user-visible Main Log line - traced this before
+     touching it and replaced the call with that exact log line directly
+     instead of deleting it, so the abort flow's visible behavior is
+     unchanged.
+   - on_stats_change=self.controller.on_exec_stats_change (the other
+     constructor arg) was checked too: on_exec_stats_change has a SECOND,
+     real caller in the live run engine (instrument_panel.py:6740) - left
+     completely untouched, only lost its redundant second (fake-data)
+     caller from the deleted dashboard.
+   Verified: grepped the whole repo for zero remaining exec_panel/
+   ExecutionDashboard/execution_panel references, syntax-checked, and a
+   clean headless launch.
+
 ------------------------------------------------------------------------
 
 7. Electroglas Prober Debug tab - hint text removed from UI, preserved here
@@ -506,6 +537,32 @@ worth a second look / decision later.
    will do nothing when the recipe actually runs. Needs a decision: add
    the missing execution branch (real 4-wire DMM resistance read), or
    remove "ohmf" from the Type list until it's implemented.
+
+   RESOLVED 2026-09-07: implemented the real execution branch (user is
+   testing it live on Electroglas the same day). Added `elif t ==
+   "ohmf":` to _exec_run_steps_once, modeled closely on the existing
+   "resistance" branch: DMM-only (errors clearly if instrument != "DMM"
+   - no SMU driver in this codebase exposes a real 4-wire method, so a
+   hand-edited recipe with instrument=SMU gets a real error instead of
+   a guess), errors if the resolved DMM isn't connected, then picks the
+   actual read call by hasattr: measure_resistance_4w() if the driver
+   has it (both hp3458a.py and hp_e1326b.py do - confirmed by reading
+   both drivers directly, not assumed), else measure_resistance(wire_
+   mode=4) (also present on both), else a clear "no 4-wire resistance
+   method" error rather than silently falling back to 2-wire. Verified
+   the hasattr branch selection against both real driver shapes with a
+   standalone test before trusting it. his/los needed no new connection-
+   closing logic - confirmed via recipe_panel.py's own validate_recipe
+   (the "no switch row assigned DMM SHI/SLO" check) that Compute
+   Connection/manual conn entry already fold the sense pins into the
+   step's "conn" field, which the generic pre-dispatch channel-closing
+   already handles for every step type. Also confirmed (reading
+   export_formats.py's group_results_by_die) that ohmf readings flow
+   into the existing resistance CSV column for free - it already
+   detects a resistance reading by unit=="ohm", not just type==
+   "resistance", specifically to also catch Target-derived resistance,
+   and an ohmf reading's recorded unit is "ohm" too. Verified: syntax-
+   checked, clean headless launch.
 
 ------------------------------------------------------------------------
 

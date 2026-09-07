@@ -193,7 +193,7 @@ def apply_lookup(fmt: Dict[str, Any], folder: str, row: Dict[str, Any]) -> Dict[
       the row (e.g. "die_id") against the table's own lookup_key_col
       column. Use this whenever the run itself already knows which die
       it measured (Minor Moves recipes attribute die_id per-die - see
-      instrument_panel._exec2_slot_identity) - it can't drift out of sync
+      instrument_panel._exec_slot_identity) - it can't drift out of sync
       with the table's own coordinate convention the way a position join
       can.
     - otherwise: matched by this app's own real (row, col) - a CSV-type
@@ -596,7 +596,7 @@ def _die_group_key(r: Dict[str, Any]):
     real ID yet) - their readings silently merged into one row. Real
     (row, col) is the one thing that is always unique per physical die,
     now that every measurement is attributed to the die it actually
-    measured (see instrument_panel._exec2_slot_identity / the Minor
+    measured (see instrument_panel._exec_slot_identity / the Minor
     Moves per-die attribution fix) rather than a shot's landing square
     for all of them."""
     row, col = r.get("row"), r.get("col")
@@ -639,7 +639,7 @@ def group_results_by_die(results_data: List[Dict[str, Any]]) -> List[Dict[str, A
         # A step's own type stays whatever it was configured as
         # (voltage/current) even when its Target combines it with an
         # earlier apply step into a resistance - see
-        # instrument_panel._exec2_apply_target/recipe_panel.
+        # instrument_panel._exec_apply_target/recipe_panel.
         # compute_target_derived. That combination changes the UNIT to
         # "ohm", not the step's type, so a plain type == "resistance"
         # check misses every Target-derived resistance and falls through

@@ -231,11 +231,11 @@ class RecipeGenPanel(ttk.Frame):
         self._die_status: Dict[tuple, dict] = {}
         self._diemap_mode_var = tk.StringVar(value="id")
         self._diemap_status_var = tk.StringVar(value="")
-        # SAME Variable object as main_layout._exec2_label_min_px_var, not a
+        # SAME Variable object as main_layout._exec_label_min_px_var, not a
         # copy - one "Label min width (px):" control drives the zoom
         # threshold on both this tab's Die Map AND the Run tab's map (see
-        # instrument_panel.MainLayout.__init__ and _exec2_labels_fit).
-        self._diemap_label_min_px_var = main_layout._exec2_label_min_px_var
+        # instrument_panel.MainLayout.__init__ and _exec_labels_fit).
+        self._diemap_label_min_px_var = main_layout._exec_label_min_px_var
         self._diemap_label_min_px_var.trace_add("write", self._on_diemap_label_min_px_change)
         self._die_editor: Optional[tk.Entry] = None
         self._die_editor_key: Optional[tuple] = None
@@ -1186,7 +1186,7 @@ class RecipeGenPanel(ttk.Frame):
     # progress without publishing it as the Run tab's active map.
     # ==================================================================
     def _maps_dir(self, create: bool = False) -> Optional[str]:
-        folder = getattr(self._main_layout, "_exec2_map_folder", None) or \
+        folder = getattr(self._main_layout, "_exec_map_folder", None) or \
             getattr(self._main_layout, "_ata_folder", None)
         if not folder:
             return None
@@ -1215,7 +1215,7 @@ class RecipeGenPanel(ttk.Frame):
         # OTHER panel (instrument_panel.py's Run tab, self._main_layout) -
         # saved here anyway because it is meaningless without the map it was
         # confirmed against, and there is nowhere else it survives a
-        # relaunch. See _state_from_dict / instrument_panel._exec2_reapply_
+        # relaunch. See _state_from_dict / instrument_panel._exec_reapply_
         # overlay for the restore side.
         ml = self._main_layout
         return {
@@ -1228,9 +1228,9 @@ class RecipeGenPanel(ttk.Frame):
             "shotmap_cells": {kstr(k): v for k, v in self._shotmap_cells.items()},
             "die_status": {",".join(str(x) for x in k): v
                           for k, v in self._die_status.items()},
-            "overlay_row_offset": getattr(ml, "_exec2_overlay_row_offset", 0),
-            "overlay_col_offset": getattr(ml, "_exec2_overlay_col_offset", 0),
-            "overlay_confirmed": bool(getattr(ml, "_exec2_overlay_offset_confirmed", False)),
+            "overlay_row_offset": getattr(ml, "_exec_overlay_row_offset", 0),
+            "overlay_col_offset": getattr(ml, "_exec_overlay_col_offset", 0),
+            "overlay_confirmed": bool(getattr(ml, "_exec_overlay_offset_confirmed", False)),
         }
 
     def _state_from_dict(self, data: dict):
@@ -1268,20 +1268,20 @@ class RecipeGenPanel(ttk.Frame):
         # JSON is shared/cross-synced with Electroglas's own RecipeGenPanel
         # instance for the same ATA folder (see "CROSS-SYSTEM SYNC" below) -
         # restoring the confirmed flag onto Electroglas's ml here too meant
-        # _exec2_reapply_overlay (Run tab, on folder open) auto-selected
+        # _exec_reapply_overlay (Run tab, on folder open) auto-selected
         # every overlay-matched die on that bench as well, even though the
         # Overlay button doesn't exist there.
         ml = self._main_layout
-        if self._system == "accretech" and hasattr(ml, "_exec2_overlay_offset_confirmed"):
+        if self._system == "accretech" and hasattr(ml, "_exec_overlay_offset_confirmed"):
             try:
-                ml._exec2_overlay_row_offset = int(data.get("overlay_row_offset", 0) or 0)
-                ml._exec2_overlay_col_offset = int(data.get("overlay_col_offset", 0) or 0)
+                ml._exec_overlay_row_offset = int(data.get("overlay_row_offset", 0) or 0)
+                ml._exec_overlay_col_offset = int(data.get("overlay_col_offset", 0) or 0)
             except (TypeError, ValueError):
-                ml._exec2_overlay_row_offset = ml._exec2_overlay_col_offset = 0
-            ml._exec2_overlay_offset_confirmed = bool(data.get("overlay_confirmed", False))
+                ml._exec_overlay_row_offset = ml._exec_overlay_col_offset = 0
+            ml._exec_overlay_offset_confirmed = bool(data.get("overlay_confirmed", False))
 
     def _current_folder(self) -> Optional[str]:
-        return getattr(self._main_layout, "_exec2_map_folder", None) or \
+        return getattr(self._main_layout, "_exec_map_folder", None) or \
             getattr(self._main_layout, "_ata_folder", None)
 
     def _new_named_map(self):
@@ -1622,7 +1622,7 @@ class RecipeGenPanel(ttk.Frame):
         per real die - no touchdown-text encoding involved, since this tab
         already knows each die's exact position and status."""
         self._close_die_editor(commit=True)
-        folder = getattr(self._main_layout, "_exec2_map_folder", None) or \
+        folder = getattr(self._main_layout, "_exec_map_folder", None) or \
             getattr(self._main_layout, "_ata_folder", None)
         if not folder or not os.path.isdir(folder):
             messagebox.showerror("No ATA Folder", "Load an ATA folder first.")
@@ -1701,7 +1701,7 @@ class RecipeGenPanel(ttk.Frame):
     def _sync_views(self, folder: str):
         layout = self._main_layout
         try:
-            layout._exec2_map_folder = folder
+            layout._exec_map_folder = folder
             # Accretech's Run tab map stays on its own hardware-extracted
             # source (Accr Wafer's "Accretech") - Wafer Builder's die IDs
             # get OVERLAID onto that map (Overlay... button), not swapped in
@@ -1726,8 +1726,8 @@ class RecipeGenPanel(ttk.Frame):
                     except OSError as exc:
                         self._log(f"[MAP] Could not publish the Run "
                                  f"tab's map: {exc}")
-                layout._exec2_map_source_var.set("Wafer Builder")
-            layout._exec2_draw_wafer_map()
+                layout._exec_map_source_var.set("Wafer Builder")
+            layout._exec_draw_wafer_map()
         except Exception as exc:
             self._log(f"[MAP] Map written, but the Run tab did not "
                      f"redraw: {type(exc).__name__}: {exc}")
