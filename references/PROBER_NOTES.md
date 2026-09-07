@@ -297,7 +297,7 @@ Confirmed by moving the machine, 2026-07-30:
 
 | Fact | How |
 |---|---|
-| `MD +1 X` moves **right**, `MD +1 Y` moves **up** | operator observation |
+| `MD +1 X` moves **right**, `MD +1 Y` moves **DOWN** | measured 2026-08-21: from `54-00`, `MD +1,0` landed `54-01` and `MD 0,+1` landed `44-71` — TL→TR→BR of the quad. An earlier note here said "up"; that was wrong. |
 | Recipe +X/+Y match `MD +1` — no sign flip | same |
 | Prober die size **is** 7.042 × 3.284 mm | `MD +1` from `54-00` landed exactly on `54-02` |
 | `?P` tracks every step exactly, both axes | ±1 out-and-back, exact return |
