@@ -4303,7 +4303,15 @@ class MainLayout(ttk.Frame):
                     if die_id:
                         unmatched += 1
             resolved.append(rc)
-        if unmatched:
+        # This gets called more than once for the same recipe during a
+        # single folder load/autoload pass (the Run tab's own recipe
+        # dropdown load, plus whichever other path re-applies the saved
+        # bench/CSV-import recipe) - logging every call printed the exact
+        # same warning 2-3 times in a row. Only the outcome changing is
+        # actually new information.
+        outcome = (unmatched, len(sites))
+        if unmatched and outcome != getattr(self, "_exec_resolve_mismatch_last", None):
+            self._exec_resolve_mismatch_last = outcome
             self._exec_log(
                 f"[RUN] {unmatched} of {len(sites)} touchdown(s) named a die ID "
                 "that doesn't match the map at its own (row, col)")

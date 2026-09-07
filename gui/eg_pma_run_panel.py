@@ -2268,11 +2268,10 @@ class EgPmaRunPanel(ttk.Frame):
                          "\n\nThe chuck is not on the first touchdown of "
                          "this run - it will move back there before "
                          "probing starts.")
-            prompt = (f"Probe {remaining} touchdown(s), starting over from "
-                      f"the first touchdown of this run?{move_note}{subset}")
         else:
             remaining = len(ahead)
-            prompt = f"Probe {remaining} more touchdown(s)?{subset}"
+            move_note = ""
+        prompt = f"Probe {remaining} Dies?{move_note}{subset}"
 
         if not messagebox.askokcancel(
                 "Run", f"{prompt}\n\n"
