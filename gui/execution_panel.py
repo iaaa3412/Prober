@@ -125,7 +125,6 @@ class ExecutionDashboard(ttk.Frame):
             ("Touchdown",   self.toggle_touchdown),
             ("Run Test",    self.run_test),
             ("Next Die",    self.next_die),
-            ("NanoZ Frame", self.simulate_nanoz_frame),
             ("Abort",       self.abort),
         ]:
             ttk.Button(bar, text=label, command=cmd).pack(side="left", padx=3, pady=5)
@@ -513,8 +512,6 @@ class ExecutionDashboard(ttk.Frame):
         d["sensor_current_ma"]  = sensor_current
         d["heater_current_ma"]  = heater_current
 
-        self.simulate_nanoz_frame(log_header=False)
-
         passed = (
             leakage < 1.0
             and 0.060 <= sensor_current <= 0.180
@@ -549,21 +546,6 @@ class ExecutionDashboard(ttk.Frame):
             )
 
         self._fire_stats()
-        self._refresh()
-
-    def simulate_nanoz_frame(self, log_header=True):
-        self.nanoz_frames += 1
-        if random.random() < 0.015:
-            self.nanoz_checksum_errors += 1
-            self.log("[NANOZ] Checksum warning: frame discarded.")
-        elif log_header:
-            chip     = random.choice([0, 1])
-            currents = [abs(random.gauss(0.120, 0.018)) for _ in range(4)]
-            self.log(
-                f"[NANOZ] #spl! chip={chip}, mask=0x0F, "
-                f"I=[{currents[0]:.4f}, {currents[1]:.4f}, "
-                f"{currents[2]:.4f}, {currents[3]:.4f}] mA."
-            )
         self._refresh()
 
     def next_die(self):

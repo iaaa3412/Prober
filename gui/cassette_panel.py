@@ -822,10 +822,8 @@ class CassettePanel(ttk.Frame):
         drv = self._drv()
         try:
             if drv is None:
-                self._log("[CASSETTE] (simulated — no prober connected) "
-                          ">> L  (Unload / Load Next Wafer)")
-                time.sleep(0.2)
-                next_ready = True
+                self._log("[CASSETTE] Unload/load-next error: prober not connected")
+                next_ready = False
             else:
                 self._log("[CASSETTE] >> L  (Unload / Load Next Wafer)")
                 # Same generous ceiling as the manual button - see

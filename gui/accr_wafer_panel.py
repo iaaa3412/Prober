@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import math
 import os
 import re
 import threading
@@ -133,15 +132,12 @@ class AccrWaferPanel(ttk.Frame):
             return
 
         drv = self.controller.drivers.get("prober")
-        sim = not (drv and drv.inst)
+        if not (drv and drv.inst):
+            messagebox.showerror("Prober Not Connected",
+                                 "Connect the prober before extracting a wafer map.")
+            return
 
-        if sim:
-            if not messagebox.askyesno(
-                "Extract Wafer Map (simulation)",
-                "Prober not connected — run a SIMULATED map extraction?"
-            ):
-                return
-        elif not messagebox.askyesno(
+        if not messagebox.askyesno(
             "Extract Wafer Map",
             "Start dry-run map extraction?\n\n"
             "The prober will drive to the start die (G) and then step through\n"
@@ -163,7 +159,7 @@ class AccrWaferPanel(ttk.Frame):
         self._set_status("Running…", "#2563eb")
         threading.Thread(
             target=self._worker,
-            args=(sim, self._separate_var.get(), max_dies),
+            args=(self._separate_var.get(), max_dies),
             daemon=True,
         ).start()
 
@@ -183,12 +179,9 @@ class AccrWaferPanel(ttk.Frame):
                 threading.Thread(target=_clear, daemon=True).start()
 
 
-    def _worker(self, sim: bool, send_separate: bool, max_dies: int):
+    def _worker(self, send_separate: bool, max_dies: int):
         try:
-            if sim:
-                self._worker_sim(max_dies)
-            else:
-                self._worker_hw(send_separate, max_dies)
+            self._worker_hw(send_separate, max_dies)
         finally:
             self._running = False
             self.after(0, lambda: (self._start_btn.config(state="normal"),
@@ -252,26 +245,6 @@ class AccrWaferPanel(ttk.Frame):
         except Exception as e:
             self._log(f"[MAP] ERROR: {e}")
             self._finish(f"Error after {len(self._dies)} dies — see log", error=True)
-
-    def _worker_sim(self, max_dies: int):
-        self._log("[MAP] (sim) Extracting simulated wafer map…")
-        radius = 12
-        for row, y in enumerate(range(-radius, radius + 1)):
-            xs = [x for x in range(-radius, radius + 1)
-                  if math.hypot(x, y) <= radius + 0.4]
-            if row % 2:
-                xs.reverse()
-            for x in xs:
-                if self._abort:
-                    self._finish(f"Aborted — {len(self._dies)} dies collected")
-                    return
-                if len(self._dies) >= max_dies:
-                    self._finish(f"Stopped at max-dies cap ({max_dies})", error=True)
-                    return
-                self._add_die(x, y, f"QY{y:03d}X{x:03d}")
-                time.sleep(0.02)
-        self._finish(f"Complete (sim) — {len(self._dies)} dies")
-
 
     def _add_die(self, x: int, y: int, raw: str):
         self._dies.append((x, y, raw))

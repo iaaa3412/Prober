@@ -188,24 +188,30 @@ worth a second look / decision later.
     treatment as [ALIGN REMOVE] - both tags are entirely inside the
     orphaned ExecutionDashboard (item 6) and have no reachable trigger.
 
-    RESOLVED 2026-09-07, split decision:
-    - cassette_panel.py:825 ("(simulated — no prober connected) >> L...")
-      and accr_wafer_panel.py:257/273 ("(sim) Extracting simulated wafer
-      map...") are BOTH live, load-bearing features, not legacy
-      scaffolding - traced both triggers directly: cassette automation's
-      _advance_thread checks `if drv is None` and simulates the unload/
-      load step so the automation loop keeps running without hardware;
-      accr_wafer_panel's "Extract Wafer Map" button explicitly asks
-      "Prober not connected — run a SIMULATED map extraction?" before
-      calling _worker_sim. Left both untouched.
+    RESOLVED 2026-09-07: initially left cassette_panel.py/
+    accr_wafer_panel.py's fallbacks alone as live/load-bearing (traced
+    both real triggers - cassette's _advance_thread checking `if drv is
+    None`; accr_wafer's "Extract Wafer Map" simulation confirm dialog),
+    but on explicit follow-up request ("i do want anything simulation
+    related removed") both were removed anyway:
+    - cassette_panel.py: _advance_thread's `drv is None` branch no
+      longer fakes success - it now logs "prober not connected" and
+      sets next_ready=False, funneling into the SAME pause/retry error
+      handling every other advance failure already uses, instead of
+      silently pretending a wafer loaded.
+    - accr_wafer_panel.py: _worker_sim deleted outright, _worker no
+      longer takes a `sim` param (always calls _worker_hw), and
+      _start_extraction now requires a connected prober up front
+      (messagebox error if not) instead of offering a simulated
+      extraction. The now-unused `import math` (only used by
+      _worker_sim's spiral-fill math) was removed too.
     - instrument_panel.py's (sim) lines were already removed with item
       1's dead Alignment-tab code.
     - execution_panel.py's 9 [SIM REMOVE]/[TEST REMOVE] log lines (in
       load_dies/toggle_running/_auto_step/_auto_next/run_test) were
       stripped, same treatment as [ALIGN REMOVE] - left the surrounding
-      logic (dict updates, early returns, _refresh calls) in place
-      rather than gutting item 6's ExecutionDashboard wholesale, which
-      is a separate, bigger decision not asked for here.
+      logic (dict updates, early returns, _refresh calls) in place.
+      ExecutionDashboard (item 6) itself is still not fully removed.
 
 ------------------------------------------------------------------------
 
@@ -280,6 +286,16 @@ worth a second look / decision later.
     would mislabel that live one, same reasoning as item 5d's mixed-tag
     cases (PROBER/INSTRUMENT). Flagging here instead for physical deletion
     alongside the rest of ExecutionDashboard's dead code.
+
+    RESOLVED 2026-09-07: simulate_nanoz_frame() deleted whole (both
+    [NANOZ]-tagged log lines went with it, not just stripped), along
+    with its two call sites - the "NanoZ Frame" button in
+    ExecutionDashboard's own control bar, and the call inside run_test()
+    that used it to fake nanoz_frames/nanoz_checksum_errors counters.
+    Real NanoZ functionality (nanoz_panel.py's own tab/driver) is
+    completely separate and untouched - confirmed its own [NANOZ] log
+    forwarder shares only the tag name, not any code path, with the
+    deleted method.
 
 ------------------------------------------------------------------------
 
