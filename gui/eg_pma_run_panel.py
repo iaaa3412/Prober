@@ -1508,8 +1508,22 @@ class EgPmaRunPanel(ttk.Frame):
         for rc_key, wb_id in die_id_lookup.items():
             if wb_id:
                 by_id.setdefault(wb_id.strip(), rc_key)
+        # seq -> the exact cell the touchdown was built from. A touchdown
+        # that came off the map knows its own cell, and that is both exact
+        # and unique - unlike its die_id, which is a label a real map
+        # repeats (LaMP: "NA" on 114 dies, "PCM" on 21, "TARGET" on 6).
+        # by_id keeps only the FIRST cell for a repeated label, so without
+        # this every one of those 114 NA dies collapsed onto a single cell
+        # here, exactly as _grid_xy used to. Measured on the electrical
+        # gauge: its 15 sites resolved to 10 touchdowns, the 4 NA and 2
+        # TARGET ones all landing on top of each other.
+        td_rc = {t["seq"]: (t["map_row"], t["map_col"])
+                 for t in self._touchdowns
+                 if t.get("map_row") is not None and t.get("map_col") is not None}
         for d in dies:
-            rc = by_id.get((d.get("device_id") or "").strip())
+            rc = td_rc.get(d["seq"])
+            if rc is None:
+                rc = by_id.get((d.get("device_id") or "").strip())
             if rc is None:
                 rc = rc_lookup.get((round(d["x"]), round(d["y"])))
             if rc is None:
@@ -1524,17 +1538,21 @@ class EgPmaRunPanel(ttk.Frame):
                 d = dict(d, device_id=wb_id)
             self._cells.setdefault(d["seq"], []).append(rc)
             self._slot_rc.setdefault(d["seq"], {})[d["quad_pos"]] = rc
-            # Only real dies get a reverse mapping - clicking an NA corner
-            # should not select the shot, since nothing is probed there.
-            if d["enabled"]:
-                self._seq_at_rc[rc] = d["seq"]
-                self._die_at_rc[rc] = d
-                # One cell stands for the whole touchdown wherever a shot has
-                # to be named by a single square. It must be an ENABLED die's
-                # cell, because that is the only kind _seq_at_rc maps back -
-                # a shot like NA/NA/NA/81-10 has just one, and it is not the
-                # top-left corner.
-                self._anchor_rc.setdefault(d["seq"], rc)
+            # Every cell, with no "is this a real die" test. d["enabled"]
+            # comes from quad_positions, which derives it from the LABEL
+            # ("NA"/"TARGET"/blank -> not present) - that is a fact about a
+            # .PMA's device-ID text, not about the wafer, and gating on it
+            # here made LaMP's 114 NA-labelled dies unselectable,
+            # unanchorable and invisible to the run. A die is skipped only
+            # when the operator marks it skipped on the Wafer Builder tab,
+            # which is the map's own enabled column, and
+            # WaferMapPanel._parse_die_list has already applied that before
+            # any of this sees it.
+            self._seq_at_rc[rc] = d["seq"]
+            self._die_at_rc[rc] = d
+            # One cell stands for the whole touchdown wherever a shot has
+            # to be named by a single square.
+            self._anchor_rc.setdefault(d["seq"], rc)
         if missing:
             self._log(f"[PMA] {missing} of {len(dies)} recipe dies are not on "
                       "the Wafer Builder map — the .PMA and the published map "
@@ -1926,8 +1944,11 @@ class EgPmaRunPanel(ttk.Frame):
             if touchdown is None:
                 wafer.clear_current_shot()
             else:
-                label = "/".join(d for d in touchdown["devices"]
-                                 if d.strip().upper() != "NA") or touchdown["device_id"]
+                # The die this touchdown IS. It used to join the shot's
+                # other device IDs and drop the ones called "NA", which
+                # both named the wrong thing (a touchdown is one die now)
+                # and quietly decided some dies were not worth showing.
+                label = touchdown["device_id"]
                 wafer.mark_current_shot(touchdown["x"], touchdown["y"],
                                         f"#{touchdown['seq']}  {label}")
         except Exception as e:
@@ -2500,15 +2521,25 @@ class EgPmaRunPanel(ttk.Frame):
         """Tell the stats panel how many DIES this run measures.
 
         _exec_total_dies was never set on Electroglas, so "untested" was
-        computed as 0 - tested and went negative. It also has to be dies rather
-        than touchdowns: three probed shots is twelve die results, and NA
-        corners are not dies at all.
+        computed as 0 - tested and went negative. It also has to be dies
+        rather than touchdowns: three probed shots is twelve die results.
+
+        Every slot the shot really has is counted, whatever it is called.
+        Excluding "NA" and blank names here would leave the total SMALLER
+        than the tally now that those dies are measured, painted and
+        counted like any other (see _measure_here) - untested would go
+        negative again, from the opposite direction. A slot is left out
+        only when the shot template has no cell there at all, which is the
+        operator's own Wafer Builder marking rather than a judgement about
+        a label.
         """
         total = 0
         for i in self._enabled_indices():
-            devs = self._touchdowns[i].get("devices") or []
-            total += sum(1 for d in devs
-                         if (d or "").strip().upper() not in ("", "NA"))
+            slots = self._slot_rc.get(self._touchdowns[i]["seq"])
+            if slots:
+                total += len(slots)
+            else:
+                total += 1
         try:
             self._main_layout._exec_total_dies = total
             self._main_layout._exec_push_stats()
@@ -2678,18 +2709,16 @@ class EgPmaRunPanel(ttk.Frame):
                     if quad is None:
                         continue
                     die = ids[slot - 1] if slot - 1 < len(ids) else ""
-                    # An NA corner is not a die. It is still measured and
-                    # logged - LaMP measured all four switches too, and those
-                    # readings are how a shorted corner shows up - but it must
-                    # not be painted or counted, or empty positions appear as
-                    # failed dies and the tally exceeds the die total.
-                    if (die or "").strip().upper() in ("", "NA"):
-                        self._log(f"[PMA] #{seq} {quad} (no die): "
-                                  f"{'in spec' if passed else 'OUT OF SPEC'} "
-                                  "— not counted")
-                        continue
+                    # Every slot of the shot is painted and counted. This
+                    # used to drop a slot whose label was "NA" or blank, on
+                    # the reasoning that such a corner "is not a die" - but
+                    # that is a judgement about a NAME. A die is skipped
+                    # only where the operator marked it skipped on the
+                    # Wafer Builder tab; anything the map still carries is
+                    # probed, and its result belongs in the map colours and
+                    # the tally like any other.
                     self.mark_die_result(seq, quad, passed)
-                    self._log(f"[PMA] #{seq} {quad} {die}: "
+                    self._log(f"[PMA] #{seq} {quad} {die or '(unnamed)'}: "
                               f"{'PASS' if passed else 'FAIL'}")
             self._ui(_mark)
         else:

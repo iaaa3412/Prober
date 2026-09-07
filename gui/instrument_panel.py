@@ -3942,29 +3942,29 @@ class MainLayout(ttk.Frame):
         _exec_color_shot_squares, just above, already did that for the map
         squares).
 
-        An empty NA/TARGET corner still gets a passfail verdict (LAMP
-        measures the switch either way, e.g. to catch a mis-wired card) but
-        is not a real die and must not be counted - same rule
-        eg_pma_run_panel._measure_here already applies on the Electroglas
-        side, so both systems agree on what "a die" means here. ids_by_slot
-        is 0-indexed by die # - 1 (die #1 is index 0), built by
+        Every slot the shot template has is counted, whatever its die is
+        called. This used to skip a slot whose ID was "NA" or blank, on the
+        reasoning that such a corner "is not a real die" - but that is a
+        judgement about a NAME, and it is not ours to make: "NA" is simply
+        what one project calls some of its dies, and plenty of maps carry
+        no IDs at all. A die is excluded only where the operator marked it
+        so on the Wafer Builder Shot tab, which is what present_slots
+        already applies when the slots are built - by the time a verdict
+        exists for a slot, that slot is one the operator asked to probe.
+
+        ids_by_slot is 0-indexed by die # - 1 (die #1 is index 0), built by
         _exec_publish_die_slots_for/_at right before the steps ran.
         """
         slot_verdicts = dict(getattr(self, "_exec_slot_verdicts", None) or {})
         if shot_geom is not None and slot_verdicts:
             counted = 0
             for die_num, passed in sorted(slot_verdicts.items()):
-                die_id = (ids_by_slot[die_num - 1]
-                          if 0 <= die_num - 1 < len(ids_by_slot) else "")
-                if (die_id or "").strip().upper() in ("", "NA"):
-                    continue
                 counted += 1
                 self._exec_safe_after(
                     self._exec_add_pass if passed else self._exec_add_fail)
             if counted:
                 return
-            # No slot resolved to a real, named die (e.g. no Wafer Builder
-            # map published yet) - fall through to the single combined
+            # Nothing to count at all - fall through to the single combined
             # tally below rather than silently adding nothing for a real
             # touchdown that WAS measured.
         self._exec_safe_after(
@@ -4583,10 +4583,37 @@ class MainLayout(ttk.Frame):
         if not self._exec_overlay_items:
             return
         wm = self._exec_wafer_map
-        sample_rc = next(iter(self._exec_overlay_die_ids), None)
-        item = wm.dies.get(sample_rc) if sample_rc else None
-        bbox = wm.canvas.bbox(item) if item is not None else None
+        # Measure a die that is actually ON the currently drawn map.
+        #
+        # This used to take next(iter(...)) - one arbitrary cell - and give
+        # up if it could not be measured. _exec_overlay_die_ids is MERGED
+        # rather than replaced (see _exec_overlay_apply and
+        # _exec_load_recipe), so it can hold cells from a map that is no
+        # longer drawn; when the arbitrary one happened to be such a cell,
+        # bbox came back None and this returned with the labels left in
+        # whatever state they already had. If that state was "hidden" from
+        # an earlier zoom-out, every die ID stayed invisible until some
+        # other event re-ran this with a luckier sample - which is exactly
+        # what "the die IDs vanished, then came back on their own" looks
+        # like, and why it was intermittent: which cell iteration yields
+        # first changes as the dict is merged.
+        bbox = None
+        for rc in self._exec_overlay_die_ids:
+            item = wm.dies.get(rc)
+            if item is None:
+                continue
+            bbox = wm.canvas.bbox(item)
+            if bbox:
+                break
         if not bbox:
+            # Nothing measurable at all. Show the labels rather than
+            # leaving them hidden: a stuck-visible label is self-correcting
+            # on the next redraw, a stuck-hidden one looks like data loss.
+            for it in self._exec_overlay_items:
+                try:
+                    wm.canvas.itemconfigure(it, state="normal")
+                except tk.TclError:
+                    pass
             return
         width_px = bbox[2] - bbox[0]
         state = "normal" if width_px >= self._EXEC2_OVERLAY_MIN_DIE_PX else "hidden"
