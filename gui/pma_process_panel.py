@@ -50,16 +50,18 @@ class PmaProcessPanel(ttk.Frame):
     def _build_toolbar(self):
         bar = ttk.Frame(self)
         bar.grid(row=0, column=0, sticky="ew", padx=6, pady=(6, 2))
-        # One button does the whole hand-off. It used to take three, spread
-        # over two tabs: Create Recipe from PMA here, then From PMA Process on
-        # the Run tab, with the touchdown list a separate manual step after
-        # that. Any of them could be skipped or run in the wrong order, and
-        # nothing downstream noticed.
+        # A .PMA is a one-time import onto the Wafer Builder tab now,
+        # nothing more - LOAD ALL used to also build a recipe and adopt
+        # the touchdown list straight onto the Run tab, but that made this
+        # tab an ongoing dependency instead of a source a project only
+        # ever needs once. The recipe and the touchdown list are built by
+        # hand on the Recipe tab against the map this produces, same as
+        # any Accretech recipe is.
         self._load_all_btn = ttk.Button(bar, text="⚙  LOAD ALL",
                                         command=self.load_all)
         self._load_all_btn.pack(side="left")
-        ttk.Label(bar, text="build the recipe, the touchdown list and the run "
-                            "from the selected PMA + Recipe Generator",
+        ttk.Label(bar, text="build a Wafer Builder map from the selected PMA "
+                            "- review it there, then Save Wafer Map yourself",
                   foreground="#6b7280", font=("Arial", 8)).pack(side="left", padx=(8, 0))
         self._path_lbl = ttk.Label(bar, text="No PMA file loaded", foreground="gray")
         self._path_lbl.pack(side="left", padx=10)
@@ -611,266 +613,54 @@ class PmaProcessPanel(ttk.Frame):
         self.refresh_align_site()
 
     def load_all(self):
-        """PMA + workbook -> recipe, touchdown list, and a ready Run tab.
+        """PMA -> a Wafer Builder map. Nothing else.
 
-        Deliberately one action. These four steps only make sense performed
-        together and in this order, and when they were separate buttons on two
-        tabs the failure mode was silent: a recipe built from one PMA, a run
-        adopted from another, and a touchdown list from whatever was selected
-        on the map at the time. Ordering matters - the touchdown list is read
-        from the touchdowns the Run tab adopts, so the recipe has to exist and
-        the run has to be adopted before the list can be attached to it.
+        This is the ONLY thing PMA import does now - the Run tab, a
+        recipe, and the probe card's saved touchdown list are none of
+        them touched here. Mirrors recipe_gen_panel.RecipeGenPanel's own
+        Import PMA button (_import_pma) exactly, just reading the file
+        this tab already has selected (self._pma_path) instead of
+        prompting for one again: parse into local variables, hand them to
+        load_touchdowns_as_map, done - nothing kept afterward. The Wafer
+        Builder map stays in memory on that tab until the operator
+        reviews it and presses ITS OWN "Save Wafer Map" button; only that
+        explicit action publishes it to the Run tab, same as building a
+        map by hand would.
         """
         if not self._pma_path:
             self._log("[PMA] LOAD ALL: no PMA file loaded")
             return
-        self._log(f"[PMA] LOAD ALL — {os.path.basename(self._pma_path)}")
-
-        recipe_panel = getattr(self._main_layout, "recipe_panel", None)
-        if recipe_panel is None or not hasattr(recipe_panel, "import_legacy_from_path"):
-            self._log("[PMA] LOAD ALL: the Recipe tab is not available.")
-            return
-        if not recipe_panel.import_legacy_from_path(self._pma_path):
-            self._log("[PMA] LOAD ALL: stopped — the recipe could not be built "
-                      "from this PMA.")
-            return
-        recipe = recipe_panel.get_active_recipe()
-        self.recipe_name_var.set(recipe)
-        self._log(f"[PMA] LOAD ALL: recipe '{recipe}' created.")
-
-        run = getattr(self._main_layout, "eg_pma_run", None)
-        if run is None or not hasattr(run, "adopt_from_process"):
-            self._log("[PMA] LOAD ALL: the Run tab is not available — recipe "
-                      "built, but nothing to run it with.")
-            return
-        if getattr(run, "_running", False):
-            self._log("[PMA] LOAD ALL: a run is in progress")
-            return
-        # _anchored alone is not enough to block on anymore - it now stays
-        # True after a run finishes or is stopped too (the chuck's real
-        # position is kept, see eg_pma_run_panel._start), not just while
-        # genuinely paused mid-run. _needs_restart is what actually means
-        # "that position still matters for resuming" - see _run_all/
-        # _move_next. A finished/stopped run's stale anchor used to block
-        # every later LOAD ALL here, silently leaving both the Run tab and
-        # the Recipe tab's touchdown list on the PREVIOUS recipe.
-        if getattr(run, "_anchored", False) and not getattr(run, "_needs_restart", False):
-            self._log("[PMA] LOAD ALL: Resume or stop the run, then LOAD ALL again.")
+        gen = getattr(self._main_layout, "recipe_gen", None)
+        if gen is None or not hasattr(gen, "load_touchdowns_as_map"):
+            self._log("[PMA] LOAD ALL: the Wafer Builder tab is not available.")
             return
         try:
-            run.adopt_from_process(quiet=True)
+            fields = egpma.parse_pma_file(self._pma_path)
+            touchdowns = egpma.load_touchdowns(self._pma_path, fields)
         except Exception as exc:
-            self._log(f"[PMA] LOAD ALL: the Run tab could not adopt the recipe: {exc}")
+            self._log(f"[PMA] LOAD ALL: could not read "
+                      f"{os.path.basename(self._pma_path)}: {exc}")
             return
-
-        self._write_wafer_map(run)
-        n = self._push_touchdowns_to_recipe(run, recipe_panel, recipe)
-        self._log(f"[PMA] LOAD ALL: done — recipe '{recipe}', {n} touchdown(s).")
-
-    def _write_wafer_map(self, run) -> int:
-        """Write the Run tab's wafer map from the recipe generator workbook.
-
-        LOAD ALL has to do this. It did not, so the map file was only ever
-        rewritten by the Run tab's Sync Run map button, and a folder whose
-        file had been written from some earlier recipe kept drawing that
-        recipe's dies - a 15-touchdown gauge showed a 15-shot wafer while the
-        run walked the real one.
-
-        The map is the WORKBOOK'S shots, not the .PMA's: the .xls is the
-        wafer, the .PMA only says which of it to visit. That is why the gauge
-        and the whole-wafer recipes must produce an identical map.
-        """
-        layout = self._main_layout
-        folder = getattr(layout, "_exec_map_folder", None) or \
-            getattr(layout, "_ata_folder", None)
-        if not folder or not os.path.isdir(folder):
-            self._log("[PMA] LOAD ALL: no ATA folder")
-            return 0
-        try:
-            shots = run._map_source_touchdowns()
-            # Ask what is loaded, not whether two lists differ by identity -
-            # that test passed even when the "workbook" was the PMA's own
-            # shots, so the log claimed a full wafer while drawing touchdowns.
-            from_workbook = run.wafer_definition_data() is not None
-            n = len(egpma.expand_touchdowns_to_dies(shots, *run._die_um))
-        except Exception as exc:
-            self._log(f"[PMA] LOAD ALL: could not read the wafer's touchdowns — "
-                      f"{type(exc).__name__}: {exc}")
-            return 0
-        source = ("the recipe generator workbook" if from_workbook
-                  else "the PMA's touchdowns")
-        self._log(f"[PMA] LOAD ALL: wafer map built from {source} — "
-                  f"{len(shots)} shot(s), {n} die(s)")
-        layout._exec_map_folder = folder
-
-        # The Run tab is not the only place this wafer is drawn. The Wafer Map
-        # tab and its Wafer View page read the map from the file, so without
-        # this they kept showing whatever was there before LOAD ALL - which is
-        # the stale touchdown map the user was still looking at.
-        wafer = getattr(layout, "pma_wafer", None)
-        if wafer is not None and hasattr(wafer, "show_wafer_definition"):
-            try:
-                if not wafer.show_wafer_definition():
-                    self._log("[PMA] LOAD ALL: no recipe generator .xls or CSV "
-                              "loaded, so the Wafer Map tab can only show this "
-                              "recipe's touchdowns.")
-            except Exception as exc:
-                self._log(f"[PMA] LOAD ALL: the Wafer Map tab did not switch to "
-                          f"the wafer view — {type(exc).__name__}: {exc}")
-        gen = getattr(layout, "recipe_gen", None)
-        if gen is not None and hasattr(gen, "load_touchdowns_as_map"):
-            # Build an actual Wafer Builder map (Shot/Shot Map/Die Map) from
-            # these same shots - this IS the Run tab's map now (Electroglas
-            # has no separate hardware-extracted map of its own to fall
-            # back on; the old ata_wafer_map_electroglas.csv path predates
-            # Wafer Builder entirely and is retired). _sync_views below
-            # both selects "Wafer Builder" as the Run tab's source AND
-            # publishes this exact state to the file it reads, so the Run
-            # tab actually shows what was just built, not whatever a
-            # previous manual Save Wafer Map happened to leave there.
-            # save_as names it after the .PMA itself and saves it as its
-            # own map (warning first if that name already exists) instead
-            # of overwriting whatever map the operator had open - a second
-            # LOAD ALL for a different recipe used to clobber it silently.
-            # Name the saved map after whatever actually defines the wafer,
-            # not always the .PMA: from_workbook means these shots came from
-            # the recipe generator .xls, so the SAME .xls picked against a
-            # different .PMA in the dropdown must resolve to that SAME named
-            # map, not spawn a new one per .PMA - the .xls is the wafer, the
-            # .PMA only ever named a subset to visit (see _write_wafer_map's
-            # own docstring). Only the no-workbook fallback (this recipe's
-            # own touchdowns standing in for a wafer) is genuinely PMA-
-            # specific, so that's the only case still named after the .PMA.
-            if from_workbook:
-                wafer_data = run.wafer_definition_data() or {}
-                wafer_path = wafer_data.get("path")
-                map_label = os.path.basename(wafer_path) if wafer_path else "workbook"
-                save_as = os.path.splitext(os.path.basename(wafer_path))[0] if wafer_path \
-                    else os.path.splitext(os.path.basename(self._pma_path))[0]
-            else:
-                map_label = os.path.basename(self._pma_path)
-                save_as = os.path.splitext(os.path.basename(self._pma_path))[0]
-            try:
-                gen.load_touchdowns_as_map(
-                    shots, map_label, source, save_as=save_as)
-            except Exception as exc:
-                self._log(f"[PMA] LOAD ALL: could not build a Wafer Builder "
-                          f"map from these shots — {type(exc).__name__}: {exc}")
-        if gen is not None and hasattr(gen, "_sync_views"):
-            try:
-                gen._sync_views(folder)
-            except Exception as exc:
-                self._log(f"[PMA] LOAD ALL: the Wafer Map tab did not refresh — "
-                          f"{type(exc).__name__}: {exc}")
-        try:
-            # The row/col index is keyed to the die set the map was built
-            # from, so rebuild it now the map has changed under it.
-            run._build_rc_index()
-            run._last_seq = None
-            if run._index is not None:
-                run._highlight(run._index)
-        except Exception as exc:
-            self._log(f"[PMA] LOAD ALL: could not refresh the Run tab's own "
-                      f"index — {type(exc).__name__}: {exc}")
-        return n
-
-    def _push_touchdowns_to_recipe(self, run, recipe_panel, recipe: str) -> int:
-        """Attach the PMA's touchdowns, in recipe order, to the loaded recipe.
-
-        Order is the PMA's own, not the map's - the .PMA lists touchdowns in
-        the sequence the prober walks them, and that sequence is part of the
-        recipe. Row/col come from the same index the Run tab paints with, so
-        the list addresses exactly the squares the run will colour.
-        """
-        set_sites = getattr(recipe_panel, "set_sites", None)
-        if set_sites is None:
-            self._log("[PMA] LOAD ALL: this Recipe tab has no touchdown list.")
-            return 0
-        # The .PMA's OWN touchdowns, one per real physical landing, each
-        # with its own device_id/x/y - NOT run._touchdowns, which after
-        # adoption is every position on the wafer (the workbook's shot/
-        # quad-granular list) so the chuck can be driven anywhere. Reading
-        # THAT here (even filtered through _pma_order/_anchor_rc, which
-        # collapses each shot to a single anchor cell) only ever resolved
-        # the one sub-position that happened to coincide with each shot's
-        # own anchor coordinate - the other dies of every multi-die shot
-        # silently never made it into the recipe at all (confirmed: a
-        # 3125-touchdown whole-wafer .PMA only produced 753 sites, ~1 in
-        # 4 - almost exactly what a 2x2-quad shot's 1-of-4 anchor hits
-        # would predict).
-        pma_touchdowns = getattr(run, "_pma_raw_touchdowns", None) or []
-        lookup = {}
-        if pma_touchdowns and hasattr(run, "_die_grid_lookup"):
-            # _die_grid_lookup reads _build_rc_index's own per-die
-            # expansion (self._die_at_rc) - rebuild it first if the Run
-            # tab hasn't yet, same as before.
-            if not getattr(run, "_die_at_rc", None) and hasattr(run, "_build_rc_index"):
-                try:
-                    run._build_rc_index()
-                except Exception as exc:
-                    self._log(f"[PMA] LOAD ALL: could not index the touchdowns: {exc}")
-            try:
-                lookup = run._die_grid_lookup()
-            except Exception as exc:
-                self._log(f"[PMA] LOAD ALL: could not build the per-die "
-                          f"lookup: {exc}")
-        die_um = getattr(run, "_die_um", None) or (1.0, 1.0)
-        sites = []
-        missing = 0
-        for t in pma_touchdowns:
-            gx = round(t["x"] / die_um[0])
-            gy = round(t["y"] / die_um[1])
-            rc = lookup.get((gx, gy))
-            if rc is None:
-                missing += 1
-                continue
-            sites.append({"die_id": t.get("device_id", ""),
-                          "row": rc[0], "col": rc[1]})
-        if missing:
-            self._log(f"[PMA] LOAD ALL: {missing} of {len(pma_touchdowns)} "
-                      ".PMA touchdown(s) are not on the recipe generator's "
-                      "wafer map — the .PMA and the .xls look like they are "
-                      "for different wafers.")
-        if not sites:
-            self._log("[PMA] LOAD ALL: the recipe has no touchdowns to attach.")
-            return 0
-        set_sites(recipe, sites)
-        return len(sites)
-
-    def _push_to_run_tab(self):
-        """Hand the loaded recipe to the Run tab, so it no longer needs its own
-        loader - the default recipe auto-loads here at startup and the Run tab
-        picks it up with no clicks.
-
-        NOT while a run is actually in progress, or genuinely paused
-        mid-run (_anchored True but _needs_restart False - see
-        eg_pma_run_panel._start/_run_all): re-adopting resets the anchor,
-        and losing where the chuck is mid-wafer is far worse than picking
-        the file again. A finished/stopped run's anchor does not block
-        this - the chuck's position is kept for display, but the next
-        Run/Full Die/Test Selected already restarts from scratch either
-        way (_needs_restart), so there is nothing left to lose here.
-        """
-        run = getattr(self._main_layout, "eg_pma_run", None)
-        if run is None or not hasattr(run, "adopt_from_process"):
+        if not touchdowns:
+            self._log("[PMA] LOAD ALL: no touchdowns found — are the .PMV "
+                      "and .PMS siblings next to the .PMA?")
             return
-        if getattr(run, "_running", False):
-            self._log("[PMA] Run tab left alone — a run is in progress.")
-            return
-        if getattr(run, "_anchored", False) and not getattr(run, "_needs_restart", False):
-            self._log("[PMA] Run tab left alone — it is anchored to a die")
-            return
-        try:
-            run.adopt_from_process(quiet=True)
-        except Exception as exc:
-            self._log(f"[PMA] Could not hand the recipe to the Run tab: {exc}")
+        name = os.path.basename(self._pma_path)
+        gen.load_touchdowns_as_map(touchdowns, name, "PMA recipe")
+        self._log(f"[PMA] LOAD ALL: built a Wafer Builder map from '{name}' "
+                  f"({len(touchdowns)} touchdown(s)) — review it on the Wafer "
+                  "Builder tab, then Save Wafer Map when ready.")
 
     def _refresh_move_mm_table(self):
-        """Move MM table - reads eg_pma_run._touchdowns directly (after
-        _push_to_run_tab's adopt_from_process, so it is current) rather
-        than re-deriving x_um/y_um here, since that list is the exact one
-        _move_um ("microns (MM)" motion mode) walks at runtime - this table
-        can never show a number a real MM run would not actually use.
+        """Move MM table - reads eg_pma_run._touchdowns directly (whatever
+        the Run tab currently has adopted - the published Wafer Builder
+        map, same as any other run) rather than re-deriving x_um/y_um
+        here, since that list is the exact one _move_um ("microns (MM)"
+        motion mode) walks at runtime - this table can never show a
+        number a real MM run would not actually use. This tab no longer
+        pushes its own parsed .PMA onto the Run tab (see load_path/
+        load_all), so this reflects whatever's actually loaded there, not
+        necessarily the .PMA this tab has open.
         """
         self._move_mm_tree.delete(*self._move_mm_tree.get_children())
         run = getattr(self._main_layout, "eg_pma_run", None)
@@ -962,10 +752,18 @@ class PmaProcessPanel(ttk.Frame):
             pma_wafer.show_touchdowns(shot_data)
 
         self.refresh_align_site()
-        self._push_to_run_tab()
         self._refresh_move_mm_table()
         self._calc_mm_pitch()
 
+        # Display only from here down, same as the fields table above -
+        # this tab parses a .PMA and shows it in its own tables, nothing
+        # more. It used to also write a wafer-map CSV into the ATA folder,
+        # auto-select/load a matching recipe on the Recipe tab, and save
+        # the move list onto the active probe card - all removed: those
+        # are exactly the "quietly does something every time you pick a
+        # file" side effects that made a normal folder load look like it
+        # was still depending on a .PMA. Building an actual Wafer Builder
+        # map from a .PMA is LOAD ALL's job now, and only LOAD ALL's.
         move_list = egpma.build_move_list(touchdowns)
         self._move_list = move_list
         self._move_tree.delete(*self._move_tree.get_children())
@@ -975,60 +773,5 @@ class PmaProcessPanel(ttk.Frame):
                 egpma.fmt_num(m["MovesMajorX"]), egpma.fmt_num(m["MovesMajorY"]),
                 m["MovesMinorX"], m["MovesMinorY"]))
 
-        ata_folder = getattr(self._main_layout, "_ata_folder", "")
-        saved_note = ""
-        if ata_folder and touchdowns:
-            # The .PMA names TOUCHDOWNS, not the wafer. Writing the run map
-            # straight from them replaced the full 634-shot wafer with the 15
-            # this recipe probes - and since the .PMA is restored whenever the
-            # GUI opens, it did that again on every startup, undoing LOAD ALL.
-            run = getattr(self._main_layout, "eg_pma_run", None)
-            wafer_data = (run.wafer_definition_data()
-                          if run is not None and hasattr(run, "wafer_definition_data")
-                          else None)
-            map_shots, source_note = touchdowns, "the PMA's touchdowns"
-            if wafer_data:
-                try:
-                    shots = egpma.workbook_touchdowns(wafer_data)
-                    if shots:
-                        map_shots = shots
-                        source_note = "the recipe generator's wafer"
-                except Exception as exc:
-                    self._log(f"[PMA] Could not read the wafer from the recipe "
-                              f"generator ({type(exc).__name__}: {exc}) — the map "
-                              "was written from the PMA's touchdowns instead.")
-            try:
-                csv_path = egpma.save_wafer_map_csv(ata_folder, map_shots, fields)
-                saved_note = (f" — wafer map saved from {source_note} "
-                              f"({len(map_shots)} shots) to {os.path.basename(csv_path)}")
-            except OSError as exc:
-                self._log(f"[PMA] Could not save wafer map CSV: {exc}")
-        elif touchdowns:
-            saved_note = " — load an ATA folder to persist the wafer map"
-
-        recipe_panel = getattr(self._main_layout, "recipe_panel", None)
-        recipe_note = ""
-        if recipe_panel is not None:
-            expected_name = os.path.splitext(os.path.basename(path))[0]
-            if expected_name in recipe_panel.get_recipe_names():
-                if recipe_panel.select_recipe(expected_name):
-                    self.recipe_name_var.set(expected_name)
-                    recipe_note = f" — loaded existing recipe '{expected_name}'"
-            else:
-                self.recipe_name_var.set("")
-                recipe_note = (" — no matching recipe yet "
-                               "(use 🧪 Create Recipe from PMA)")
-
-        pin_wiring = getattr(self._main_layout, "pin_wiring", None)
-        active_card = pin_wiring.get_active_card() if pin_wiring is not None else ""
-        move_note = ""
-        if pin_wiring is not None and active_card and move_list:
-            if pin_wiring.save_move_list(active_card, move_list):
-                move_note = f" — move list saved under probe card '{active_card}'"
-            else:
-                move_note = " — could not save the move list to the probe card"
-        elif move_list:
-            move_note = " — select/create a probe card first to save the move list"
-
-        self._log(f"[PMA] Loaded {os.path.basename(path)}: {len(touchdowns)} touchdown(s), "
-                  f"{len(move_list)} move(s){saved_note}{recipe_note}{move_note}")
+        self._log(f"[PMA] Loaded {os.path.basename(path)}: {len(touchdowns)} "
+                  f"touchdown(s), {len(move_list)} move(s)")

@@ -2029,27 +2029,27 @@ class MainLayout(ttk.Frame):
             self.mdb_path_var.set(mdb_export.load_mdb_path(folder_path, default=global_mdb))
             self._update_mdb_default_label()
 
-        pma_process = getattr(self, "pma_process", None)
-        if pma_process is not None:
-            try:
-                pma_process.scan_ata_folder()
-            except Exception:
-                pass
-
+        # PMA Process is no longer auto-scanned/adopted here - a .PMA is a
+        # one-time import onto the Wafer Builder tab now (see
+        # pma_process_panel.load_all/load_path), never an ongoing folder-
+        # load dependency, so nothing on this tab fires unless the operator
+        # explicitly opens it and picks a file themselves.
+        #
         # Now that the map actually holds this folder's dies (and the picks
         # from the previous folder are cleared), the default recipe's
         # touchdowns can be selected and will actually paint. This also has
-        # to be AFTER pma_process.scan_ata_folder() above, not just after
-        # the map draw: _exec_apply_recipe_sites expands each selected site
-        # into its WHOLE shot via eg_pma_run._seq_at_rc/_cells, and those are
-        # only populated once eg_pma_run has adopted a recipe and built its
-        # row/col index (_build_rc_index, via scan_ata_folder's own PMA
-        # autoload -> adopt_from_process). Selecting sites before that index
-        # exists does not fail loudly - _exec_touchdown_cells falls back to
-        # the raw (row, col) picks with no shot expansion - so only the
-        # anchor die of each shot got selected, not the whole quad. A manual
-        # reselect from the Recipe dropdown later worked fine because by then
-        # the index was already built, which made this look intermittent.
+        # to be after _exec_draw_wafer_map above, not just anywhere:
+        # _exec_apply_recipe_sites expands each selected site into its
+        # WHOLE shot via eg_pma_run._seq_at_rc/_cells, and those are only
+        # populated once eg_pma_run has adopted the published map and built
+        # its row/col index (_build_rc_index, via _exec_draw_wafer_map's own
+        # _exec_seed_die_list_from_map -> adopt_from_wafer_builder).
+        # Selecting sites before that index exists does not fail loudly -
+        # _exec_touchdown_cells falls back to the raw (row, col) picks with
+        # no shot expansion - so only the anchor die of each shot got
+        # selected, not the whole quad. A manual reselect from the Recipe
+        # dropdown later worked fine because by then the index was already
+        # built, which made this look intermittent.
         self._exec_autoload_default_recipe(folder_path)
 
         # NanoZ is no longer a tab nested in this MainLayout (see

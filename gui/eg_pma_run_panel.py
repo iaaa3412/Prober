@@ -44,19 +44,14 @@ import os
 import re
 import threading
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import messagebox, ttk
 
-from electroglas_pma import (parse_pma_file, load_touchdowns, align_site_info,
+from electroglas_pma import (align_site_info,
                              format_quad, expand_touchdowns_to_dies, die_grid_index,
                              measurement_plan, workbook_touchdowns, QUAD_ORDER,
                              shot_geometry, slot_names, slot_grid,
                              quad_positions, serpentine_order)
 from recipe_gen_panel import shot_die_rc
-
-# Where LaMP kept its recipes, then the repo's own copies.
-_RECIPE_DIRS = (r"C:\_local\data\debug\LaMPElectrical",
-                os.path.join(os.path.dirname(os.path.dirname(
-                    os.path.abspath(__file__))), "pma"))
 
 _POS_RE = re.compile(r"X(-?\d+)Y(-?\d+)")
 
@@ -235,8 +230,10 @@ class EgPmaRunPanel(ttk.Frame):
         # direction: rebuilding the Wafer Builder map FROM the recipe's
         # touchdowns. The map is the source of truth for die IDs and
         # positions now, so nothing may overwrite it from a .PMA.
-        # _sync_run_map is left in place but unbound, the same way
-        # _load_recipe/_use_loaded_pma already are.
+        # _sync_run_map is left in place but unbound - the .PMA-driven
+        # _load_recipe/adopt_from_process it used to pair with are gone
+        # entirely now (a .PMA only ever seeds the Wafer Builder tab, see
+        # pma_process_panel.load_all).
         ttk.Button(btns, text="↻ Sync", command=self._sync_position).pack(side="left")
         ttk.Button(btns, text="🗺 Reload Map", command=self._reload_map).pack(
             side="left", padx=(6, 0))
@@ -332,34 +329,6 @@ class EgPmaRunPanel(ttk.Frame):
 
     # -- recipe -------------------------------------------------------------
 
-    def adopt_from_process(self, quiet: bool = True) -> bool:
-        """Pull the PMA Process tab's recipe. Returns True if one was taken.
-
-        `quiet` suppresses the "nothing loaded" dialogs so this can run at
-        startup, where an empty PMA Process tab is normal rather than an
-        error worth interrupting anyone about.
-        """
-        proc = getattr(self._main_layout, "pma_process", None)
-        if proc is None:
-            if not quiet:
-                messagebox.showinfo("PMA", "The PMA Process tab is not available.")
-            return False
-        path = getattr(proc, "_pma_path", None)
-        fields = getattr(proc, "_fields", None)
-        touchdowns = getattr(proc, "_touchdowns", None)
-        if not (path and fields and touchdowns):
-            if not quiet:
-                messagebox.showinfo(
-                    "PMA", "No recipe is loaded in the PMA Process tab yet.")
-            return False
-        self._adopt(path, fields, touchdowns)
-        return True
-
-    def _use_loaded_pma(self):
-        """Button handler - same as adopt_from_process, but it says so when
-        there is nothing to take."""
-        self.adopt_from_process(quiet=False)
-
     def adopt_from_wafer_builder(self, quiet: bool = True) -> bool:
         """Build a recipe directly from the published Wafer Builder map -
         no .PMA/.xls needed at all. One touchdown per SHOT, grouped from
@@ -392,13 +361,11 @@ class EgPmaRunPanel(ttk.Frame):
         anchor instead - see _set_anchor/_resolve_anchor, which never
         required an align site to begin with).
 
-        `quiet` suppresses the "nothing to build from" dialogs, same
-        convention as adopt_from_process, so this can run automatically
-        (e.g. on an ATA folder load with no .PMA adopted yet) without
-        interrupting a project that genuinely does use one - LaMP's own
-        flow (_load_recipe/adopt_from_process) is untouched by this
-        method entirely; it only ever gets called where a caller
-        explicitly chooses to try it.
+        `quiet` suppresses the "nothing to build from" dialogs, so this can
+        run automatically (e.g. on an ATA folder load) without interrupting
+        anyone - it is the ONLY thing that adopts touchdowns onto this
+        panel now; a .PMA is a one-time import onto the Wafer Builder tab
+        (pma_process_panel.load_all), never adopted here directly anymore.
         """
         wm = self._run_map()
         dies = list(getattr(wm, "_last_dies", None) or [])
@@ -518,26 +485,6 @@ class EgPmaRunPanel(ttk.Frame):
             return str(data["align_die"])
         return None
 
-    def _load_recipe(self):
-        initial = next((d for d in _RECIPE_DIRS if os.path.isdir(d)), None)
-        path = filedialog.askopenfilename(
-            title="Load a .PMA recipe", initialdir=initial,
-            filetypes=[("PMA recipe", "*.PMA"), ("All files", "*.*")])
-        if not path:
-            return
-        try:
-            fields = parse_pma_file(path)
-            touchdowns = load_touchdowns(path, fields)
-            die = (float(fields["DieSizeX"]), float(fields["DieSizeY"]))
-        except Exception as e:
-            messagebox.showerror("Recipe", f"Could not load:\n{e}")
-            return
-        if not touchdowns:
-            messagebox.showerror("Recipe", "No touchdowns found — are the .PMV "
-                                           "and .PMS siblings next to the .PMA?")
-            return
-        self._adopt(path, fields, touchdowns)
-
     def _adopt(self, path: str, fields: dict, touchdowns: list):
         # First thing: _pma_order_keys below calls _grid_xy, which reads the
         # published-map lookup. Clearing the cache further down (with the
@@ -587,11 +534,12 @@ class EgPmaRunPanel(ttk.Frame):
         # Kept separately from self._touchdowns (about to be widened to the
         # whole wafer below) - this is the .PMA's own touchdown list, one
         # entry per real physical landing, each with its own device_id/x/y.
-        # pma_process_panel._push_touchdowns_to_recipe needs THIS (not the
-        # workbook's shot-granular list) to attach the recipe's touchdowns -
-        # see _die_grid_lookup for why matching against the shot-level list
-        # directly silently dropped most of a multi-die-per-shot recipe's
-        # touchdowns.
+        # Nothing reads this anymore (the recipe-attachment path that used
+        # to - pma_process_panel._push_touchdowns_to_recipe - is gone; a
+        # recipe's touchdown list is built by hand on the Recipe tab
+        # against the published map now, same as Accretech), kept only so
+        # a caller that still hands _adopt a real .PMA's touchdowns has
+        # somewhere to put them.
         self._pma_raw_touchdowns = touchdowns
         self._touchdowns = self._map_source_touchdowns()
         self._index = None
@@ -982,12 +930,12 @@ class EgPmaRunPanel(ttk.Frame):
         prev = self._table_position(self._touchdowns[self._index]) if anchored else None
         # Every row's iid is its index, so an index appearing twice would
         # raise Tk's "Item N already exists" - and because THIS loop runs
-        # first, that exception (caught two frames up, in
-        # pma_process_panel._push_to_run_tab) took the second loop with it,
-        # so one duplicate cost the entire rest of the wafer rather than one
-        # misplaced row. _pma_order/_enabled_indices dedupe upstream now;
-        # this makes the table itself unable to be destroyed that way again,
-        # whatever a future caller hands it.
+        # first, that exception (caught two frames up, in what was then
+        # pma_process_panel._push_to_run_tab, since removed) took the
+        # second loop with it, so one duplicate cost the entire rest of the
+        # wafer rather than one misplaced row. _pma_order/_enabled_indices
+        # dedupe upstream now; this makes the table itself unable to be
+        # destroyed that way again, whatever a future caller hands it.
         for i in run_order:
             if self._tree.exists(str(i)):
                 continue
@@ -1509,27 +1457,6 @@ class EgPmaRunPanel(ttk.Frame):
             if wb_id and wb_id != t["device_id"]:
                 t["device_id"] = wb_id
                 t["devices"] = [wb_id]
-
-    def _die_grid_lookup(self) -> dict:
-        """(grid x, grid y) -> (row, col), one entry per real INDIVIDUAL die
-        the current map defines - not one per shot.
-
-        The workbook's own touchdown list (self._touchdowns after adoption)
-        is shot/quad-granular: a 2x2 shot carries ONE coordinate for the
-        whole group, with all 4 device IDs packed into one cell. The .PMA's
-        own touchdowns are per-individual-die. Matching a .PMA touchdown's
-        raw coordinate 1:1 against the shot-level list (what _pma_order does,
-        for chuck-positioning purposes) only ever hits the one sub-position
-        that happens to coincide with the shot's own anchor coordinate - the
-        other ~3 of every 4 dies in a typical quad silently have no match.
-        Confirmed on a real 3125-touchdown whole-wafer .PMA: only 753 (~1 in
-        4) matched.
-
-        Reuses _build_rc_index's own per-die expansion (self._die_at_rc,
-        already keyed by real absolute die x/y) rather than re-deriving it,
-        so this always agrees with what the map itself just drew."""
-        return {(round(d["x"] / self._die_um[0]), round(d["y"] / self._die_um[1])): rc
-                for rc, d in getattr(self, "_die_at_rc", {}).items()}
 
     def _run_map(self):
         return getattr(self._main_layout, "_exec_wafer_map", None)
