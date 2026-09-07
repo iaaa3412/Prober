@@ -545,44 +545,34 @@ class MainLayout(ttk.Frame):
                     # inner frame instead of the (now just a scrollbar
                     # mount) outer one, with no other lines to touch.
 
-        rst = tk.Frame(tab, bg="#7f1d1d")
+        rst = ttk.Frame(tab)
         rst.grid(row=0, column=0, sticky="ew")
-        tk.Button(
+        ttk.Button(
             rst,
-            text="⚠  Global Reset — All Outputs OFF + Open All Switches",
-            bg="#dc2626", fg="white",
-            activebackground="#b91c1c", activeforeground="white",
-            font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+            text="Global Reset — All Outputs OFF + Open All Switches",
             command=self._global_reset,
         ).pack(side="left", padx=8, pady=4)
-        tk.Button(
+        ttk.Button(
             rst,
             text="↻ Query Status",
-            bg="#1e3a5f", fg="white",
-            activebackground="#1e40af", activeforeground="white",
-            font=("Segoe UI", 9), relief="flat", bd=0,
             command=lambda: threading.Thread(
                 target=self._query_all_status, daemon=True).start(),
         ).pack(side="left", padx=4, pady=4)
-        tk.Button(
+        ttk.Button(
             rst,
             text="↩ Release All To Local",
-            bg="#1e3a5f", fg="white",
-            activebackground="#1e40af", activeforeground="white",
-            font=("Segoe UI", 9), relief="flat", bd=0,
             command=self._release_all_to_local,
         ).pack(side="left", padx=4, pady=4)
 
-        sbar = tk.Frame(tab, bg="#0f172a")
+        sbar = ttk.Frame(tab)
         sbar.grid(row=1, column=0, sticky="ew")
         for key, lbl in [("smua", "SMU A"), ("smub", "SMU B"),
                           ("wg1", "WG CH1"), ("wg2", "WG CH2"),
                           ("dmm", "DMM"), ("prober", "Prober")]:
             v = tk.StringVar(value=f"{lbl}: ?")
             self._inst_status_vars[key] = v
-            tk.Label(sbar, textvariable=v,
-                     bg="#0f172a", fg="#94a3b8",
-                     font=("Consolas", 8), padx=10, pady=2).pack(side="left")
+            ttk.Label(sbar, textvariable=v,
+                     font=("Consolas", 8), padding=(10, 2)).pack(side="left")
 
         pane = ttk.PanedWindow(tab, orient="horizontal")
         pane.grid(row=2, column=0, sticky="nsew")
@@ -629,7 +619,7 @@ class MainLayout(ttk.Frame):
             drv = self.controller.drivers.get("dmm")
             if not drv or not drv.inst:
                 reading_var.set("NOT CONNECTED")
-                self.controller.log(f"[DMM] {mode}: not connected")
+                self.controller.log(f"[INSTRUMENT] {mode}: not connected")
                 return
             try:
                 if mode == "VDC":
@@ -640,9 +630,9 @@ class MainLayout(ttk.Frame):
                     val = drv.measure_resistance(2); reading_var.set(format_engineering(val, "Ω"))
                 elif mode == "R4W":
                     val = drv.measure_resistance(4); reading_var.set(format_engineering(val, "Ω"))
-                self.controller.log(f"[DMM] {mode}: {reading_var.get()}")
+                self.controller.log(f"[INSTRUMENT] {mode}: {reading_var.get()}")
             except Exception as e:
-                reading_var.set("ERROR"); self.controller.log(f"[DMM] {mode} error: {e}")
+                reading_var.set("ERROR"); self.controller.log(f"[INSTRUMENT] {mode} error: {e}")
 
         btn_row = ttk.Frame(card)
         btn_row.pack(fill="x", padx=6, pady=2)
@@ -668,7 +658,7 @@ class MainLayout(ttk.Frame):
         def _meas_all_dmm():
             drv = self.controller.drivers.get("dmm")
             if not drv or not drv.inst:
-                self.controller.log("[DMM] Meas All: not connected")
+                self.controller.log("[INSTRUMENT] Meas All: not connected")
                 return
             pairs = [
                 ("VDC", drv.measure_voltage_dc,           lambda x: format_engineering(x, "V")),
@@ -681,9 +671,9 @@ class MainLayout(ttk.Frame):
                     _all_vars[key].set(fmt(fn()))
                 except Exception as e:
                     _all_vars[key].set("ERROR")
-                    self.controller.log(f"[DMM] Meas All {key} error: {e}")
+                    self.controller.log(f"[INSTRUMENT] Meas All {key} error: {e}")
             self.controller.log(
-                f"[DMM] All: VDC={_all_vars['VDC'].get()}  IDC={_all_vars['IDC'].get()}  "
+                f"[INSTRUMENT] All: VDC={_all_vars['VDC'].get()}  IDC={_all_vars['IDC'].get()}  "
                 f"R2W={_all_vars['R2W'].get()}  R4W={_all_vars['R4W'].get()}"
             )
 
@@ -716,7 +706,7 @@ class MainLayout(ttk.Frame):
         def _dmm_configure():
             drv = self.controller.drivers.get("dmm")
             if not drv or not drv.inst:
-                self.controller.log("[DMM] Configure: not connected")
+                self.controller.log("[INSTRUMENT] Configure: not connected")
                 return
             try:
                 func  = dmm_func_var.get()
@@ -736,9 +726,9 @@ class MainLayout(ttk.Frame):
                         drv.write(f"{rang_cmd} {parse_engineering(rng)}")
                     except ValueError:
                         pass
-                self.controller.log(f"[DMM] Configured: func={func}, range={rng}, NPLC={nplc}")
+                self.controller.log(f"[INSTRUMENT] Configured: func={func}, range={rng}, NPLC={nplc}")
             except Exception as e:
-                self.controller.log(f"[DMM] Configure error: {e}")
+                self.controller.log(f"[INSTRUMENT] Configure error: {e}")
 
         ttk.Button(cfg_lf, text="Apply Configuration",
                    command=_dmm_configure).pack(fill="x", pady=(4, 2))
@@ -760,11 +750,11 @@ class MainLayout(ttk.Frame):
                 self._dmm_cont_active = False
                 _dmm_cont_btn.config(text="▶ Continuous")
                 self._dmm_status_var.set("○ IDLE")
-                self.controller.log("[DMM] Continuous read stopped")
+                self.controller.log("[INSTRUMENT] Continuous read stopped")
             else:
                 self._dmm_cont_active = True
                 _dmm_cont_btn.config(text="■ Stop")
-                self.controller.log("[DMM] Continuous read started")
+                self.controller.log("[INSTRUMENT] Continuous read started")
                 def _loop():
                     while self._dmm_cont_active:
                         try:
@@ -822,45 +812,6 @@ class MainLayout(ttk.Frame):
             self._build_smu_channel(ch_frame, ch, col=idx)
 
         ttk.Separator(card, orient="horizontal").pack(fill="x", padx=6, pady=6)
-
-        comp_lf = ttk.LabelFrame(card, text="Compliance Thresholds", padding=(8, 6))
-        comp_lf.pack(fill="x", padx=6, pady=(0, 4))
-
-        thresh_row = ttk.Frame(comp_lf)
-        thresh_row.pack(fill="x", pady=(0, 6))
-
-        self._smu_thr = {}
-        for label, key, default, unit in [
-            ("I max",  "I_max", "1e-6",  "A"),
-            ("V min",  "V_min", "0.9",   "V"),
-            ("V max",  "V_max", "3.6",   "V"),
-            ("R min",  "R_min", "1e4",   "Ω"),
-        ]:
-            f = ttk.Frame(thresh_row)
-            f.pack(side="left", padx=(0, 12))
-            ttk.Label(f, text=f"{label}:").pack(side="left")
-            var = tk.StringVar(value=default)
-            ttk.Entry(f, textvariable=var, width=8).pack(side="left", padx=2)
-            ttk.Label(f, text=unit, foreground="gray").pack(side="left")
-            self._smu_thr[key] = var
-
-        btn_row = ttk.Frame(comp_lf)
-        btn_row.pack(fill="x")
-        self._smu_comp_result = tk.StringVar(value="—")
-
-        for label, ch_arg in [("Check smua", "smua"),
-                               ("Check smub", "smub"),
-                               ("Check Both", "both")]:
-            ttk.Button(btn_row, text=f"✓  {label}",
-                       command=lambda c=ch_arg: self._smu_check_compliance(c)).pack(
-                       side="left", padx=2)
-
-        self._smu_comp_lbl = ttk.Label(btn_row, textvariable=self._smu_comp_result,
-                                       font=("Consolas", 11, "bold"),
-                                       foreground="#374151")
-        self._smu_comp_lbl.pack(side="left", padx=12)
-
-        ttk.Separator(card, orient="horizontal").pack(fill="x", padx=6, pady=6)
         self._scpi_row(card, "smu")
 
     def _build_smu2400_card(self, parent):
@@ -874,12 +825,6 @@ class MainLayout(ttk.Frame):
         card = ttk.LabelFrame(parent, text="Keithley 2400  (SMU)")
         card.pack(fill="both", expand=True, padx=6, pady=(0, 6))
         card.columnconfigure(0, weight=1)
-
-        ttk.Label(
-            card, text="Uses the same “smu” slot as the 2636B card above "
-                       "— only one is really connected at a time.",
-            foreground="gray", font=("Consolas", 8), wraplength=380, justify="left"
-        ).pack(anchor="w", padx=8, pady=(4, 4))
 
         # Front/Rear terminal select - only meaningful for a driver that
         # actually has set_terminals (Keithley2400 does; see that
@@ -899,19 +844,19 @@ class MainLayout(ttk.Frame):
         def _set_terminals(which):
             drv = self.controller.drivers.get("smu")
             if not drv or not drv.inst:
-                self.controller.log("[SMU 2400] terminals: not connected")
+                self.controller.log("[INSTRUMENT] terminals: not connected")
                 return
             if not hasattr(drv, "set_terminals"):
                 self.controller.log(
-                    "[SMU 2400] the instrument in the 'smu' slot right now has no "
+                    "[INSTRUMENT] the instrument in the 'smu' slot right now has no "
                     "FRONT/REAR terminal switch")
                 return
             try:
                 drv.set_terminals(which)
                 term_status.set(which)
-                self.controller.log(f"[SMU 2400] terminals -> {which}")
+                self.controller.log(f"[INSTRUMENT] terminals -> {which}")
             except Exception as e:
-                self.controller.log(f"[SMU 2400] set_terminals error: {e}")
+                self.controller.log(f"[INSTRUMENT] set_terminals error: {e}")
 
         ttk.Button(term_row, text="Front", width=7,
                   command=lambda: _set_terminals("FRONT")).pack(side="left", padx=2)
@@ -1048,7 +993,7 @@ class MainLayout(ttk.Frame):
         def _drv():
             drv = self.controller.drivers.get("smu")
             if not drv or not drv.inst:
-                self.controller.log(f"[SMU] {ch}: not connected")
+                self.controller.log(f"[INSTRUMENT] {ch}: not connected")
                 return None
             return drv
 
@@ -1072,10 +1017,10 @@ class MainLayout(ttk.Frame):
                 except Exception:
                     pass
                 drv.turn_output_on(drv_channel)
-                self.controller.log(f"[SMU] {ch} ON — {src}={lvl}, comp={comp}, NPLC={nplc}")
+                self.controller.log(f"[INSTRUMENT] {ch} ON — {src}={lvl}, comp={comp}, NPLC={nplc}")
                 lf.config(text=f"{title}  ● ON")
             except Exception as e:
-                self.controller.log(f"[SMU] {ch} set_on error: {e}")
+                self.controller.log(f"[INSTRUMENT] {ch} set_on error: {e}")
 
         def _smu_off():
             drv = _drv()
@@ -1083,10 +1028,10 @@ class MainLayout(ttk.Frame):
                 return
             try:
                 drv.turn_output_off(drv_channel)
-                self.controller.log(f"[SMU] {ch} output OFF")
+                self.controller.log(f"[INSTRUMENT] {ch} output OFF")
                 lf.config(text=f"{title}  ○ OFF")
             except Exception as e:
-                self.controller.log(f"[SMU] {ch} off error: {e}")
+                self.controller.log(f"[INSTRUMENT] {ch} off error: {e}")
 
         def _measure(what: str):
             drv = _drv()
@@ -1097,20 +1042,20 @@ class MainLayout(ttk.Frame):
                     val = drv.measure_current(drv_channel)
                     reading_vars["I"].set(format_engineering(val, "A"))
                     self._smu_last[ch]["I"] = val
-                    self.controller.log(f"[SMU] {ch} I = {format_engineering(val, 'A')}")
+                    self.controller.log(f"[INSTRUMENT] {ch} I = {format_engineering(val, 'A')}")
                 elif what == "V":
                     val = drv.measure_voltage(drv_channel)
                     reading_vars["V"].set(format_engineering(val, "V"))
                     self._smu_last[ch]["V"] = val
-                    self.controller.log(f"[SMU] {ch} V = {format_engineering(val, 'V')}")
+                    self.controller.log(f"[INSTRUMENT] {ch} V = {format_engineering(val, 'V')}")
                 elif what == "R":
                     val = drv.measure_resistance(drv_channel)
                     reading_vars["R"].set(format_engineering(val, "Ω"))
                     self._smu_last[ch]["R"] = val
-                    self.controller.log(f"[SMU] {ch} R = {format_engineering(val, 'Ω')}")
+                    self.controller.log(f"[INSTRUMENT] {ch} R = {format_engineering(val, 'Ω')}")
             except Exception as e:
                 reading_vars[what].set("ERROR")
-                self.controller.log(f"[SMU] {ch} meas_{what} error: {e}")
+                self.controller.log(f"[INSTRUMENT] {ch} meas_{what} error: {e}")
 
         self._smu_cont_active[ch] = False
 
@@ -1118,11 +1063,11 @@ class MainLayout(ttk.Frame):
             if self._smu_cont_active.get(ch, False):
                 self._smu_cont_active[ch] = False
                 _cont_btn.config(text="▶ Cont.")
-                self.controller.log(f"[SMU] {ch} continuous stopped")
+                self.controller.log(f"[INSTRUMENT] {ch} continuous stopped")
             else:
                 self._smu_cont_active[ch] = True
                 _cont_btn.config(text="■ Stop")
-                self.controller.log(f"[SMU] {ch} continuous started")
+                self.controller.log(f"[INSTRUMENT] {ch} continuous started")
                 def _loop():
                     while self._smu_cont_active.get(ch, False):
                         try:
@@ -1133,52 +1078,6 @@ class MainLayout(ttk.Frame):
                         time.sleep(ms / 1000)
                 threading.Thread(target=_loop, daemon=True).start()
         _cont_btn.config(command=_toggle_cont)
-
-    def _smu_check_compliance(self, which: str):
-        channels = ["smua", "smub"] if which == "both" else [which]
-        try:
-            i_max = parse_engineering(self._smu_thr["I_max"].get())
-            v_min = parse_engineering(self._smu_thr["V_min"].get())
-            v_max = parse_engineering(self._smu_thr["V_max"].get())
-            r_min = parse_engineering(self._smu_thr["R_min"].get())
-        except ValueError:
-            self._smu_comp_result.set("Bad thresholds")
-            self._smu_comp_lbl.config(foreground="#dc2626")
-            return
-
-        all_pass = True
-        lines = []
-        for ch in channels:
-            last = self._smu_last.get(ch, {})
-            I = last.get("I")
-            V = last.get("V")
-            R = last.get("R")
-            fails = []
-            if I is None:
-                fails.append("I not measured")
-            elif abs(I) > i_max:
-                fails.append(f"I={format_engineering(abs(I), 'A')} > {format_engineering(i_max, 'A')}")
-            if V is None:
-                fails.append("V not measured")
-            elif not (v_min <= V <= v_max):
-                fails.append(f"V={format_engineering(V, 'V')} not in "
-                            f"[{format_engineering(v_min, 'V')}, {format_engineering(v_max, 'V')}]")
-            if R is None:
-                fails.append("R not measured")
-            elif R < r_min:
-                fails.append(f"R={format_engineering(R, 'Ω')} < {format_engineering(r_min, 'Ω')}")
-
-            if fails:
-                all_pass = False
-                lines.append(f"{ch} FAIL: {'; '.join(fails)}")
-                self.controller.log(f"[SMU] Compliance {ch}: FAIL — {'; '.join(fails)}")
-            else:
-                lines.append(f"{ch} PASS")
-                self.controller.log(f"[SMU] Compliance {ch}: PASS")
-
-        result_text = "  |  ".join(lines)
-        self._smu_comp_result.set(result_text)
-        self._smu_comp_lbl.config(foreground="#16a34a" if all_pass else "#dc2626")
 
     def _global_reset(self):
         log = self.controller.log
@@ -1196,9 +1095,9 @@ class MainLayout(ttk.Frame):
                 try:
                     drv_smu.turn_output_off(ch)
                     drv_smu.set_voltage(ch, 0)
-                    log(f"[RESET] SMU {ch} OFF, level → 0 V")
+                    log(f"[INSTRUMENT] SMU {ch} OFF, level → 0 V")
                 except Exception as e:
-                    log(f"[RESET] SMU {ch} error: {e}")
+                    log(f"[INSTRUMENT] SMU {ch} error: {e}")
                 lv = self._smu_level_vars.get(ch)
                 if lv:
                     lv.set("0.0")
@@ -1231,9 +1130,9 @@ class MainLayout(ttk.Frame):
             for ch_num in (1, 2):
                 try:
                     drv_wg.turn_output_off_ch(ch_num)
-                    log(f"[RESET] WaveGen CH{ch_num} OFF")
+                    log(f"[INSTRUMENT] WaveGen CH{ch_num} OFF")
                 except Exception as e:
-                    log(f"[RESET] WaveGen CH{ch_num} error: {e}")
+                    log(f"[INSTRUMENT] WaveGen CH{ch_num} error: {e}")
                 lf = self._wg_output_lf.get(ch_num)
                 if lf:
                     try:
@@ -1248,11 +1147,11 @@ class MainLayout(ttk.Frame):
         if drv_sw and drv_sw.inst:
             try:
                 drv_sw.open_all()
-                log("[RESET] Switch matrix: all channels open")
+                log("[INSTRUMENT] Switch matrix: all channels open")
             except Exception as e:
-                log(f"[RESET] Switch open_all error: {e}")
+                log(f"[INSTRUMENT] Switch open_all error: {e}")
 
-        log("[RESET] Global reset complete")
+        log("[INSTRUMENT] Global reset complete")
 
     def _release_all_to_local(self):
         """Release every connected instrument's remote lock so its own
@@ -1271,13 +1170,13 @@ class MainLayout(ttk.Frame):
                     failed.append(key)
             except Exception as e:
                 failed.append(key)
-                self.controller.log(f"[LOCAL] {key}: {e}")
+                self.controller.log(f"[INSTRUMENT] {key}: {e}")
         if released:
-            self.controller.log(f"[LOCAL] Released to local: {', '.join(released)}")
+            self.controller.log(f"[INSTRUMENT] Released to local: {', '.join(released)}")
         if failed:
-            self.controller.log(f"[LOCAL] Could not release: {', '.join(failed)}")
+            self.controller.log(f"[INSTRUMENT] Could not release: {', '.join(failed)}")
         if not released and not failed:
-            self.controller.log("[LOCAL] No instruments connected.")
+            self.controller.log("[INSTRUMENT] No instruments connected.")
 
     def _query_all_status(self):
         def _sv(key, text):
@@ -1301,7 +1200,7 @@ class MainLayout(ttk.Frame):
                         _sv(key, f"{ch.upper()}: ○ OFF")
                 except Exception as e:
                     _sv(key, f"{ch.upper()}: ERR")
-                    self.controller.log(f"[QUERY] SMU {ch}: {e}")
+                    self.controller.log(f"[INSTRUMENT] SMU {ch}: {e}")
         else:
             for ch in ("smua", "smub"):
                 _sv(ch, f"{ch.upper()}: —")
@@ -1322,7 +1221,7 @@ class MainLayout(ttk.Frame):
                         _sv(key, f"WG CH{ch_num}: ○ OFF")
                 except Exception as e:
                     _sv(key, f"WG CH{ch_num}: ERR")
-                    self.controller.log(f"[QUERY] WaveGen CH{ch_num}: {e}")
+                    self.controller.log(f"[INSTRUMENT] WaveGen CH{ch_num}: {e}")
         else:
             for ch_num in (1, 2):
                 _sv(f"wg{ch_num}", f"WG CH{ch_num}: —")
@@ -1334,7 +1233,7 @@ class MainLayout(ttk.Frame):
                 _sv("dmm", f"DMM: {raw}")
             except Exception as e:
                 _sv("dmm", "DMM: ERR")
-                self.controller.log(f"[QUERY] DMM: {e}")
+                self.controller.log(f"[INSTRUMENT] DMM: {e}")
         else:
             _sv("dmm", "DMM: —")
 
@@ -1353,7 +1252,7 @@ class MainLayout(ttk.Frame):
                 _sv("prober", f"Prober: {z_str}")
             except Exception as e:
                 _sv("prober", "Prober: ERR")
-                self.controller.log(f"[QUERY] Prober: {e}")
+                self.controller.log(f"[INSTRUMENT] Prober: {e}")
         else:
             _sv("prober", "Prober: —")
 
@@ -1407,7 +1306,7 @@ class MainLayout(ttk.Frame):
         def _drv():
             drv = self.controller.drivers.get("wave_gen")
             if not drv or not drv.inst:
-                self.controller.log(f"[WAVEGEN] CH{ch}: not connected")
+                self.controller.log(f"[INSTRUMENT] CH{ch}: not connected")
                 return None
             return drv
 
@@ -1421,11 +1320,11 @@ class MainLayout(ttk.Frame):
                 offset = parse_engineering(offset_var.get())
                 drv.set_waveform_ch(ch, shape_var.get(), freq, amp, offset)
                 self.controller.log(
-                    f"[WAVEGEN] CH{ch} {shape_var.get()} {format_engineering(freq, 'Hz')}  "
+                    f"[INSTRUMENT] CH{ch} {shape_var.get()} {format_engineering(freq, 'Hz')}  "
                     f"{format_engineering(amp, 'Vpp')}  offset={format_engineering(offset, 'V')}"
                 )
             except Exception as e:
-                self.controller.log(f"[WAVEGEN] CH{ch} apply error: {e}")
+                self.controller.log(f"[INSTRUMENT] CH{ch} apply error: {e}")
 
         def _on():
             drv = _drv()
@@ -1433,10 +1332,10 @@ class MainLayout(ttk.Frame):
                 return
             try:
                 drv.turn_output_on_ch(ch)
-                self.controller.log(f"[WAVEGEN] CH{ch} ON")
+                self.controller.log(f"[INSTRUMENT] CH{ch} ON")
                 lf.config(text=f"CH {ch}  ● ON")
             except Exception as e:
-                self.controller.log(f"[WAVEGEN] CH{ch} on error: {e}")
+                self.controller.log(f"[INSTRUMENT] CH{ch} on error: {e}")
 
         def _off():
             drv = _drv()
@@ -1444,10 +1343,10 @@ class MainLayout(ttk.Frame):
                 return
             try:
                 drv.turn_output_off_ch(ch)
-                self.controller.log(f"[WAVEGEN] CH{ch} OFF")
+                self.controller.log(f"[INSTRUMENT] CH{ch} OFF")
                 lf.config(text=f"CH {ch}  ○ OFF")
             except Exception as e:
-                self.controller.log(f"[WAVEGEN] CH{ch} off error: {e}")
+                self.controller.log(f"[INSTRUMENT] CH{ch} off error: {e}")
 
         ttk.Button(lf, text="Apply", command=_apply).pack(fill="x", pady=(8, 2))
         out_row = ttk.Frame(lf)
@@ -1509,17 +1408,15 @@ class MainLayout(ttk.Frame):
         lf = ttk.Frame(parent)
         lf.pack(fill="x", pady=(0, 4))
 
-        ttk.Label(lf, text="Default prober (used at startup) — Start the GUI on:").pack(
+        ttk.Label(lf, text="Default prober — Start the GUI on:").pack(
             side="left", padx=(0, 4))
         self._default_prober_var = tk.StringVar()
         self._default_prober_cb = ttk.Combobox(
             lf, textvariable=self._default_prober_var, state="readonly", width=32,
             postcommand=self._refresh_default_prober_choices)
         self._default_prober_cb.pack(side="left", padx=(0, 6))
-        ttk.Button(lf, text="⭐ Set as Default",
+        ttk.Button(lf, text="Set Default",
                    command=self._set_default_prober).pack(side="left", padx=(0, 4))
-        ttk.Button(lf, text="✖ Clear",
-                   command=self._clear_default_prober).pack(side="left", padx=(0, 10))
 
         self._default_prober_lbl = ttk.Label(lf, text="", foreground="#374151",
                                              font=("Segoe UI", 8, "italic"))
@@ -1543,13 +1440,13 @@ class MainLayout(ttk.Frame):
         lf = ttk.Frame(parent)
         lf.pack(fill="x", pady=(0, 4))
 
-        ttk.Label(lf, text="Cassette pass-yield default (per ATA folder) — "
+        ttk.Label(lf, text="Cassette pass-yield default — "
                           "Pass yield ≥").pack(side="left", padx=(0, 2))
         self._default_yield_var = tk.StringVar(value="0")
         ttk.Entry(lf, textvariable=self._default_yield_var, width=5).pack(
             side="left", padx=(0, 2))
         ttk.Label(lf, text="% to auto-continue, else pause").pack(side="left", padx=(0, 8))
-        ttk.Button(lf, text="⭐ Set Default",
+        ttk.Button(lf, text="Set Default",
                   command=self._set_default_yield).pack(side="left", padx=(0, 10))
 
         self._default_yield_lbl = ttk.Label(lf, text="", foreground="#374151",
@@ -1664,7 +1561,7 @@ class MainLayout(ttk.Frame):
             lf, text="Browse...", command=self.controller.cmd_browse_working_dir
         ).pack(side="left", padx=(0, 4))
         ttk.Button(
-            lf, text="⭐ Set Default", command=self.controller.cmd_set_default_working_dir
+            lf, text="Set Default", command=self.controller.cmd_set_default_working_dir
         ).pack(side="left", padx=(0, 10))
 
     def _tab_wafer_map(self, nb):
@@ -1680,7 +1577,7 @@ class MainLayout(ttk.Frame):
                   command=self.controller.cmd_import_map).pack(side="left", padx=(0, 10))
         ttk.Button(ctrl, text="＋ New ATA Folder…",
                   command=self.controller.cmd_new_ata_folder).pack(side="left", padx=(0, 10))
-        ttk.Button(ctrl, text="⭐ Set as Default",
+        ttk.Button(ctrl, text="Set Default",
                   command=self._set_default_ata_folder).pack(side="left", padx=(0, 10))
         # Moved in from the top toolbar's "ATA Folder:" row.
         ttk.Button(ctrl, text="↻ Refresh",
@@ -2022,9 +1919,9 @@ class MainLayout(ttk.Frame):
 
         if err:
             messagebox.showerror("Delete Failed", err, parent=self)
-            self.controller.log(f"[INTERNAL] Delete {kind} {desc!r} failed: {err}")
+            self.controller.log(f"[SETUP] Delete {kind} {desc!r} failed: {err}")
             return
-        self.controller.log(f"[INTERNAL] Deleted {kind} {desc!r}")
+        self.controller.log(f"[SETUP] Deleted {kind} {desc!r}")
         self._build_internal_tree(self._ata_folder)
 
     def _ata_copy_dialog(self, meta: dict):
@@ -2111,7 +2008,7 @@ class MainLayout(ttk.Frame):
                 row=row, column=1, sticky="w", pady=3)
             row += 1
 
-            _label("Bench tag (blank = keep as-is):")
+            _label("Prober:")
             bench_var = tk.StringVar(value="")
             ttk.Entry(frm, textvariable=bench_var, width=16).grid(
                 row=row, column=1, sticky="w", pady=3)
@@ -2199,10 +2096,10 @@ class MainLayout(ttk.Frame):
 
             if err:
                 messagebox.showerror("Copy Failed", err, parent=dlg)
-                self.controller.log(f"[INTERNAL] Copy {kind} {src_desc!r} failed: {err}")
+                self.controller.log(f"[SETUP] Copy {kind} {src_desc!r} failed: {err}")
                 return
             self.controller.log(
-                f"[INTERNAL] Copied {kind} {src_desc!r} -> "
+                f"[SETUP] Copied {kind} {src_desc!r} -> "
                 f"{dest_name!r} in {dest_folder}")
             if os.path.normpath(dest_folder) == os.path.normpath(self._ata_folder or ""):
                 self._build_internal_tree(self._ata_folder)
@@ -2465,11 +2362,11 @@ class MainLayout(ttk.Frame):
 
         marks = self.align_panel._last_marks
         if not marks:
-            self.controller.log("[ALIGN] No alignment marks loaded.")
+            self.controller.log("[ALIGN REMOVE] No alignment marks loaded.")
             self._align_st_lbl.config(text="Status: no marks loaded", foreground="red")
             return
         if len(marks) < 2:
-            self.controller.log("[ALIGN] Need at least 2 marks for a full transform.")
+            self.controller.log("[ALIGN REMOVE] Need at least 2 marks for a full transform.")
             self._align_st_lbl.config(text="Status: need ≥ 2 marks", foreground="red")
             return
 
@@ -2481,7 +2378,7 @@ class MainLayout(ttk.Frame):
         y_key = next((k for k in ("y_um", "y_mm", "y", "pos_y", "stage_y") if k in sample), None)
 
         if not (x_key and y_key):
-            self.controller.log("[ALIGN] Cannot identify X/Y columns in alignment marks.")
+            self.controller.log("[ALIGN REMOVE] Cannot identify X/Y columns in alignment marks.")
             self._align_st_lbl.config(text="Status: bad mark format", foreground="red")
             return
 
@@ -2496,7 +2393,7 @@ class MainLayout(ttk.Frame):
                 ex = float(mark.get(x_key, 0))
                 ey = float(mark.get(y_key, 0))
             except (ValueError, TypeError):
-                self.controller.log(f"[ALIGN] Mark {i+1}: invalid coordinates — skipping.")
+                self.controller.log(f"[ALIGN REMOVE] Mark {i+1}: invalid coordinates — skipping.")
                 continue
             name = (mark.get(n_key, "") if n_key else "") or f"Mark {i+1}"
             expected.append((ex, ey))
@@ -2505,14 +2402,14 @@ class MainLayout(ttk.Frame):
 
             if prober:
                 try:
-                    self.controller.log(f"[ALIGN] A {ex:.1f} {ey:.1f} → driving to {name}")
+                    self.controller.log(f"[ALIGN REMOVE] A {ex:.1f} {ey:.1f} → driving to {name}")
                     prober.move_xy_absolute(ex, ey)
                 except Exception as e:
-                    self.controller.log(f"[ALIGN] Prober move error: {e}")
+                    self.controller.log(f"[ALIGN REMOVE] Prober move error: {e}")
                     self._align_st_lbl.config(text=f"Status: prober error — mark {i+1}", foreground="red")
                     return
             else:
-                self.controller.log(f"[ALIGN] (sim) A {ex:.1f} {ey:.1f} → {name}")
+                self.controller.log(f"[ALIGN REMOVE] (sim) A {ex:.1f} {ey:.1f} → {name}")
 
             self._show_jog_popup(i + 1, name, ex, ey, prober is not None)
 
@@ -2520,15 +2417,15 @@ class MainLayout(ttk.Frame):
                 try:
                     raw = prober.get_xy_position()
                     mx, my = _parse_q_response(raw)
-                    self.controller.log(f"[ALIGN] Q → mark {i+1} actual X={mx:.1f}  Y={my:.1f} µm")
+                    self.controller.log(f"[ALIGN REMOVE] Q → mark {i+1} actual X={mx:.1f}  Y={my:.1f} µm")
                 except Exception as e:
-                    self.controller.log(f"[ALIGN] Q read error: {e}")
+                    self.controller.log(f"[ALIGN REMOVE] Q read error: {e}")
                     self._align_st_lbl.config(text=f"Status: Q error — mark {i+1}", foreground="red")
                     return
             else:
                 mx = ex + random.uniform(-5.0, 5.0)
                 my = ey + random.uniform(-5.0, 5.0)
-                self.controller.log(f"[ALIGN] (sim) Q → mark {i+1} actual X={mx:.1f}  Y={my:.1f} µm")
+                self.controller.log(f"[ALIGN REMOVE] (sim) Q → mark {i+1} actual X={mx:.1f}  Y={my:.1f} µm")
 
             measured.append((mx, my))
 
@@ -2538,7 +2435,7 @@ class MainLayout(ttk.Frame):
 
         dx, dy, theta_deg = _compute_alignment_transform(expected, measured)
         self.controller.log(
-            f"[ALIGN] Result: ΔX={dx:+.2f} µm  ΔY={dy:+.2f} µm  θ={theta_deg:+.4f}°"
+            f"[ALIGN REMOVE] Result: ΔX={dx:+.2f} µm  ΔY={dy:+.2f} µm  θ={theta_deg:+.4f}°"
         )
 
         self._align_dx_lbl.config(text=f"ΔX:  {dx:+.2f} µm")
@@ -2656,10 +2553,10 @@ class MainLayout(ttk.Frame):
                                      values=["ATA", "Custom"], state="readonly", width=8)
         pad_source_cb.pack(side="left", padx=(4, 8))
         pad_source_cb.bind("<<ComboboxSelected>>", lambda _e: self._on_pad_source_change())
-        self._btn_pad_clear = ttk.Button(pad_ctrl, text="🗑 Clear", state="disabled",
+        self._btn_pad_clear = ttk.Button(pad_ctrl, text="Clear", state="disabled",
                                          command=self._clear_custom_pads)
         self._btn_pad_clear.pack(side="left", padx=2)
-        self._btn_pad_add_die = ttk.Button(pad_ctrl, text="▭ Add Die", state="disabled",
+        self._btn_pad_add_die = ttk.Button(pad_ctrl, text="Add Die", state="disabled",
                                            command=self._add_custom_die)
         self._btn_pad_add_die.pack(side="left", padx=2)
         ttk.Label(pad_ctrl, text="Custom Sketch — saved by 💾 Save All, top of tab",
@@ -2726,7 +2623,7 @@ class MainLayout(ttk.Frame):
             return
         path = self.pad_panel.save_custom(self._ata_folder)
         self._pad_custom_loaded = True
-        self.controller.log(f"[PAD] Custom layout saved to {path}")
+        self.controller.log("[PROBE CARD] Custom layout saved")
 
     def _exec2_on_card_picked(self):
         name = self._exec2_card_var.get()
@@ -2753,8 +2650,7 @@ class MainLayout(ttk.Frame):
             self._exec2_steps_var.set("No recipe loaded")
             self._exec2_recipe_var.set("")
             self.controller.log(
-                "[RUN] Probe card changed — cleared the loaded recipe "
-                "(pick it again from the Recipe dropdown for the new card).")
+                "[RUN] Probe card changed — refresh")
         if hasattr(self.controller, "check_system_ready"):
             self.controller.check_system_ready()
 
@@ -2917,10 +2813,10 @@ class MainLayout(ttk.Frame):
         default_row = ttk.Frame(lf)
         default_row.grid(row=3, column=0, sticky="w", pady=(10, 0))
         ttk.Label(default_row, text="Startup default:").pack(side="left")
-        ttk.Button(default_row, text="⭐ Set NanoZ as Default",
+        ttk.Button(default_row, text="Set NanoZ as Default",
                   command=lambda: self.controller.cmd_set_default_gui_mode("nanoz")
                   ).pack(side="left", padx=(6, 0))
-        ttk.Button(default_row, text="⭐ Set Normal as Default",
+        ttk.Button(default_row, text="Set Normal as Default",
                   command=lambda: self.controller.cmd_set_default_gui_mode("normal")
                   ).pack(side="left", padx=(6, 0))
 
@@ -3341,13 +3237,10 @@ class MainLayout(ttk.Frame):
         # height.
         steps_lf = ttk.LabelFrame(left_col, text="Recipe Steps", padding=(6, 4))
         steps_lf.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
-        steps_lf.rowconfigure(1, weight=1)
+        steps_lf.rowconfigure(0, weight=1)
         steps_lf.columnconfigure(0, weight=1)
 
         self._exec2_steps_var = tk.StringVar(value="No recipe loaded")
-        ttk.Label(steps_lf, textvariable=self._exec2_steps_var,
-                  font=("Consolas", 8), foreground="#6b7280").grid(
-                  row=0, column=0, sticky="w", pady=(0, 2))
 
         cols = ("n", "name", "type", "conn")
         self._exec2_steps_tree = ttk.Treeview(
@@ -3357,7 +3250,7 @@ class MainLayout(ttk.Frame):
             self._exec2_steps_tree.heading(cid, text=text)
             self._exec2_steps_tree.column(cid, width=width,
                                           anchor="center" if cid == "n" else "w")
-        self._exec2_steps_tree.grid(row=1, column=0, sticky="nsew")
+        self._exec2_steps_tree.grid(row=0, column=0, sticky="nsew")
         ssb = ttk.Scrollbar(steps_lf, orient="vertical",
                             command=self._exec2_steps_tree.yview)
         ssb.grid(row=1, column=1, sticky="ns")
@@ -3567,10 +3460,7 @@ class MainLayout(ttk.Frame):
                 seq, lambda _e: self._exec2_update_overlay_visibility(), add="+")
         self._exec2_redraw_overlay_on_run_map()
         dbg = new.last_draw_debug or {}
-        self._exec2_log(
-            f"[RUN] Run map view reset — W={dbg.get('W')} H={dbg.get('H')} "
-            f"pitch=({dbg.get('pitch_x')},{dbg.get('pitch_y')}) scale={dbg.get('scale')} "
-            f"dw={dbg.get('dw')} dh={dbg.get('dh')}")
+        self._exec2_log("[RUN] Run map view reset")
         if dbg.get("warning"):
             self._exec2_log(f"[ERROR] Run wafer map (reset): {dbg['warning']}")
 
@@ -3646,10 +3536,7 @@ class MainLayout(ttk.Frame):
         new.on_reset_request = self._exec2_rebuild_results_map_view
         new.canvas.bind("<Button-1>", self._on_results_map_click, add="+")
         dbg = new.last_draw_debug or {}
-        self._exec2_log(
-            f"[RUN] Results map view reset — W={dbg.get('W')} H={dbg.get('H')} "
-            f"pitch=({dbg.get('pitch_x')},{dbg.get('pitch_y')}) scale={dbg.get('scale')} "
-            f"dw={dbg.get('dw')} dh={dbg.get('dh')}")
+        self._exec2_log("[RUN] Results map view reset")
         if dbg.get("warning"):
             self._exec2_log(f"[ERROR] Results wafer map (reset): {dbg['warning']}")
 
@@ -3692,7 +3579,7 @@ class MainLayout(ttk.Frame):
                 switch.open_channel("allslots")
             self._exec2_log("[RUN] All switch channels opened.")
         except Exception as e:
-            self._exec2_log(f"[RUN] ⚠ Could not open all channels: "
+            self._exec2_log(f"[RUN] Could not open all channels: "
                             f"{type(e).__name__}: {e}")
 
     def _exec2_set_running_buttons(self, running: bool):
@@ -3765,13 +3652,12 @@ class MainLayout(ttk.Frame):
             try:
                 eg_run._pause()
                 self._exec2_set_running_buttons(False)
-                self._exec2_log("[RUN] ⏸ Pause — stopping after this touchdown; "
-                                "position kept, press ▶ Run to carry on.")
+                self._exec2_log("[RUN] Pause")
                 return
             except Exception as e:
                 self._exec2_log(f"[RUN] Could not pause the .PMA run: {e}")
         if not self._exec2_running:
-            self._exec2_log("[RUN] Nothing is running to pause.")
+            self._exec2_log("[RUN] Nothing to pause.")
             return
         # The Accretech-style loops check _exec2_running between dies, so
         # clearing it stops them the same graceful way - without the abort
@@ -3779,7 +3665,7 @@ class MainLayout(ttk.Frame):
         self._exec2_running = False
         self._exec2_set_running_buttons(False)
         self._exec2_set_state("PAUSED", "#b45309")
-        self._exec2_log("[RUN] ⏸ Paused after the current die — position kept.")
+        self._exec2_log("[RUN] Paused after the current die — position kept.")
 
     def _exec2_abort(self):
         # One Stop Run button covers both run engines now - the normal Full
@@ -3806,7 +3692,7 @@ class MainLayout(ttk.Frame):
         # processed for the run in progress, nothing new has started
         # since" - not just "not currently running".
         if self._exec2_aborted:
-            self._exec2_log("[RUN] ⏹ Stop Run: already stopped — ignoring the repeat.")
+            self._exec2_log("[RUN] Stop Run: already stopped — ignoring.")
             return
         eg_run = getattr(self, "eg_pma_run", None)
         eg_was_running = bool(getattr(eg_run, "_running", False))
@@ -3829,15 +3715,14 @@ class MainLayout(ttk.Frame):
                     prober_z.z_down()
                     self._exec2_log("[RUN] Chuck separated (Z down).")
                 except Exception as e:
-                    self._exec2_log(f"[RUN] ⚠ Could not separate the chuck: "
+                    self._exec2_log(f"[RUN] Could not separate the chuck: "
                                     f"{type(e).__name__}: {e}")
         self._exec2_run_token += 1
         self.after(0, lambda: self._exec2_wafer_map.enable_picking(
             on_change=self._exec2_on_sites_changed))
         self.after(0, lambda: self._exec2_set_state(
             "STOPPING…" if eg_was_running else "STOPPED", "#dc2626"))
-        self._exec2_log("[RUN] ⏹ Stop — channels opened, chuck separated, "
-                        "run position reset; ▶ Run will start from the beginning.")
+        self._exec2_log("[RUN] Stop and reset")
         # Accretech-only: send_es (buzzer clear) is a UF200R command with no
         # Electroglas equivalent - the EG driver stubs it as
         # _not_implemented, so this used to fire on every Electroglas Stop
@@ -3904,7 +3789,7 @@ class MainLayout(ttk.Frame):
     def _exec2_ensure_separated(self, prober, stb: int, sim: bool):
         if sim or stb != 67:
             return
-        self._exec2_log("[RUN] ⚠ finished chuck UP (STB=67 — contact) >> D  (Separate)")
+        self._exec2_log("[RUN] finished chuck UP (STB=67 — contact) >> D  (Separate)")
         prober.z_down()
 
     def _exec2_zup_measure_zdown(self, sim: bool, prober, die_label: str,
@@ -3922,13 +3807,13 @@ class MainLayout(ttk.Frame):
         were) - see _exec2_color_shot_squares."""
         self._exec2_safe_after(lambda: self._exec2_step_var.set("Step: Contact"))
         try:
-            self._exec2_log("[RUN] >> Z  (Contact — chuck rises, wafer CONTACTS probe card)")
+            self._exec2_log("[RUN] >> Z  (Contact)")
             if not sim:
                 stb = prober.z_up()
                 if stb == 67:
                     self._exec2_log("[RUN] << STB=67  (Z Up confirmed — CONTACT)")
                 else:
-                    self._exec2_log(f"[RUN] ⚠ Z Up returned STB={stb} (expected 67)")
+                    self._exec2_log(f"[RUN] Z Up returned STB={stb} (expected 67)")
         except Exception as e:
             self._exec2_log(f"[RUN] Touchdown error: {e} — measuring anyway")
 
@@ -3952,7 +3837,7 @@ class MainLayout(ttk.Frame):
                 self._exec2_die_ids_by_slot = []
                 self._exec2_die_shotpos_by_slot = []
         self._exec2_safe_after(lambda p=ok, dl=die_label: self._exec2_log(
-            f"[RESULT] {'PASS' if p else 'FAIL'}  {dl}"))
+            f"[RESULTS] {'PASS' if p else 'FAIL'}  {dl}"))
 
         if row is not None and col is not None:
             self._exec2_color_shot_squares(shot_geom, shot_row, shot_col, row, col, ok)
@@ -3968,22 +3853,20 @@ class MainLayout(ttk.Frame):
 
         z_down_confirmed = True
         try:
-            self._exec2_log("[RUN] >> D  (Separate — chuck drops before any XY move)")
+            self._exec2_log("[RUN] >> D  (Separate)")
             if not sim:
                 stb = prober.z_down()
                 if stb == 68:
                     self._exec2_log("[RUN] << STB=68  (Z Down confirmed — separated)")
                 else:
-                    self._exec2_log(f"[RUN] ⚠ Z Down returned STB={stb} (expected 68) "
-                                    "— separation NOT confirmed")
+                    self._exec2_log(f"[RUN] Z Down returned STB={stb} (expected 68)")
                     z_down_confirmed = False
         except Exception as e:
-            self._exec2_log(f"[RUN] Separate error: {e} — separation NOT confirmed")
+            self._exec2_log(f"[RUN] Separate error: {e}")
             z_down_confirmed = False
 
         if not sim and not z_down_confirmed:
-            self._exec2_log("[RUN] ⚠ Aborting — refusing to move the chuck again "
-                            "without a confirmed Z Down")
+            self._exec2_log("[RUN] Aborting/rejected")
             self._exec2_abort()
         elif not sim:
             self._exec2_maybe_read_state()
@@ -4049,9 +3932,7 @@ class MainLayout(ttk.Frame):
     def _exec2_can_start(self) -> bool:
         ok = True
         if self._exec2_lot_thread and self._exec2_lot_thread.is_alive():
-            self._exec2_log("[RUN] Cannot start — the previous run is still finishing "
-                            "its last hardware command (probably waiting on the prober). "
-                            "Wait a moment and try again.")
+            self._exec2_log("[RUN] Cannot start — the previous run is still finishing")
             ok = False
         if not self._exec2_steps:
             self._exec2_log("[RUN] Cannot start — no recipe loaded "
@@ -4060,14 +3941,10 @@ class MainLayout(ttk.Frame):
         if self._system == "accretech":
             if (self._exec2_map_source_var.get() not in ("Accretech", "Wafer Builder")
                     or not self._exec2_wafer_map._last_dies):
-                self._exec2_log("[RUN] Cannot start — no wafer map loaded (load an "
-                                "ATA folder with source set to 'Accretech' or 'Wafer "
-                                "Builder'; extract one on the Wafer Builder tab's Accr "
-                                "Wafer sub-tab, or build one there, if you haven't).")
+                self._exec2_log("[RUN] Cannot start — no wafer map loaded")
                 ok = False
         elif not self._exec2_wafer_map._last_dies:
-            self._exec2_log("[RUN] Cannot start — no wafer map loaded "
-                            "(load an ATA folder with source set to 'Electroglas').")
+            self._exec2_log("[RUN] Cannot start — no wafer map loaded")
             ok = False
         if self._system == "accretech":
             # Only what THIS bench actually has fitted - a bench with no
@@ -4084,14 +3961,13 @@ class MainLayout(ttk.Frame):
         missing_instruments = [k for k in required_instruments if k not in self.controller.drivers]
         if missing_instruments:
             self._exec2_log("[RUN] Cannot start — instrument(s) not connected: "
-                            f"{', '.join(missing_instruments)} (Global Reset / "
-                            "check cabling, then retry — see the Instruments tab).")
+                            f"{', '.join(missing_instruments)} (see the Instruments tab).")
             ok = False
         return ok
 
     def _exec2_start_full_die(self):
         if self._exec2_running:
-            self._exec2_log("[RUN] A run is already active — stop it first.")
+            self._exec2_log("[RUN] A run is already active.")
             return
         if not self._exec2_can_start():
             return
@@ -4102,8 +3978,7 @@ class MainLayout(ttk.Frame):
         # wafer where a map square is a multi-die shot.
         if self._system == "accretech" and self._exec2_minor_moves_active():
             self._exec2_log("[RUN] Full Die: this recipe has Minor Moves on — "
-                            "use ▶ Run instead (Full Die/Test Selected only "
-                            "handle the plain, one-square-one-die case).")
+                            "use Run instead.")
             return
         self._exec2_start_full_die_walk("Full Die")
 
@@ -4138,7 +4013,7 @@ class MainLayout(ttk.Frame):
         my_token = self._exec2_run_token
         self._exec2_wafer_map.enable_picking(0)
         self.after(0, lambda: self._exec2_set_state(f"RUNNING ({mode_label})", "#2563eb"))
-        self._exec2_log(f"[RUN] ▶ {mode_label} — walking the entire wafer (G/J), "
+        self._exec2_log(f"[RUN] {mode_label} — walking the entire wafer (G/J), "
                         "measuring the loaded recipe at every die.")
         # Resolved here, on the main thread - see _exec2_prepare_shot_geometry.
         shot_geom = self._exec2_prepare_shot_geometry()
@@ -4249,9 +4124,7 @@ class MainLayout(ttk.Frame):
         dimensions), then shot_die_rc() gives any die #'s cell within
         that shot to land on."""
         if not self._exec2_overlay_offset_confirmed:
-            self._exec2_log("[RUN] Minor Moves: no confirmed Overlay alignment — "
-                            "go to Wafer Builder > Overlay and press 🖌 Overlay "
-                            "on Map first, then start again.")
+            self._exec2_log("[RUN] Minor Moves: no Wafer Builder > Overlay")
             return
         overlay_offset = (self._exec2_overlay_row_offset, self._exec2_overlay_col_offset)
         gen = getattr(self, "recipe_gen", None)
@@ -4279,8 +4152,7 @@ class MainLayout(ttk.Frame):
             deduped.append((row, col))
         if len(deduped) != len(shots):
             self._exec2_log(f"[RUN] Minor Moves: {len(shots)} touchdown(s) resolved to "
-                            f"{len(deduped)} distinct shot(s) — collapsed duplicates "
-                            "(a saved touchdown list carries one row per die, not per shot).")
+                            f"{len(deduped)} distinct shot(s)")
         shots = deduped
 
         self._exec2_reset_counts(total_dies=len(shots))
@@ -4309,7 +4181,7 @@ class MainLayout(ttk.Frame):
         self._exec2_wafer_map.enable_picking(0)
         self.after(0, lambda: self._exec2_set_state(
             f"RUNNING (Minor Moves — {mode_label})", "#2563eb"))
-        self._exec2_log(f"[RUN] ▶ {mode_label} (Minor Moves) — {len(shots)} shot(s), "
+        self._exec2_log(f"[RUN] {mode_label} (Minor Moves) — {len(shots)} shot(s), "
                         "visiting only the die(s) the recipe references.")
         self._exec2_lot_thread = threading.Thread(
             target=self._exec2_minor_move_thread,
@@ -4385,10 +4257,7 @@ class MainLayout(ttk.Frame):
             return None
         if not self._exec2_overlay_offset_confirmed:
             self._exec2_log("[RUN] This shot template has more than one die, but "
-                            "there is no confirmed Overlay alignment - go to Wafer "
-                            "Builder > Overlay and press 🖌 Overlay on Map first, "
-                            "so each step's Die # can be filed against the real "
-                            "die it measured.")
+                            "there is no confirmed Overlay alignment")
             return None
         shot_cells = dict(gen._shot_cells)
         return (shot_rows, shot_cols, shot_cells,
@@ -4581,7 +4450,7 @@ class MainLayout(ttk.Frame):
             if not sim:
                 stb = prober.z_up()
                 if stb != 67:
-                    self._exec2_log(f"[RUN] ⚠ Z Up returned STB={stb} (expected 67)")
+                    self._exec2_log(f"[RUN] Z Up returned STB={stb} (expected 67)")
 
         try:
             self._exec2_refresh_xy_blocking(prober, sim)
@@ -4679,7 +4548,7 @@ class MainLayout(ttk.Frame):
     def _exec2_randomize_sites(self):
         dies = self._exec2_wafer_map._last_dies
         if not dies:
-            self._exec2_log("[RUN] No wafer map loaded — load one before picking test sites.")
+            self._exec2_log("[RUN] No wafer map loaded.")
             return
         import random
         pool = [(d["row"], d["col"]) for d in dies]
@@ -4703,8 +4572,7 @@ class MainLayout(ttk.Frame):
         else:
             self._exec2_wafer_map.set_picked(all_rc)
             self._exec2_on_sites_changed(all_rc)
-            self._exec2_log(f"[RUN] Selected all {len(all_rc)} die(s) — "
-                            "click any die to deselect it, or press again to deselect all.")
+            self._exec2_log(f"[RUN] Selected all {len(all_rc)} die(s).")
 
     def _exec2_picks_as_touchdowns(self, picks) -> list:
         """Collapse picked map cells to one cell per PROBER TOUCHDOWN.
@@ -4824,9 +4692,7 @@ class MainLayout(ttk.Frame):
         if unmatched:
             self._exec2_log(
                 f"[RUN] {unmatched} of {len(sites)} touchdown(s) named a die ID "
-                "that doesn't match the map at its own (row, col) and isn't "
-                "unique on the map either — used the recipe's own (row, col) "
-                "for those instead, which may be wrong.")
+                "that doesn't match the map at its own (row, col)")
         return resolved
 
     def _exec2_loaded_recipe_name(self) -> str:
@@ -4856,7 +4722,7 @@ class MainLayout(ttk.Frame):
             if not quiet_if_missing:
                 self._exec2_log(
                     f"[RUN] Recipe '{recipe}' has no touchdown list yet — click "
-                    "dies on the map, then Recipe tab's ⬅ Take from map selection.")
+                    "dies on the map, then Recipe tab's Take from map selection.")
             return []
         resolved = self._exec2_resolve_site_cells(sites)
         picks = list(resolved)
@@ -4895,18 +4761,15 @@ class MainLayout(ttk.Frame):
 
     def _exec2_start_test_selected(self):
         if self._exec2_running:
-            self._exec2_log("[RUN] A run is already active — stop it first.")
+            self._exec2_log("[RUN] A run is already active.")
             return
         sites = self._exec2_wafer_map.get_picked()
         if not sites:
             sites = self._exec2_load_selected_map(quiet_if_missing=True)
         if not sites:
-            self._exec2_log(
-                "[RUN] Test Selected: no dies selected — click dies on the map, "
-                "or pick a recipe from the Recipe dropdown to pull in its "
-                "saved touchdown list.")
+            self._exec2_log("[RUN] Test Selected: no dies selected")
             return
-        self._exec2_log(f"[RUN] ▶ Test Selected — {len(sites)} selected die(s): "
+        self._exec2_log(f"[RUN] Test Selected — {len(sites)} selected die(s): "
                         + ", ".join(f"R{r}C{c}" for r, c in sites))
         self._exec2_start_test_die()
 
@@ -4926,7 +4789,7 @@ class MainLayout(ttk.Frame):
         fallback for a real run.
         """
         if self._exec2_running:
-            self._exec2_log("[RUN] A run is already active — stop it first.")
+            self._exec2_log("[RUN] A run is already active.")
             return
         if not self._exec2_can_start():
             return
@@ -4936,7 +4799,7 @@ class MainLayout(ttk.Frame):
                 sites = list(self._exec2_wafer_map.dies.keys())
             if not sites:
                 self._exec2_log("[RUN] Run: Minor Moves is on but there is no "
-                                "wafer map loaded — check the Run tab's map source.")
+                                "wafer map loaded")
                 return
             self._exec2_start_minor_moves(sites, "Run")
             return
@@ -4947,7 +4810,7 @@ class MainLayout(ttk.Frame):
             self._exec2_log("[RUN] Run: no saved touchdowns on this recipe and "
                             "no wafer map loaded.")
             return
-        self._exec2_log("[RUN] ▶ Run — no saved touchdowns on this recipe, "
+        self._exec2_log("[RUN] Run — no saved touchdowns on this recipe, "
                         "walking the whole wafer map instead.")
         self._exec2_start_full_die_walk("Run")
 
@@ -5320,14 +5183,14 @@ class MainLayout(ttk.Frame):
 
         btns = ttk.Frame(parent, padding=(8, 0, 8, 8))
         btns.grid(row=2, column=0, sticky="ew")
-        ttk.Button(btns, text="⤾ Auto-Center", command=self._exec2_overlay_tab_center).pack(
+        ttk.Button(btns, text="Auto-Center", command=self._exec2_overlay_tab_center).pack(
             side="left")
-        ttk.Button(btns, text="🖌 Overlay on Map",
+        ttk.Button(btns, text="Overlay on Map",
                   command=self._exec2_overlay_tab_confirm).pack(side="left", padx=6)
-        ttk.Button(btns, text="✕ Clear Overlay",
+        ttk.Button(btns, text="Clear Overlay",
                   command=self._exec2_overlay_tab_clear).pack(side="left")
 
-        map_lf = ttk.LabelFrame(parent, text="Accretech map (live preview)", padding=6)
+        map_lf = ttk.LabelFrame(parent, text="Accretech map", padding=6)
         map_lf.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
         map_lf.rowconfigure(0, weight=1)
         map_lf.columnconfigure(0, weight=1)
@@ -5382,8 +5245,7 @@ class MainLayout(ttk.Frame):
 
     def _exec2_overlay_tab_confirm(self):
         if not self._exec2_overlay_accretech_rc():
-            self._exec2_log("[RUN] Overlay: no wafer map loaded on the Run tab yet — "
-                            "load an ATA folder first.")
+            self._exec2_log("[RUN] Overlay: no wafer map loaded")
             return
         self._exec2_overlay_tab_recompute()
         matched = self._exec2_overlay_tab_matched
@@ -5453,7 +5315,7 @@ class MainLayout(ttk.Frame):
 
     def _exec2_start_test_die(self):
         if self._exec2_running:
-            self._exec2_log("[RUN] A run is already active — stop it first.")
+            self._exec2_log("[RUN] A run is already active.")
             return
         if not self._exec2_can_start():
             return
@@ -5469,8 +5331,7 @@ class MainLayout(ttk.Frame):
         # _exec2_start_full_die's matching refusal.
         if self._system == "accretech" and self._exec2_minor_moves_active():
             self._exec2_log("[RUN] Test Die: this recipe has Minor Moves on — "
-                            "use ▶ Run instead (Full Die/Test Selected only "
-                            "handle the plain, one-square-one-die case).")
+                            "use Run instead.")
             return
         self._exec2_start_site_list(sites, "Test Die", "test")
 
@@ -5497,7 +5358,7 @@ class MainLayout(ttk.Frame):
         my_token = self._exec2_run_token
         self._exec2_wafer_map.enable_picking(0)
         self.after(0, lambda: self._exec2_set_state(f"RUNNING ({mode_label})", "#2563eb"))
-        self._exec2_log(f"[RUN] ▶ {mode_label} — {len(sites)} site(s): "
+        self._exec2_log(f"[RUN] {mode_label} — {len(sites)} site(s): "
                         + ", ".join(f"R{r}C{c}" for r, c in sites))
         # Resolved here, on the main thread - see _exec2_prepare_shot_geometry.
         # Each site may be ANY die of its shot (not necessarily #1) - that's
@@ -5629,9 +5490,7 @@ class MainLayout(ttk.Frame):
         if not sites:
             self._exec2_wafer_map.set_picked([])
             self._exec2_on_sites_changed([])
-            self._exec2_log(f"[RUN] Recipe '{name}' has no touchdown list — "
-                            "nothing selected on the map (the run will walk "
-                            "every die).")
+            self._exec2_log(f"[RUN] Recipe '{name}' has no touchdown list")
             return
         known = self._exec2_wafer_map.dies
         on_map = [rc for rc in self._exec2_touchdown_cells(sites) if rc in known]
@@ -5641,7 +5500,7 @@ class MainLayout(ttk.Frame):
         self._exec2_log(
             f"[RUN] Recipe '{name}' defines {len(sites)} touchdown(s) — "
             f"selected {len(on_map)} on the map."
-            + (f"  ⚠ {missing} are not on this wafer map; check that the loaded "
+            + (f"  {missing} are not on this wafer map; check that the loaded "
                "map matches the recipe." if missing else ""))
         # A Minor Moves recipe's own SITE table carries one row per DIE it
         # actually references (Cenfire's "first"/"second" pair), each with
@@ -5702,8 +5561,7 @@ class MainLayout(ttk.Frame):
     def _exec2_load_recipe(self):
         name = self._exec2_recipe_var.get()
         if not name:
-            self._exec2_log("[RUN] Pick a recipe first — the dropdown lists the "
-                            "Recipe tab's recipes.")
+            self._exec2_log("[RUN] Pick a recipe first.")
             return
         if not self.recipe_panel.select_recipe(name):
             self._exec2_log(f"[RUN] Recipe '{name}' not found — reload the ATA folder.")
@@ -5729,8 +5587,8 @@ class MainLayout(ttk.Frame):
         for msg in issues:
             self._exec2_log(f"[RUN] {msg}")
         if issues:
-            self._exec2_log(f"[RUN] ⚠ {len(issues)} validation issue(s) — "
-                            "review before 🦶 Touchdown/Measure")
+            self._exec2_log(f"[RUN] {len(issues)} validation issue(s) — "
+                            "review before Touchdown/Measure")
         if hasattr(self.controller, "check_system_ready"):
             self.controller.check_system_ready()
 
@@ -5765,8 +5623,7 @@ class MainLayout(ttk.Frame):
             self._exec2_log("[MEASURE] A run is active — stop it first.")
             return
         if not self._exec2_steps:
-            self._exec2_log("[MEASURE] No recipe loaded — pick one from the "
-                            "Recipe dropdown first.")
+            self._exec2_log("[MEASURE] No recipe loaded")
             return
         # _exec2_run_steps_once refuses to run at all while this is True
         # (see its own abort check) - every REAL run resets it at start,
@@ -5786,15 +5643,13 @@ class MainLayout(ttk.Frame):
         prober = self.controller.drivers.get("prober")
         if prober and prober.inst:
             try:
-                self._exec2_log("[MEASURE] >> Z  (Touchdown — chuck rises, "
-                                "wafer CONTACTS probe card)")
+                self._exec2_log("[MEASURE] >> Z  (Touchdown)")
                 prober.z_up()
-                self._exec2_log("[MEASURE] Touchdown complete — wafer in contact")
+                self._exec2_log("[MEASURE] Touchdown complete")
             except Exception as e:
                 self._exec2_log(f"[MEASURE] Touchdown error: {e} — measuring anyway")
         else:
-            self._exec2_log("[MEASURE] Prober not connected — skipping touchdown, "
-                            "measuring at current state")
+            self._exec2_log("[MEASURE] Prober not connected")
 
         row = col = None
         shot_row = shot_col = None
@@ -5847,7 +5702,7 @@ class MainLayout(ttk.Frame):
     def _exec2_settle(self, step: dict, name: str, i: int):
         ms = self._exec2_settle_ms(step)
         if ms > 0:
-            self._exec2_log(f"[MEASURE] {i}. {name}: settling {ms:.0f} ms before reading")
+            self._exec2_log(f"[MEASURE] {i}. {name}: settling {ms:.0f} ms")
             time.sleep(ms / 1000.0)
 
     def _exec2_nplc_spec(self, step: dict):
@@ -5949,9 +5804,7 @@ class MainLayout(ttk.Frame):
                 self._exec2_log(f"[MEASURE]      instrument averaging failed "
                                 f"({type(e).__name__}: {e}) — averaging in software")
         elif avg_count > 1 and not trusted:
-            self._exec2_log(f"[MEASURE]      {type(smu).__name__} can average "
-                            "internally but that path is unverified — averaging "
-                            "in software")
+            self._exec2_log("[MEASURE]      averaging in software")
         # Make sure the instrument is NOT also averaging, or the software loop
         # would average an already-averaged value.
         if smu is not None and hasattr(smu, "set_averages"):
@@ -6058,7 +5911,7 @@ class MainLayout(ttk.Frame):
         try:
             drv.set_terminals(which)
         except Exception as e:
-            self._exec2_log(f"[MEASURE]    ⚠ could not set terminals to {which}: {e}")
+            self._exec2_log(f"[MEASURE]    could not set terminals to {which}: {e}")
 
     def _exec2_run_steps_once(self, steps: list = None) -> bool:
         """Run the loaded recipe's steps once, top to bottom, against
@@ -6144,7 +5997,7 @@ class MainLayout(ttk.Frame):
             # blocking GPIB call; abandoning it mid-transfer desyncs the bus
             # for everything after), but nothing new is started.
             if self._exec2_aborted:
-                self._exec2_log(f"[MEASURE] ⏹ stopped before step {i} "
+                self._exec2_log(f"[MEASURE] stopped before step {i} "
                                 f"({s.get('name') or 'unnamed'}) — "
                                 "remaining steps skipped.")
                 self._exec2_mark_all_open()
@@ -6193,7 +6046,7 @@ class MainLayout(ttk.Frame):
                         self._exec2_log(f"[MEASURE] {i}. {name}: move to die {die_no} "
                                         "— no Minor Moves context active (Measure only "
                                         "tests the first die of a shot; run the recipe "
-                                        "for real to walk the whole shot) — stopping here.")
+                                        "for real to walk the whole shot)")
                         self._exec2_mark_all_open()
                         return False
                     self._exec2_log(f"[MEASURE] {i}. {name}: moving to die {die_no}...")
@@ -6210,8 +6063,7 @@ class MainLayout(ttk.Frame):
                         # counts) and let the caller move on to the next
                         # shot, same as an aborted run would stop early.
                         self._exec2_log(f"[MEASURE] {i}. {name}: die {die_no} is off the "
-                                        f"real wafer map ({e}) — skipping the rest of this "
-                                        "shot, moving on to the next one.")
+                                        f"real wafer map ({e}) — skipping the rest of this shot")
                         self._exec2_mark_all_open()
                         return False
                     continue
@@ -6223,7 +6075,7 @@ class MainLayout(ttk.Frame):
 
                 if t == "open":
                     if conn.lower() == "all" or (s.get("target") or "").strip().lower() == "all":
-                        self._exec2_log(f"[MEASURE] {i}. {name}: open ALL channels + reset all outputs")
+                        self._exec2_log(f"[MEASURE] {i}. {name}: open ALL")
                         if not sim:
                             switch.open_all()
                             if smu and smu.inst:
@@ -6425,8 +6277,7 @@ class MainLayout(ttk.Frame):
                     last_set_voltage_by_ch[smu_ch] = float(lvl or 0)
                     lim_txt = f", current limit {limit} A" if limit else ""
                     self._exec2_log(f"[MEASURE]    forcing {lvl or 0} V on SMU "
-                                    f"{s.get('chan') or 'A'}{lim_txt} "
-                                    "(output ON until an open step)")
+                                    f"{s.get('chan') or 'A'}{lim_txt}")
                     last_reading = (name, float(lvl or 0), "V")
                     readings_by_name[name] = (float(lvl or 0), "V")
                 elif t == "current" and mode == "apply":
@@ -6510,8 +6361,7 @@ class MainLayout(ttk.Frame):
                                     + (f", V={actual_voltage:.6g} V"
                                        if actual_voltage is not None else ""))
                     self._exec2_log(f"[MEASURE]    forcing {lvl or 0} A on SMU "
-                                    f"{s.get('chan') or 'A'}{lim_txt} "
-                                    "(output ON until an open step)" + readback_txt)
+                                    f"{s.get('chan') or 'A'}{lim_txt}" + readback_txt)
                     slot_die, slot_row, slot_col, slot_sw, slot_shotpos = self._exec2_slot_identity(
                         s.get("die"), die_label, (cur_row, cur_col))
                     # See the resistance-step case above for why slot_die (not
@@ -6679,12 +6529,12 @@ class MainLayout(ttk.Frame):
                         try:
                             drv.turn_output_off(smu_ch)
                         except Exception as e:
-                            self._exec2_log(f"[MEASURE]    ⚠ could not turn off SMU "
+                            self._exec2_log(f"[MEASURE]    could not turn off SMU "
                                             f"{s.get('chan') or 'A'} after measuring: {e}")
                     i_a, i_unit, note = self._exec2_apply_target(s, i_raw, "A", readings_by_name)
                     self._exec2_log(f"[MEASURE]    I = {i_raw:.4g} A{bias_txt}{avg_txt}{note}"
                                     + ("  (bias off)" if did_bias else "")
-                                    + ("  ⚠ SMU REPORTS COMPLIANCE" if in_compliance else ""))
+                                    + ("  SMU REPORTS COMPLIANCE" if in_compliance else ""))
                     if actual_voltage is None:
                         actual_voltage = set_voltage
                     slot_die, slot_row, slot_col, slot_sw, slot_shotpos = self._exec2_slot_identity(
@@ -6713,8 +6563,7 @@ class MainLayout(ttk.Frame):
                         wgen.turn_output_on_ch(wch)
                     lim_txt = f", clamp ±{limit} V" if limit else ""
                     self._exec2_log(f"[MEASURE]    WGEN CH{wch} ON — {shape} "
-                                    f"{lvl or 1.0} Vpp @ {freq:.4g} Hz{lim_txt} "
-                                    "(until an open step)")
+                                    f"{lvl or 1.0} Vpp @ {freq:.4g} Hz{lim_txt}")
             except Exception as e:
                 self._exec2_log(f"[MEASURE] {i}. {name}: ERROR {e} — iteration aborted")
                 return False
@@ -6812,64 +6661,64 @@ class MainLayout(ttk.Frame):
     def _exec2_manual_z_up(self):
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log("[EXEC2] Z Up: prober not connected.")
+            self._exec2_log("[RUN] Z Up: prober not connected.")
             return
         def _run():
             try:
-                self.after(0, lambda: self._exec2_log("[EXEC2] >> Z  (Contact)"))
+                self.after(0, lambda: self._exec2_log("[RUN] >> Z  (Contact)"))
                 prober.z_up()
-                self.after(0, lambda: self._exec2_log("[EXEC2] Z Up complete."))
+                self.after(0, lambda: self._exec2_log("[RUN] Z Up complete."))
             except Exception as e:
-                self.after(0, lambda e=e: self._exec2_log(f"[EXEC2] Z Up error: {e}"))
+                self.after(0, lambda e=e: self._exec2_log(f"[RUN] Z Up error: {e}"))
         threading.Thread(target=_run, daemon=True).start()
 
     def _exec2_manual_z_down(self):
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log("[EXEC2] Z Down: prober not connected.")
+            self._exec2_log("[RUN] Z Down: prober not connected.")
             return
         def _run():
             try:
-                self.after(0, lambda: self._exec2_log("[EXEC2] >> D  (Separate)"))
+                self.after(0, lambda: self._exec2_log("[RUN] >> D  (Separate)"))
                 prober.z_down()
-                self.after(0, lambda: self._exec2_log("[EXEC2] Z Down complete."))
+                self.after(0, lambda: self._exec2_log("[RUN] Z Down complete."))
             except Exception as e:
-                self.after(0, lambda e=e: self._exec2_log(f"[EXEC2] Z Down error: {e}"))
+                self.after(0, lambda e=e: self._exec2_log(f"[RUN] Z Down error: {e}"))
         threading.Thread(target=_run, daemon=True).start()
 
     def _exec2_manual_go_to_start(self):
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log("[EXEC2] First Die: prober not connected.")
+            self._exec2_log("[RUN] First Die: prober not connected.")
             return
         threading.Thread(target=self._exec2_go_to_start_thread, args=(prober,),
                          daemon=True).start()
 
     def _exec2_go_to_start_thread(self, prober):
         try:
-            self._exec2_log("[EXEC2] >> G  (Position start die)")
+            self._exec2_log("[RUN] >> G  (Position start die)")
             stb = prober.move_to_start_die()
-            self._exec2_log(f"[EXEC2] << STB={stb}  (start die positioned, chuck "
+            self._exec2_log(f"[RUN] << STB={stb}  (start die positioned, chuck "
                             f"{'UP — CONTACT' if stb == 67 else 'DOWN'})")
             self._exec2_get_xy()
         except Exception as e:
-            self._exec2_log(f"[EXEC2] First Die error: {e}")
+            self._exec2_log(f"[RUN] First Die error: {e}")
 
     def _exec2_manual_unload(self):
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log("[EXEC2] Unload: prober not connected.")
+            self._exec2_log("[RUN] Unload: prober not connected.")
             return
         threading.Thread(target=self._exec2_unload_thread, args=(prober,),
                          daemon=True).start()
 
     def _exec2_unload_thread(self, prober):
         try:
-            self._exec2_log("[EXEC2] >> U  (Unload wafer)")
+            self._exec2_log("[RUN] >> U  (Unload wafer)")
             stb = prober.unload_wafer()
-            self._exec2_log(f"[EXEC2] << STB={stb}  (wafer unloaded)")
+            self._exec2_log(f"[RUN] << STB={stb}  (wafer unloaded)")
         except Exception as e:
-            self._exec2_log(f"[EXEC2] Unload error: {e}")
+            self._exec2_log(f"[RUN] Unload error: {e}")
 
     def _exec2_manual_prev_die(self):
         """Back: no native "previous die" GPIB command exists on this
@@ -6881,16 +6730,16 @@ class MainLayout(ttk.Frame):
         handling in instruments/accretech_uf200r.py)."""
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log("[EXEC2] Back: prober not connected.")
+            self._exec2_log("[RUN] Back: prober not connected.")
             return
         def _run():
             try:
-                self.after(0, lambda: self._exec2_log("[EXEC2] >> S  (X-1, previous die)"))
+                self.after(0, lambda: self._exec2_log("[RUN] >> S  (X-1, previous die)"))
                 stb = prober.move_xy_relative(-1, 0)
-                self.after(0, lambda: self._exec2_log(f"[EXEC2] << STB={stb}"))
+                self.after(0, lambda: self._exec2_log(f"[RUN] << STB={stb}"))
                 self.after(0, self._exec2_get_xy)
             except Exception as e:
-                self.after(0, lambda e=e: self._exec2_log(f"[EXEC2] Back error: {e}"))
+                self.after(0, lambda e=e: self._exec2_log(f"[RUN] Back error: {e}"))
         threading.Thread(target=_run, daemon=True).start()
 
     def _exec2_manual_next_die(self):
@@ -6901,16 +6750,16 @@ class MainLayout(ttk.Frame):
         step, not a shot-aware move."""
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log("[EXEC2] Next: prober not connected.")
+            self._exec2_log("[RUN] Next: prober not connected.")
             return
         def _run():
             try:
-                self.after(0, lambda: self._exec2_log("[EXEC2] >> J  (next die)"))
+                self.after(0, lambda: self._exec2_log("[RUN] >> J  (next die)"))
                 stb = prober.next_die()
-                self.after(0, lambda: self._exec2_log(f"[EXEC2] << STB={stb}"))
+                self.after(0, lambda: self._exec2_log(f"[RUN] << STB={stb}"))
                 self.after(0, self._exec2_get_xy)
             except Exception as e:
-                self.after(0, lambda e=e: self._exec2_log(f"[EXEC2] Next error: {e}"))
+                self.after(0, lambda e=e: self._exec2_log(f"[RUN] Next error: {e}"))
         threading.Thread(target=_run, daemon=True).start()
 
     def _exec2_shot_step_setup(self, label: str):
@@ -6921,24 +6770,23 @@ class MainLayout(ttk.Frame):
         row_off, col_off) or None (already logged why) if not."""
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log(f"[EXEC2] {label}: prober not connected.")
+            self._exec2_log(f"[RUN] {label}: prober not connected.")
             return None
         gen = getattr(self, "recipe_gen", None)
         if gen is None:
-            self._exec2_log(f"[EXEC2] {label}: the Wafer Builder tab is not available.")
+            self._exec2_log(f"[RUN] {label}: the Wafer Builder tab is not available.")
             return None
         if not self._exec2_overlay_offset_confirmed:
-            self._exec2_log(f"[EXEC2] {label}: no confirmed Overlay alignment — "
-                            "go to Wafer Builder > Overlay and confirm it first.")
+            self._exec2_log(f"[RUN] {label}: no confirmed Overlay alignment")
             return None
         try:
             shot_rows, shot_cols = gen._shot_dims()
         except Exception:
-            self._exec2_log(f"[EXEC2] {label}: could not read the Wafer Builder shot size.")
+            self._exec2_log(f"[RUN] {label}: could not read the Wafer Builder shot size.")
             return None
         shots = sorted((sr, sc) for (sr, sc), present in gen._shotmap_cells.items() if present)
         if not shots:
-            self._exec2_log(f"[EXEC2] {label}: no shots on the Wafer Builder Shot Map tab.")
+            self._exec2_log(f"[RUN] {label}: no shots on the Wafer Builder Shot Map tab.")
             return None
         return (prober, gen, shots, shot_rows, shot_cols,
                self._exec2_overlay_row_offset, self._exec2_overlay_col_offset)
@@ -6953,17 +6801,17 @@ class MainLayout(ttk.Frame):
         die_y = shot_row * shot_rows + r + row_off
         def _run():
             try:
-                self.after(0, lambda: self._exec2_log("[EXEC2] >> D  (Separate)"))
+                self.after(0, lambda: self._exec2_log("[RUN] >> D  (Separate)"))
                 prober.z_down()
                 self.after(0, lambda: self._exec2_log(
-                    f"[EXEC2] >> J  ({label} -> shot R{shot_row}C{shot_col}, "
+                    f"[RUN] >> J  ({label} -> shot R{shot_row}C{shot_col}, "
                     f"die #1, X={die_x} Y={die_y})"))
                 stb = prober.move_to_die_xy(die_x, die_y)
-                self.after(0, lambda: self._exec2_log(f"[EXEC2] << STB={stb}"))
+                self.after(0, lambda: self._exec2_log(f"[RUN] << STB={stb}"))
                 self.after(0, self._exec2_get_xy)
                 self.after(0, lambda: self._exec2_highlight_current(die_y, die_x))
             except Exception as e:
-                self.after(0, lambda e=e: self._exec2_log(f"[EXEC2] {label} error: {e}"))
+                self.after(0, lambda e=e: self._exec2_log(f"[RUN] {label} error: {e}"))
         threading.Thread(target=_run, daemon=True).start()
 
     def _exec2_current_shot_index(self, shots: list, shot_rows: int, shot_cols: int,
@@ -6991,7 +6839,7 @@ class MainLayout(ttk.Frame):
         cur_idx = self._exec2_current_shot_index(shots, shot_rows, shot_cols, row_off, col_off)
         idx = 0 if cur_idx is None else cur_idx + 1
         if idx >= len(shots):
-            self._exec2_log("[EXEC2] Next Shot: already at the last shot.")
+            self._exec2_log("[RUN] Next Shot: already at the last shot.")
             return
         shot_row, shot_col = shots[idx]
         self._exec2_go_to_shot(prober, gen, shot_row, shot_col, shot_rows, shot_cols,
@@ -7006,7 +6854,7 @@ class MainLayout(ttk.Frame):
         cur_idx = self._exec2_current_shot_index(shots, shot_rows, shot_cols, row_off, col_off)
         idx = (len(shots) - 1) if cur_idx is None else cur_idx - 1
         if idx < 0:
-            self._exec2_log("[EXEC2] Previous Shot: already at the first shot.")
+            self._exec2_log("[RUN] Previous Shot: already at the first shot.")
             return
         shot_row, shot_col = shots[idx]
         self._exec2_go_to_shot(prober, gen, shot_row, shot_col, shot_rows, shot_cols,
@@ -7046,7 +6894,7 @@ class MainLayout(ttk.Frame):
         target = self._exec2_move_target_rc
         self._exec2_disarm_move_selected()
         if target is None:
-            self._exec2_log("[EXEC2] Move to Selected: cancelled.")
+            self._exec2_log("[RUN] Move to Selected: cancelled.")
             return
         self._exec2_do_move_to(*target)
 
@@ -7096,21 +6944,21 @@ class MainLayout(ttk.Frame):
         its own."""
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            self._exec2_log("[EXEC2] Move to Selected: prober not connected.")
+            self._exec2_log("[RUN] Move to Selected: prober not connected.")
             return
         def _run():
             try:
-                self.after(0, lambda: self._exec2_log("[EXEC2] >> D  (Separate)"))
+                self.after(0, lambda: self._exec2_log("[RUN] >> D  (Separate)"))
                 prober.z_down()
                 self.after(0, lambda: self._exec2_log(
-                    f"[EXEC2] >> J  (X={col} Y={row})"))
+                    f"[RUN] >> J  (X={col} Y={row})"))
                 stb = prober.move_to_die_xy(col, row)
-                self.after(0, lambda: self._exec2_log(f"[EXEC2] << STB={stb}"))
+                self.after(0, lambda: self._exec2_log(f"[RUN] << STB={stb}"))
                 self.after(0, self._exec2_get_xy)
                 self.after(0, lambda: self._exec2_highlight_current(row, col))
             except Exception as e:
                 self.after(0, lambda e=e: self._exec2_log(
-                    f"[EXEC2] Move to Selected error: {e}"))
+                    f"[RUN] Move to Selected error: {e}"))
         threading.Thread(target=_run, daemon=True).start()
 
     def _exec2_refresh_xy_blocking(self, prober, sim: bool):
@@ -7160,17 +7008,17 @@ class MainLayout(ttk.Frame):
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
             self._exec2_xy_var.set("X: —\nY: —")
-            self._exec2_log("[EXEC2] XY: prober not connected.")
+            self._exec2_log("[RUN] XY: prober not connected.")
             return
         def _run():
             try:
                 raw = prober.get_xy_position()
                 x, y = _parse_q_response(raw)
                 self.after(0, lambda: self._exec2_xy_var.set(f"X: {x:.0f} die\nY: {y:.0f} die"))
-                self.after(0, lambda: self._exec2_log(f"[EXEC2] Q → die X={x:.0f}  Y={y:.0f}"))
+                self.after(0, lambda: self._exec2_log(f"[RUN] Q → die X={x:.0f}  Y={y:.0f}"))
                 self.after(0, lambda: self._exec2_highlight_current(int(y), int(x)))
             except Exception as e:
-                self.after(0, lambda e=e: self._exec2_log(f"[EXEC2] XY error: {e}"))
+                self.after(0, lambda e=e: self._exec2_log(f"[RUN] XY error: {e}"))
                 self.after(0, lambda: self._exec2_xy_var.set("X: ERROR\nY: ERROR"))
         threading.Thread(target=_run, daemon=True).start()
 
@@ -7407,7 +7255,7 @@ class MainLayout(ttk.Frame):
             sql_row, text="✏ Edit Selected…", command=self._open_edit_format_dialog
         ).pack(side="left", padx=(6, 0))
         ttk.Button(
-            sql_row, text="⭐ Set Default", command=self._set_default_export_format
+            sql_row, text="Set Default", command=self._set_default_export_format
         ).pack(side="left", padx=(6, 0))
         # Only meaningful for Cenfire - launches the SAME external tool
         # (references/AzTransfer, its own separate git repo/project) the
@@ -7417,7 +7265,7 @@ class MainLayout(ttk.Frame):
         # _is_cenfire_folder/_refresh_cenfire_transfer_button), so it can't
         # be pressed against the wrong project's data by mistake.
         self._cenfire_transfer_btn = ttk.Button(
-            sql_row, text="🚀 Transfer Cenfire", command=self._run_cenfire_transfer,
+            sql_row, text="Transfer Cenfire", command=self._run_cenfire_transfer,
             state="disabled")
         self._cenfire_transfer_btn.pack(side="left", padx=(6, 0))
         # LaMP's analogue - there is no external tool like AzTransfer for
@@ -7426,7 +7274,7 @@ class MainLayout(ttk.Frame):
         # something else that already does it. Disabled unless a LaMP ATA
         # folder is loaded, same reasoning as the Cenfire button above.
         self._lamp_push_btn = ttk.Button(
-            sql_row, text="📤 Push LaMP SQL Dump", command=self._run_lamp_sql_push,
+            sql_row, text="Push LaMP SQL Dump", command=self._run_lamp_sql_push,
             state="disabled")
         self._lamp_push_btn.pack(side="left", padx=(6, 0))
         # Push straight into an Access database instead of writing a .sql
@@ -7509,11 +7357,11 @@ class MainLayout(ttk.Frame):
             side="left", padx=6)
         ttk.Button(row, text="Browse…", command=self._mdb_browse).pack(
             side="left", padx=2)
-        ttk.Button(row, text="🔎 Check", command=self._mdb_check).pack(
+        ttk.Button(row, text="Check", command=self._mdb_check).pack(
             side="left", padx=(8, 2))
-        ttk.Button(row, text="⬆ Push to DB", command=self._mdb_push).pack(
+        ttk.Button(row, text="Push to DB", command=self._mdb_push).pack(
             side="left", padx=2)
-        ttk.Button(row, text="⭐ Set Default", command=self._set_default_mdb_path).pack(
+        ttk.Button(row, text="Set Default", command=self._set_default_mdb_path).pack(
             side="left", padx=(8, 2))
         self._mdb_status_var = tk.StringVar(value="")
         ttk.Label(parent, textvariable=self._mdb_status_var, foreground="#6b7280",
@@ -7559,8 +7407,7 @@ class MainLayout(ttk.Frame):
             return
         mdb_export.save_mdb_path(self._ata_folder, path)
         self._update_mdb_default_label()
-        self.controller.log(
-            f"[MDB] Set default Access DB path for this ATA folder: {path}")
+        self.controller.log("[RESULTS] Set default Access DB path for this ATA folder")
 
     def _update_mdb_default_label(self):
         var = getattr(self, "_mdb_default_lbl_var", None)
@@ -7592,15 +7439,15 @@ class MainLayout(ttk.Frame):
         info = mdb_export.preflight(getattr(self, "mdb_path_var", tk.StringVar()).get().strip(), fmt["table"])
         if not info["ok"]:
             self._mdb_say("✖  " + "  ".join(info["problems"]))
-            self.controller.log("[MDB] Check failed — " + "; ".join(info["problems"]))
+            self.controller.log("[RESULTS] Check failed — " + "; ".join(info["problems"]))
             return None
         missing = [c["field"] for c in fmt["columns"]
                    if c["field"].lower() not in {x.lower() for x in info["columns"]}]
         if missing:
-            msg = (f"✖  '{fmt['table']}' exists but has no column(s): "
+            msg = (f"'{fmt['table']}' exists but has no column(s): "
                   f"{', '.join(missing)} — the format and the table disagree.")
             self._mdb_say(msg)
-            self.controller.log("[MDB] " + msg)
+            self.controller.log("[RESULTS] " + msg)
             return None
         n = info["row_count"]
         self._mdb_say(
@@ -7642,14 +7489,14 @@ class MainLayout(ttk.Frame):
             return
         res = mdb_export.push(path, fmt, results, lot, wafer, folder=ata_folder)
         if res["ok"]:
-            msg = (f"✔  Pushed {res['inserted']} row(s) into "
+            msg = (f"Pushed {res['inserted']} row(s) into "
                   f"[{res['table']}] — lot {lot}"
                   + (f", wafer {wafer}" if wafer else "") + ".")
             self._mdb_say(msg)
-            self.controller.log("[MDB] " + msg)
+            self.controller.log("[RESULTS] " + msg)
         else:
             self._mdb_say("✖  " + res["error"])
-            self.controller.log("[MDB] Push failed — " + res["error"])
+            self.controller.log("[RESULTS] Push failed — " + res["error"])
 
     def _build_results_wafer_map(self, tab):
         map_frame = ttk.LabelFrame(tab, text="Wafer Map — Pass / Fail")
@@ -7664,15 +7511,6 @@ class MainLayout(ttk.Frame):
             top_row, text="Total Passed: 0     |     Total Failed: 0     |     Untested: 0",
             font=("Arial", 11, "bold"))
         self.lbl_results_large.pack(side="left")
-        zoom_bar = ttk.Frame(top_row)
-        zoom_bar.pack(side="right")
-        ttk.Button(zoom_bar, text="🔍+", width=3,
-                  command=lambda: self._results_wafer_map.zoom_in()).pack(side="left")
-        ttk.Button(zoom_bar, text="🔍-", width=3,
-                  command=lambda: self._results_wafer_map.zoom_out()).pack(side="left", padx=(2, 0))
-        ttk.Button(zoom_bar, text="Reset View",
-                  command=lambda: self._results_wafer_map._reset_view()).pack(
-                  side="left", padx=(6, 0))
 
         self._results_map_frame = map_frame
         self._new_results_wafer_map()
@@ -7683,7 +7521,7 @@ class MainLayout(ttk.Frame):
         detail_lf.columnconfigure(0, weight=1)
 
         self._results_die_var = tk.StringVar(
-            value="Click a die on the map to see its measurements.")
+            value="Click a die to see the measurements")
         ttk.Label(detail_lf, textvariable=self._results_die_var, wraplength=220,
                  justify="left").grid(row=0, column=0, sticky="w", padx=6, pady=6)
 
@@ -7783,13 +7621,8 @@ class MainLayout(ttk.Frame):
             self.export_path_var.set(default_export_path)
         elif default_export_path:
             self.controller.log(
-                f"[RESULTS] This project's saved export directory "
-                f"({default_export_path!r}) doesn't exist on this machine "
-                "- probably another machine's personal Downloads folder, "
-                "saved while it was picked from the quick-choice list. "
-                "Keeping the current export directory instead; pick a real "
-                "shared location and press ⭐ Set Default to fix it for "
-                "everyone.")
+                "[RESULTS] This project's saved export directory "
+                "doesn't exist on this machine")
         if select_name in names:
             self.export_format_var.set(select_name)
         elif self.export_format_var.get() not in names:
@@ -7842,7 +7675,7 @@ class MainLayout(ttk.Frame):
                                      system=self._system)
         self._update_default_format_label(fmt["name"])
         self.controller.log(f"[RESULTS] '{fmt['name']}' and export path "
-                            f"'{self.export_path_var.get()}' set as default for this project.")
+                            "set as default for this project.")
 
     def _is_cenfire_folder(self) -> bool:
         return bool(self._ata_folder) and os.path.basename(
@@ -7908,16 +7741,16 @@ class MainLayout(ttk.Frame):
         res = mdb_export.push_sql_dump_folder(mdb_path, dump_dir)
         if res.get("error") and not res["files"]:
             messagebox.showerror("Push LaMP SQL Dump", res["error"])
-            self.controller.log(f"[LAMP DB] Push failed — {res['error']}")
+            self.controller.log(f"[RESULTS] Push failed — {res['error']}")
             return
         ok_files = [f for f in res["files"] if f["ok"]]
         bad_files = [f for f in res["files"] if not f["ok"]]
         msg = f"Pushed {res['total_rows']} row(s) from {len(ok_files)} file(s)."
         if bad_files:
             msg += ("\n" + f"{len(bad_files)} file(s) FAILED and were left "
-                    "in place (not moved, not re-pushed automatically):\n" +
+                    "in place:\n" +
                     "\n".join(f"  {b['file']}: {b['error']}" for b in bad_files))
-        self.controller.log("[LAMP DB] " + msg.replace("\n", "  "))
+        self.controller.log("[RESULTS] " + msg.replace("\n", "  "))
         if bad_files:
             messagebox.showwarning("Push LaMP SQL Dump", msg)
         else:
@@ -7958,7 +7791,7 @@ class MainLayout(ttk.Frame):
         ttk.Entry(frm, textvariable=name_var, width=46).grid(
             row=0, column=1, columnspan=3, sticky="w", pady=2)
 
-        ttk.Label(frm, text="Table Name:").grid(row=1, column=0, sticky="e", pady=2)
+        ttk.Label(frm, text="Append Name:").grid(row=1, column=0, sticky="e", pady=2)
         table_var = tk.StringVar(value=(existing_fmt or {}).get("table", ""))
         ttk.Entry(frm, textvariable=table_var, width=46).grid(
             row=1, column=1, columnspan=3, sticky="w", pady=2)
@@ -7971,10 +7804,10 @@ class MainLayout(ttk.Frame):
         type_var = tk.StringVar(value=(existing_fmt or {}).get("type", "sql"))
         type_row = ttk.Frame(frm)
         type_row.grid(row=2, column=1, columnspan=3, sticky="w", pady=2)
-        ttk.Radiobutton(type_row, text="SQL INSERT (one row per reading)",
+        ttk.Radiobutton(type_row, text="SQL INSERT",
                        variable=type_var, value="sql",
                        command=lambda: _on_type_change()).pack(side="left")
-        ttk.Radiobutton(type_row, text="CSV (one row per die, merged)",
+        ttk.Radiobutton(type_row, text="CSV",
                        variable=type_var, value="csv",
                        command=lambda: _on_type_change()).pack(side="left", padx=(12, 0))
         # CSV-only, off by default (a format saved before this existed has
@@ -7989,17 +7822,17 @@ class MainLayout(ttk.Frame):
         # the rest.
         per_step_var = tk.BooleanVar(value=(existing_fmt or {}).get("per_step", False))
         per_step_chk = ttk.Checkbutton(
-            type_row, text="One row per test, not per die (e.g. Peanut's FULL)",
+            type_row, text="One row per test (Peanut)",
             variable=per_step_var, command=lambda: _on_type_change())
         per_step_chk.pack(side="left", padx=(12, 0))
         append_date_var = tk.BooleanVar(value=(existing_fmt or {}).get("append_date", False))
-        ttk.Checkbutton(type_row, text="📅 Append date to filename (_YYYYMMDD)",
+        ttk.Checkbutton(type_row, text="+ date",
                        variable=append_date_var).pack(side="left", padx=(20, 0))
         append_time_var = tk.BooleanVar(value=(existing_fmt or {}).get("append_time", False))
-        ttk.Checkbutton(type_row, text="🕐 + time (_HHMMSS)",
+        ttk.Checkbutton(type_row, text="+ time",
                        variable=append_time_var).pack(side="left", padx=(8, 0))
         append_recipe_var = tk.BooleanVar(value=(existing_fmt or {}).get("append_recipe", False))
-        ttk.Checkbutton(type_row, text="📋 + recipe name",
+        ttk.Checkbutton(type_row, text="+ recipe name",
                        variable=append_recipe_var).pack(side="left", padx=(8, 0))
 
         only_pma_var = tk.BooleanVar(value=(existing_fmt or {}).get("requires_die_id", True))
@@ -8009,11 +7842,8 @@ class MainLayout(ttk.Frame):
         only_pma_chk.grid(row=3, column=0, columnspan=4, sticky="w", pady=(4, 8))
 
         detect_hint = tk.StringVar()
-        ttk.Label(frm, text="Available fields (double-click, or select + Add):").grid(
+        ttk.Label(frm, text="Available fields:").grid(
             row=4, column=0, columnspan=4, sticky="w")
-        ttk.Label(frm, textvariable=detect_hint, foreground="#6b7280",
-                 font=("Segoe UI", 8), wraplength=460, justify="left").grid(
-            row=5, column=0, columnspan=4, sticky="w")
         avail_row = ttk.Frame(frm)
         avail_row.grid(row=6, column=0, columnspan=4, sticky="nsew", pady=(2, 6))
         avail_list = tk.Listbox(avail_row, height=6, width=58, exportselection=False)
@@ -8022,7 +7852,7 @@ class MainLayout(ttk.Frame):
                   command=lambda: _add_from_available()).pack(side="left", padx=(6, 0), anchor="n")
         avail_sources: list = []
 
-        ttk.Label(frm, text="Columns (in output order):").grid(
+        ttk.Label(frm, text="Columns:").grid(
             row=7, column=0, columnspan=4, sticky="w")
         cols_tree = ttk.Treeview(
             frm, columns=("field", "source", "quote", "transform"),
@@ -8035,12 +7865,12 @@ class MainLayout(ttk.Frame):
 
         order_row = ttk.Frame(frm)
         order_row.grid(row=9, column=0, columnspan=4, sticky="w")
-        ttk.Button(order_row, text="▲ Move Up", command=lambda: move_col(-1)).pack(side="left")
-        ttk.Button(order_row, text="▼ Move Down", command=lambda: move_col(1)).pack(
+        ttk.Button(order_row, text="▲", command=lambda: move_col(-1)).pack(side="left")
+        ttk.Button(order_row, text="▼", command=lambda: move_col(1)).pack(
             side="left", padx=(6, 0))
-        ttk.Button(order_row, text="Remove Selected", command=lambda: remove_col()).pack(
+        ttk.Button(order_row, text="Remove", command=lambda: remove_col()).pack(
             side="left", padx=(6, 0))
-        ttk.Button(order_row, text="Edit Selected", command=lambda: _edit_selected()).pack(
+        ttk.Button(order_row, text="Edit", command=lambda: _edit_selected()).pack(
             side="left", padx=(6, 0))
 
         add_row = ttk.Frame(frm)
@@ -8088,10 +7918,7 @@ class MainLayout(ttk.Frame):
         ttk.Entry(add_row3, textvariable=template_var, width=44).pack(
             side="left", padx=(4, 0))
 
-        lookup_lf = ttk.LabelFrame(
-            frm, text="Lookup Table (optional) — a project's own per-die "
-                     "reference CSV, in the ATA folder, keyed by this app's "
-                     "real (row, col)")
+        lookup_lf = ttk.LabelFrame(frm, text="Lookup Table")
         lookup_lf.grid(row=13, column=0, columnspan=4, sticky="ew", pady=(8, 0))
         _lu = (existing_fmt or {}).get("lookup") or {}
         lu_file_var = tk.StringVar(value=_lu.get("file", ""))
@@ -8141,13 +7968,6 @@ class MainLayout(ttk.Frame):
             side="left", padx=(2, 4))
         ttk.Entry(lu_row2, textvariable=lu_our_col_var, width=14).pack(
             side="left", padx=(2, 0))
-        ttk.Label(lookup_lf, text="Leave CSV filename blank for no lookup table. "
-                                  "A column can then use any of that CSV's own "
-                                  "headers as its Source above. If the ID field "
-                                  "above is filled in it wins over row/col matching.",
-                 foreground="#6b7280", font=("Segoe UI", 8), wraplength=520,
-                 justify="left").pack(anchor="w", padx=6, pady=(0, 4))
-
         _NICE = {"dmm": "DMM", "id": "ID", "num": "Num"}
 
         def _default_field_name(source):

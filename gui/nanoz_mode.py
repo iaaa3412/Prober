@@ -65,8 +65,6 @@ class NanozModeLayout(ttk.Frame):
         bar.grid_propagate(False)
         tk.Label(bar, text="NanoZ Mode", bg="#374558", fg="#f0a020",
                  font=("Arial", 11, "bold")).pack(side="left", padx=(10, 4))
-        tk.Label(bar, text="— alternate main window, Nautilus 1x20 shots",
-                 bg="#374558", fg="#9ca3af", font=("Arial", 9)).pack(side="left")
         tk.Button(bar, text="⬅ Switch to Normal", bd=1, relief="flat",
                   font=("Arial", 9, "bold"), padx=10, pady=2,
                   command=lambda: self.controller.cmd_set_gui_mode("normal")

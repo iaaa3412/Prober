@@ -59,8 +59,6 @@ class AccrWaferPanel(ttk.Frame):
         ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=8)
 
         self._separate_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(bar, text="Send D (Separate) first",
-                        variable=self._separate_var).pack(side="left", padx=4)
 
         ttk.Label(bar, text="Max dies:").pack(side="left", padx=(12, 2))
         self._max_var = tk.StringVar(value="10000")
@@ -106,7 +104,7 @@ class AccrWaferPanel(ttk.Frame):
                    command=self._save_to_ata).grid(
                    row=3, column=0, columnspan=2, sticky="ew", pady=(4, 0))
 
-        rf = ttk.LabelFrame(pane, text="Reconstructed Wafer Map", padding=4)
+        rf = ttk.LabelFrame(pane, text="Wafer Map", padding=4)
         pane.add(rf, weight=3)
         rf.rowconfigure(0, weight=1)
         rf.columnconfigure(0, weight=1)
@@ -173,15 +171,15 @@ class AccrWaferPanel(ttk.Frame):
         if self._running:
             self._abort = True
             self._set_status("Aborting after current step…", "#f97316")
-            self._log("[ACCR MAP] Abort requested — stopping after current step")
+            self._log("[MAP] Abort requested — stopping after current step")
             drv = self.controller.drivers.get("prober")
             if drv and drv.inst:
                 def _clear():
                     try:
                         drv.send_es()
-                        self._log("[ACCR MAP] es sent (buzzer clear)")
+                        self._log("[MAP] es sent (buzzer clear)")
                     except Exception as e:
-                        self._log(f"[ACCR MAP] es error: {e}")
+                        self._log(f"[MAP] es error: {e}")
                 threading.Thread(target=_clear, daemon=True).start()
 
 
@@ -198,10 +196,10 @@ class AccrWaferPanel(ttk.Frame):
 
     def _ensure_separated(self, drv, stb: int, cmd: str) -> None:
         if stb == 67:
-            self._log(f"[ACCR MAP] ⚠ {cmd} finished chuck UP (STB=67 — contact!) "
+            self._log(f"[MAP] {cmd} finished chuck UP (STB=67 — contact!) "
                       ">> D  (Separate)")
             drv.z_down()
-            self._log("[ACCR MAP] << STB=68  (chuck down — separated)")
+            self._log("[MAP] << STB=68  (chuck down — separated)")
 
     def _worker_hw(self, send_separate: bool, max_dies: int):
         drv = self.controller.drivers.get("prober")
@@ -210,13 +208,13 @@ class AccrWaferPanel(ttk.Frame):
             return
         try:
             if send_separate:
-                self._log("[ACCR MAP] >> D  (Z Down — chuck drops, wafer separates)")
+                self._log("[MAP] >> D  (Z Down — chuck drops, wafer separates)")
                 drv.z_down()
-                self._log("[ACCR MAP] << STB=68  (Z Down done)")
+                self._log("[MAP] << STB=68  (Z Down done)")
 
-            self._log("[ACCR MAP] >> G  (Position start die)")
+            self._log("[MAP] >> G  (Position start die)")
             stb = drv.move_to_start_die()
-            self._log(f"[ACCR MAP] << STB={stb}  (start die positioned, chuck "
+            self._log(f"[MAP] << STB={stb}  (start die positioned, chuck "
                       f"{'UP — CONTACT' if stb == 67 else 'DOWN'})")
             if send_separate:
                 self._ensure_separated(drv, stb, "G")
@@ -229,34 +227,34 @@ class AccrWaferPanel(ttk.Frame):
                     self._finish(f"Stopped at max-dies cap ({max_dies})", error=True)
                     return
 
-                self._log("[ACCR MAP] >> Q  (die coordinates)")
+                self._log("[MAP] >> Q  (die coordinates)")
                 raw = drv.get_xy_position()
                 x, y = _parse_q(raw)
-                self._log(f"[ACCR MAP] << {raw!r}  → die X={x} Y={y}")
+                self._log(f"[MAP] << {raw!r}  → die X={x} Y={y}")
                 self._add_die(x, y, raw)
 
-                self._log("[ACCR MAP] >> J  (position next testing die)")
+                self._log("[MAP] >> J  (position next testing die)")
                 stb = drv.next_die()
                 if stb == 81:
-                    self._log("[ACCR MAP] << STB=81  (wafer end — no more testing dies)")
+                    self._log("[MAP] << STB=81  (wafer end — no more testing dies)")
                     self._finish(f"Complete — {len(self._dies)} dies")
                     return
                 if stb == 90:
-                    self._log("[ACCR MAP] << STB=90  (probing stop — <STOP> pushed)")
+                    self._log("[MAP] << STB=90  (probing stop — <STOP> pushed)")
                     self._finish(f"<STOP> pushed on prober (STB=90) — "
                                  f"{len(self._dies)} dies collected", error=True)
                     return
-                self._log(f"[ACCR MAP] << STB={stb}  (moved, chuck "
+                self._log(f"[MAP] << STB={stb}  (moved, chuck "
                           f"{'UP — CONTACT' if stb == 67 else 'DOWN'})")
                 if send_separate:
                     self._ensure_separated(drv, stb, "J")
 
         except Exception as e:
-            self._log(f"[ACCR MAP] ERROR: {e}")
+            self._log(f"[MAP] ERROR: {e}")
             self._finish(f"Error after {len(self._dies)} dies — see log", error=True)
 
     def _worker_sim(self, max_dies: int):
-        self._log("[ACCR MAP] (sim) Extracting simulated wafer map…")
+        self._log("[MAP] (sim) Extracting simulated wafer map…")
         radius = 12
         for row, y in enumerate(range(-radius, radius + 1)):
             xs = [x for x in range(-radius, radius + 1)
@@ -288,7 +286,7 @@ class AccrWaferPanel(ttk.Frame):
         self.after(0, _ui)
 
     def _finish(self, msg: str, error: bool = False):
-        self._log(f"[ACCR MAP] {msg}")
+        self._log(f"[MAP] {msg}")
         self.after(0, lambda: self._set_status(msg, "#dc2626" if error else "#16a34a"))
 
     def _log(self, msg: str):
@@ -392,7 +390,7 @@ class AccrWaferPanel(ttk.Frame):
             wr.writerow(["order", "x_die", "y_die", "raw_q"])
             for i, (x, y, raw) in enumerate(self._dies, 1):
                 wr.writerow([i, x, y, raw])
-        self._log(f"[ACCR MAP] Saved {len(self._dies)} dies → {path}")
+        self._log(f"[MAP] Saved {len(self._dies)} dies")
 
     def _save_to_ata(self):
         if not self._dies:
@@ -418,9 +416,8 @@ class AccrWaferPanel(ttk.Frame):
             for x, y, raw in self._dies:
                 wr.writerow([y, x, x, y, raw])
         self._loaded_ata_folder = folder
-        self._log(f"[ACCR MAP] Saved {len(self._dies)} dies → {path}")
-        self._log("[ACCR MAP] Pick 'Accretech' as the map source on the "
-                  "Wafer Map / Run tabs to reload from this file.")
+        self._log(f"[MAP] Saved {len(self._dies)} dies")
+        self._log("[MAP] Proceed with Overlay to finish map.")
 
     def load_from_ata(self, folder: str) -> int:
         if self._running or not folder:
@@ -441,7 +438,7 @@ class AccrWaferPanel(ttk.Frame):
                         continue
                     dies.append((x, y, row.get("raw_q", "")))
         except OSError as exc:
-            self._log(f"[ACCR MAP] Could not read {path}: {exc}")
+            self._log(f"[MAP] Could not read wafer map: {exc}")
             return 0
 
         self._dies = dies
@@ -455,7 +452,7 @@ class AccrWaferPanel(ttk.Frame):
         self._redraw()
         if dies:
             self._set_status(f"Loaded {len(dies)} dies from ATA folder", "#16a34a")
-            self._log(f"[ACCR MAP] Auto-loaded {len(dies)} dies from {path}")
+            self._log(f"[MAP] Auto-loaded {len(dies)} dies")
         return len(dies)
 
     def _copy_clipboard(self):
@@ -464,7 +461,7 @@ class AccrWaferPanel(ttk.Frame):
         text = "\n".join(f"{x},{y}" for x, y, _ in self._dies)
         self.clipboard_clear()
         self.clipboard_append(text)
-        self._log(f"[ACCR MAP] Copied {len(self._dies)} dies to clipboard (x,y per line)")
+        self._log(f"[MAP] Copied {len(self._dies)} dies to clipboard (x,y per line)")
 
     def _clear(self):
         self._dies = []

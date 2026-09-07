@@ -698,7 +698,7 @@ class PmaWaferPanel(ttk.Frame):
             shot_data = egpma.to_shot_data(path, fields, touchdowns)
         except OSError as exc:
             messagebox.showerror("Could not load PMA file", str(exc))
-            self._log(f"[PMA] Error reading {path}: {exc}")
+            self._log(f"[PMA] Error reading {os.path.basename(path)}: {exc}")
             return
         self.show_touchdowns(shot_data)
 
@@ -899,18 +899,18 @@ class PmaWaferPanel(ttk.Frame):
             raw = parse_plain_csv_wafer_map(path)
         except OSError as exc:
             messagebox.showerror("Could not load CSV wafer map", str(exc))
-            self._log(f"[PMA] Error reading {path}: {exc}")
+            self._log(f"[PMA] Error reading {os.path.basename(path)}: {exc}")
             return
         data = self._normalize_csv_data(raw)
         self._csv_shot_data = data
         self._source_var.set("csv")
-        self._log(f"[PMA] CSV wafer map loaded: {raw['die_count']} die(s) from {path}")
+        self._log(f"[PMA] CSV wafer map loaded: {raw['die_count']} die(s)")
         self._save_source_to_ata("csv")
         self._refresh_view()
 
     def load_workbook_path(self, path: str):
         self.path_var.set(f"Loading {os.path.basename(path)} …")
-        self._log(f"[PMA] Opening legacy recipe workbook {path}")
+        self._log("[PMA] Opening recipe workbook")
         result_q: "queue.Queue" = queue.Queue()
         threading.Thread(target=self._load_worker, args=(path, result_q),
                          daemon=True).start()
@@ -1065,9 +1065,6 @@ class PmaWaferPanel(ttk.Frame):
         self._log(
             f"[PMA] PMA touchdowns loaded: {data['included_shot_count']} shot(s), "
             f"{data['real_die_count']} die(s) on the map."
-            + ("" if not (self._xls_shot_data or self._csv_shot_data) else
-               "  View left on the wafer map — the touchdowns are the "
-               "highlighted shots on it.")
         )
         self._save_source_to_ata("pma")
         self._refresh_view()
@@ -1592,5 +1589,5 @@ class PmaWaferPanel(ttk.Frame):
                 dies = (s["dies"] + ["", "", "", ""])[:4]
                 w.writerow([s["row"], s["col"], s["x_um"], s["y_um"],
                            s["included"], *dies])
-        self._log(f"[PMA] Exported shots to {path}")
+        self._log("[PMA] Exported shots")
         messagebox.showinfo("Exported", f"Shots exported to:\n{path}")

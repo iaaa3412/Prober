@@ -124,11 +124,8 @@ class ProberDebugPanel(ttk.Frame):
             f = ttk.Frame(parent)
             f.pack(fill="x", pady=1)
             ttk.Button(f, text=label, width=26, command=fn).pack(side="left")
-            if tip:
-                ttk.Label(f, text=tip, foreground="gray",
-                          font=("Arial", 8)).pack(side="left", padx=6)
 
-        idf = ttk.LabelFrame(left, text="System Identity & Status", padding=6)
+        idf = ttk.LabelFrame(left, text="System Status", padding=6)
         idf.pack(fill="x", padx=4, pady=(4, 6))
 
         _btn(idf, "B  — Get Prober ID",     self._cmd_get_id,      "User-defined label + firmware ver")
@@ -145,13 +142,6 @@ class ProberDebugPanel(ttk.Frame):
         xf = ttk.LabelFrame(left, text="XY Motion", padding=6)
         xf.pack(fill="x", padx=4, pady=(0, 6))
 
-        ttk.Label(xf,
-                  text="A — travel BY a distance from the current position (1 µm steps,\n"
-                       "±999999). Sent as AY±nnnnnnX±nnnnnn. X+ = leftward, Y+ = backward.\n"
-                       "Chuck height is RESTORED after the move — re-contacts if it was up.\n"
-                       "Probing-only.",
-                  foreground="gray", font=("Arial", 8), justify="left").pack(anchor="w", pady=(0, 4))
-
         xy_row = ttk.Frame(xf)
         xy_row.pack(fill="x", pady=2)
         ttk.Label(xy_row, text="dX:", width=4).pack(side="left")
@@ -162,14 +152,9 @@ class ProberDebugPanel(ttk.Frame):
         ttk.Entry(xy_row, textvariable=self._move_y_var, width=9).pack(side="left", padx=2)
         ttk.Label(xy_row, text="µm").pack(side="left")
 
-        ttk.Button(xf, text="▶  Travel by Distance  (A)", command=self._cmd_move_xy).pack(fill="x", pady=(6, 4))
+        ttk.Button(xf, text="Travel by Distance  (A)", command=self._cmd_move_xy).pack(fill="x", pady=(6, 4))
 
         ttk.Separator(xf, orient="horizontal").pack(fill="x", pady=6)
-
-        ttk.Label(xf,
-                  text="S — RELATIVE travel by DIE INDEXES (whole dies, not µm; ±9999).\n"
-                       "Sent as SY±nnnnX±nnnn. Chuck height restored after. Probing-only.",
-                  foreground="gray", font=("Arial", 8), justify="left").pack(anchor="w", pady=(0, 4))
 
         s_row = ttk.Frame(xf)
         s_row.pack(fill="x", pady=2)
@@ -181,15 +166,9 @@ class ProberDebugPanel(ttk.Frame):
         ttk.Entry(s_row, textvariable=self._step_y_var, width=9).pack(side="left", padx=2)
         ttk.Label(s_row, text="dies").pack(side="left")
 
-        ttk.Button(xf, text="▶  Step by Dies  (S)", command=self._cmd_step_dies).pack(fill="x", pady=(6, 4))
+        ttk.Button(xf, text="Step by Dies  (S)", command=self._cmd_step_dies).pack(fill="x", pady=(6, 4))
 
         ttk.Separator(xf, orient="horizontal").pack(fill="x", pady=6)
-
-        ttk.Label(xf,
-                  text="J — position a target die at ABSOLUTE die map coordinates\n"
-                       "(−99…511). Sent as JYyyyXxxx (3 chars each). Chuck height\n"
-                       "restored after. Probing-only.",
-                  foreground="gray", font=("Arial", 8), justify="left").pack(anchor="w", pady=(0, 4))
 
         j_row = ttk.Frame(xf)
         j_row.pack(fill="x", pady=2)
@@ -201,15 +180,9 @@ class ProberDebugPanel(ttk.Frame):
         ttk.Entry(j_row, textvariable=self._die_y_var, width=9).pack(side="left", padx=2)
         ttk.Label(j_row, text="die").pack(side="left")
 
-        ttk.Button(xf, text="▶  Go To Die  (J)", command=self._cmd_go_to_die).pack(fill="x", pady=(6, 4))
+        ttk.Button(xf, text="Go To Die  (J)", command=self._cmd_go_to_die).pack(fill="x", pady=(6, 4))
 
         ttk.Separator(xf, orient="horizontal").pack(fill="x", pady=6)
-
-        ttk.Label(xf,
-                  text="I — set die pitch / index size (1 µm steps, sent as IYyyyyyXxxxxx).\n"
-                       "Only accepted while waiting for lot process start; wafer and\n"
-                       "probe-pad alignment must be redone afterwards.",
-                  foreground="gray", font=("Arial", 8), justify="left").pack(anchor="w", pady=(0, 4))
 
         pitch_row = ttk.Frame(xf)
         pitch_row.pack(fill="x", pady=2)
@@ -228,7 +201,7 @@ class ProberDebugPanel(ttk.Frame):
 
         _btn(ef, "E  — Short Error Code",   self._cmd_error_code, "Brief code")
         _btn(ef, "e  — Full Error Message", self._cmd_error_msg,  "Human-readable description")
-        _btn(ef, "🔕 Buzzer Clear (E + es)", self._cmd_buzzer_clear,
+        _btn(ef, "Buzzer Clear (E + es)", self._cmd_buzzer_clear,
              "Read error code, then clear alarm / silence buzzer (STB 119)")
 
         auto_row = ttk.Frame(ef)
@@ -245,28 +218,20 @@ class ProberDebugPanel(ttk.Frame):
         sf = ttk.LabelFrame(left, text="Motion Commands", padding=6)
         sf.pack(fill="x", padx=4, pady=(0, 4))
 
-        ttk.Label(sf,
-                  text="The CHUCK moves in Z, not the probe card:\n"
-                       "Z (Z Up) = chuck rises to probing height + overdrive\n"
-                       "    → wafer TOUCHES the probe card  ⚠\n"
-                       "D (Z Down) = chuck drops → wafer separates (safe direction).\n"
-                       "Z, D, Next Die: all probing-only.",
-                  foreground="gray", font=("Arial", 8), justify="left").pack(anchor="w", pady=(0, 4))
-
         r1 = ttk.Frame(sf); r1.pack(fill="x", pady=1)
-        ttk.Button(r1, text="⬆  Contact — Z Up  (Z)  ⚠",
+        ttk.Button(r1, text="Contact — Z Up  (Z)",
                    command=self._cmd_z_up).pack(side="left", expand=True, fill="x", padx=(0, 2))
-        ttk.Button(r1, text="⬇  Separate — Z Down  (D)",
+        ttk.Button(r1, text="Separate — Z Down  (D)",
                    command=self._cmd_z_down).pack(side="left", expand=True, fill="x", padx=(2, 0))
 
         r2 = ttk.Frame(sf); r2.pack(fill="x", pady=1)
-        ttk.Button(r2, text="▶▶  Next Die  (J)",
+        ttk.Button(r2, text="Next Die  (J)",
                    command=self._cmd_next_die).pack(side="left", expand=True, fill="x", padx=(0, 2))
-        ttk.Button(r2, text="⏹  Emergency Stop  (K)",
+        ttk.Button(r2, text="Emergency Stop  (K)",
                    command=self._cmd_stop).pack(side="left", expand=True, fill="x", padx=(2, 0))
 
         r3 = ttk.Frame(sf); r3.pack(fill="x", pady=1)
-        ttk.Button(r3, text="⏏  Unload Wafer  (U)",
+        ttk.Button(r3, text="Unload Wafer  (U)",
                    command=self._cmd_unload).pack(side="left", expand=True, fill="x")
 
 
@@ -276,7 +241,7 @@ class ProberDebugPanel(ttk.Frame):
         right.rowconfigure(4, weight=1)
         right.columnconfigure(0, weight=1)
 
-        zf = ttk.LabelFrame(right, text="Z Status (tracked from replies) & Die", padding=6)
+        zf = ttk.LabelFrame(right, text="Z Status & Die", padding=6)
         zf.grid(row=0, column=0, sticky="ew", pady=(0, 6))
         zf.columnconfigure(1, weight=1)
 
@@ -289,7 +254,7 @@ class ProberDebugPanel(ttk.Frame):
         ttk.Label(z_top, textvariable=self._z_text_var,
                   font=("Consolas", 9, "bold"), anchor="w").pack(
                   side="left", fill="x", expand=True)
-        ttk.Button(z_top, text="↻ Refresh Die Info",
+        ttk.Button(z_top, text="Refresh Die Info",
                    command=self._check_z_die).pack(side="right")
 
         self._die_info_var = tk.StringVar(value="Die: —")
@@ -320,9 +285,6 @@ class ProberDebugPanel(ttk.Frame):
             r, c = divmod(ri, 2)
             btn = ttk.Button(grid, text=label, width=22, command=fn)
             btn.grid(row=r, column=c*2, padx=(2, 0), pady=2, sticky="ew")
-            ttk.Label(grid, text=tip, foreground="gray",
-                      font=("Arial", 8), anchor="w").grid(
-                      row=r, column=c*2+1, padx=(2, 8), sticky="w")
             grid.columnconfigure(c*2, weight=1)
 
         rf = ttk.LabelFrame(right, text="Last Response", padding=6)
@@ -347,8 +309,6 @@ class ProberDebugPanel(ttk.Frame):
         self._expect_stb = tk.StringVar(value="")
         ttk.Entry(term, textvariable=self._expect_stb, width=4).pack(side="left", padx=(2, 6))
         ttk.Button(term, text="Send", command=self._send_raw).pack(side="left", padx=2)
-        ttk.Label(term, text="⚠ motion cmds ask confirm",
-                  foreground="orange", font=("Arial", 8)).pack(side="left", padx=8)
 
         stb_outer = ttk.LabelFrame(right,
                                    text="STB Code Reference  (factory defaults — may differ if customized)",
@@ -464,7 +424,7 @@ class ProberDebugPanel(ttk.Frame):
             self._z_text_var.set("Z — prober not connected")
         elif z is True:
             self._z_dot.config(bg="#dc2626")
-            self._z_text_var.set("Z UP — wafer IN CONTACT with probe card ⚠")
+            self._z_text_var.set("Z UP — wafer IN CONTACT with probe card")
         elif z is False:
             self._z_dot.config(bg="#22c55e")
             self._z_text_var.set("Z DOWN — wafer separated (safe)")
@@ -503,16 +463,6 @@ class ProberDebugPanel(ttk.Frame):
         if not (-999999 <= dx <= 999999 and -999999 <= dy <= 999999):
             messagebox.showerror("Invalid Input", "A: travel distance must be within ±999999 µm.")
             return
-        if not messagebox.askyesno(
-            "Travel by Distance (A)",
-            f"Send  AY{dy:+07d}X{dx:+07d}  ?\n\n"
-            f"Chuck travels BY dX={dx} µm, dY={dy} µm from the current position\n"
-            "(X+ = leftward, Y+ = backward).\n\n"
-            "⚠ Chuck height is RESTORED after the move — if the wafer was in\n"
-            "contact with the probe card, it RE-CONTACTS at the new position.\n"
-            "Only valid during active probing."
-        ):
-            return
         def _run():
             drv = self._drv()
             if not drv:
@@ -537,16 +487,6 @@ class ProberDebugPanel(ttk.Frame):
         if not (-9999 <= dx <= 9999 and -9999 <= dy <= 9999):
             messagebox.showerror("Invalid Input", "S: travel must be within ±9999 die indexes.")
             return
-        if not messagebox.askyesno(
-            "Step by Dies (S)",
-            f"Send  SY{dy:+05d}X{dx:+05d}  ?\n\n"
-            f"Chuck travels BY {dx} die(s) in X and {dy} die(s) in Y\n"
-            "(directions per the prober's Set-up Sequence Settings).\n\n"
-            "⚠ Chuck height is RESTORED after the move — if the wafer was in\n"
-            "contact with the probe card, it RE-CONTACTS at the new position.\n"
-            "Only valid during active probing."
-        ):
-            return
         def _run():
             drv = self._drv()
             if not drv:
@@ -570,15 +510,6 @@ class ProberDebugPanel(ttk.Frame):
             return
         if not (-99 <= x <= 511 and -99 <= y <= 511):
             messagebox.showerror("Invalid Input", "J: die coordinates must be within −99…511.")
-            return
-        if not messagebox.askyesno(
-            "Go To Die (J)",
-            f"Send  JY{y:03d}X{x:03d}  ?\n\n"
-            f"Positions the die at ABSOLUTE map coordinates X={x}, Y={y}.\n\n"
-            "⚠ Chuck height is RESTORED after the move — if the wafer was in\n"
-            "contact with the probe card, it RE-CONTACTS at the new die.\n"
-            "Only valid during active probing."
-        ):
             return
         def _run():
             drv = self._drv()
@@ -607,13 +538,6 @@ class ProberDebugPanel(ttk.Frame):
         if not (0 <= px <= 99999 and 0 <= py <= 99999):
             messagebox.showerror("Invalid Input", "I: index sizes must be 0–99999 µm.")
             return
-        if not messagebox.askyesno(
-            "Set Index / Pitch (I)",
-            f"Send  IY{py:05d}X{px:05d}  ?\n\n"
-            "Only accepted while the prober is waiting for lot process start.\n"
-            "Wafer alignment and probe-pad alignment must be redone afterwards."
-        ):
-            return
         def _run():
             drv = self._drv()
             if not drv:
@@ -621,8 +545,7 @@ class ProberDebugPanel(ttk.Frame):
             try:
                 self._log(f"[PROBER] >> IY{py:05d}X{px:05d}  (index size setting)")
                 drv.set_index_size(px, py)
-                self._log(f"[PROBER] Index set — X={px} µm  Y={py} µm  (STB=77). "
-                          "Re-run wafer + probe-pad alignment.")
+                self._log(f"[PROBER] Index set — X={px} µm  Y={py} µm  (STB=77).")
                 self.after(0, self._cmd_read_stb)
             except Exception as e:
                 self._log(f"[PROBER] Set index error: {e}")
@@ -630,21 +553,12 @@ class ProberDebugPanel(ttk.Frame):
 
 
     def _cmd_z_up(self):
-        if not messagebox.askyesno(
-            "Contact — Z Up (Z)",
-            "Send Z (Z UP)?\n\n"
-            "⚠ CONTACT: the CHUCK RISES to Probing Height INCLUDING OVERDRIVE —\n"
-            "the wafer TOUCHES the probe card needles.\n\n"
-            "Confirm the wafer and needles are aligned and contact is intended.\n"
-            "Only valid during active probing (command error while idle)."
-        ):
-            return
         def _run():
             drv = self._drv()
             if not drv:
                 return
             try:
-                self._log("[PROBER] >> Z  (Z Up — chuck rises, wafer CONTACTS probe card)")
+                self._log("[PROBER] >> Z  (touchdown)")
                 drv.z_up()
                 self._log("[PROBER] Z Up complete — wafer in contact (STB=67)")
                 self.after(0, self._cmd_read_stb)
@@ -653,14 +567,6 @@ class ProberDebugPanel(ttk.Frame):
         self._run_bg(_run)
 
     def _cmd_z_down(self):
-        if not messagebox.askyesno(
-            "Separate — Z Down (D)",
-            "Send D (Z DOWN)?\n\n"
-            "The chuck DROPS away from the probe card — the wafer SEPARATES\n"
-            "from the needles. This is the safe direction.\n\n"
-            "Only valid during active probing (command error while idle)."
-        ):
-            return
         def _run():
             drv = self._drv()
             if not drv:
@@ -675,17 +581,6 @@ class ProberDebugPanel(ttk.Frame):
         self._run_bg(_run)
 
     def _cmd_next_die(self):
-        if not messagebox.askyesno(
-            "Next Die (J)",
-            "Send J (Position Next Die)?\n\n"
-            "Chuck goes DOWN, steps to the next testing die, then RETURNS to\n"
-            "its previous height — if the wafer was in contact before, it\n"
-            "RE-CONTACTS at the new die. Send D (Separate) first if contact\n"
-            "after the step is not wanted.\n\n"
-            "Only valid during active probing.\n"
-            "STB: 66 = done chuck down, 67 = done chuck up, 81 = wafer end."
-        ):
-            return
         def _run():
             drv = self._drv()
             if not drv:
@@ -694,10 +589,9 @@ class ProberDebugPanel(ttk.Frame):
                 self._log("[PROBER] >> J  (Next Die)")
                 stb = drv.next_die()
                 if stb == 81:
-                    self._log("[PROBER] Wafer end (STB=81) — no more dice to test")
+                    self._log("[PROBER] Wafer end (STB=81)")
                 elif stb == 90:
-                    self._log("[PROBER] Probing stop (STB=90) — <STOP> pushed; "
-                              "press START on the prober to continue")
+                    self._log("[PROBER] Probing stop (STB=90) — <STOP> pushed")
                 else:
                     height = "UP (in contact)" if stb == 67 else "DOWN"
                     self._log(f"[PROBER] Stepped to next die — chuck {height}")
@@ -707,14 +601,6 @@ class ProberDebugPanel(ttk.Frame):
         self._run_bg(_run)
 
     def _cmd_unload(self):
-        if not messagebox.askyesno(
-            "Unload Wafer (U)",
-            "Send U (Unload Wafer)?\n\n"
-            "Releases the current wafer from the chuck back to the cassette.\n"
-            "This ends probing on this wafer — confirm testing is actually done.\n\n"
-            "STB=71 confirms unloading done."
-        ):
-            return
         def _run():
             drv = self._drv()
             if not drv:
@@ -734,7 +620,7 @@ class ProberDebugPanel(ttk.Frame):
             if not drv:
                 return
             try:
-                self._log("[PROBER] >> E + es  (Buzzer Clear — read error, clear alarm)")
+                self._log("[PROBER] >> E + es")
                 code = drv.buzzer_clear()
                 msg = f"error code: {code}" if code else "no pending error code"
                 self._log(f"[PROBER] Buzzer Clear done — {msg}")
@@ -785,10 +671,6 @@ class ProberDebugPanel(ttk.Frame):
         self._run_bg(_run)
 
     def _cmd_stop(self):
-        if not messagebox.askyesno("Emergency Stop",
-                                   "Send K (Stop)?\n\nHalts current prober operation.\n"
-                                   "Does NOT unload wafer. Resume with START button on prober."):
-            return
         def _run():
             drv = self._drv()
             if not drv:
@@ -809,28 +691,6 @@ class ProberDebugPanel(ttk.Frame):
             return
 
         mn = _mnemonic(raw)
-
-        if mn in _MOTION_CMDS:
-            motion_names = {
-                "A": "XY travel BY a distance (µm)",
-                "C": "Marking",                "M": "Marking",
-                "D": "Z Down — chuck drops, wafer SEPARATES from probe card",
-                "G": "Position start die (resets PASS/FAIL counters)",
-                "J": "Position next / target die",
-                "S": "XY travel by die indexes",
-                "K": "Stop prober operation",
-                "L": "Load/align wafer",       "U": "Unload wafer",
-                "N": "Alignment retry",        "W": "Needle cleaning",
-                "Z": "Z Up — chuck rises, wafer CONTACTS probe card ⚠",
-                "Z+": "Chuck height fine adjust (up)",
-                "Z-": "Chuck height fine adjust (down)",
-                "jc": "Needle cleaning",       "j2": "Load specified wafer",
-            }
-            label = motion_names.get(mn, mn)
-            if not messagebox.askyesno("Motion Command",
-                                       f"'{raw}' → {label}\n\nThis causes physical prober motion.\n"
-                                       "Send anyway?"):
-                return
 
         if mn in _PROBING_ONLY:
             messagebox.showwarning("Probing-Only Command",
@@ -858,18 +718,18 @@ class ProberDebugPanel(ttk.Frame):
                     while time.time() - start < 15:
                         stb = drv.inst.read_stb()
                         if stb == tgt:
-                            self._log(f"[PROBER] STB={stb} received ✓")
+                            self._log(f"[PROBER] STB={stb} received")
                             if stb == 67:
                                 drv.z_is_up = True
                             elif stb in (65, 66, 68, 70, 90):
                                 drv.z_is_up = False
-                            self.after(0, lambda s=stb: self._resp_var.set(f"STB={s} ✓"))
+                            self.after(0, lambda s=stb: self._resp_var.set(f"STB={s}"))
                             self.after(0, self._cmd_read_stb)
                             return
                         if stb == 76:
-                            self._log("[PROBER] ⚠  ALARM — STB=76")
+                            self._log("[PROBER] ALARM — STB=76")
                             drv.z_is_up = None
-                            self.after(0, lambda: self._set_stb("⚠ ALARM STB=76", "red"))
+                            self.after(0, lambda: self._set_stb("ALARM STB=76", "red"))
                             self.after(0, self._update_z_display)
                             return
                         time.sleep(0.05)

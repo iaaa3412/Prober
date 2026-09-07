@@ -262,7 +262,7 @@ class GdsParserPanel(ttk.Frame):
             messagebox.showerror("Export App Log", f"Could not write {path}: {exc}")
             return
         self._set_status(f"App log exported to {path}")
-        self.controller.log(f"[GDS] App log exported to -> {path}")
+        self.controller.log("[GDS] App log exported")
 
     def open_gds_file(self):
         path = filedialog.askopenfilename(
@@ -273,7 +273,7 @@ class GdsParserPanel(ttk.Frame):
             return
         self.gds_path = path
         self._set_status(f"Loading {os.path.basename(path)} …")
-        self.controller.log(f"[GDS] Opening {path}")
+        self.controller.log(f"[GDS] Opening {os.path.basename(path)}")
         threading.Thread(target=self._load_worker, daemon=True).start()
 
     def _load_worker(self):
@@ -625,7 +625,7 @@ class GdsParserPanel(ttk.Frame):
                 summary_lines += "\n\n(everything else already in that folder was left alone)"
             self._append_log(summary_lines)
             self._set_status(f"ATA export → {output_dir}")
-            self.controller.log(f"[GDS] ATA export ({mode}) → {output_dir}  ({len(files)} files)")
+            self.controller.log(f"[GDS] ATA export ({mode}) — {len(files)} files")
 
             if messagebox.askyesno(
                 "ATA Files Generated",

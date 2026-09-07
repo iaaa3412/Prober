@@ -14,6 +14,7 @@ Connections to take effect live" caveat the old single-bench version of this
 panel already carried.
 """
 
+import os
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 
@@ -75,10 +76,9 @@ class AccretechSetupPanel(ttk.Frame):
     def _update_active_label(self):
         active = accretech_profiles.active_name()
         if self._bench_var.get() == active:
-            self._active_lbl.set(f"● currently active ({active})")
+            self._active_lbl.set(f"● active ({active})")
         else:
-            self._active_lbl.set(f"active bench is {active!r} - "
-                                 "switch to it from the toolbar to test changes live")
+            self._active_lbl.set(f"active bench is {active!r}")
 
     def _on_bench_picked(self):
         self._update_active_label()
@@ -127,7 +127,8 @@ class AccretechSetupPanel(ttk.Frame):
             for path, recipe_name in cloned:
                 by_file.setdefault(path, []).append(recipe_name)
             for path, names in by_file.items():
-                self._log(f"[SETUP]   {path}: {', '.join(names)}")
+                card = os.path.splitext(os.path.basename(path))[0]
+                self._log(f"[SETUP]   {card}: {', '.join(names)}")
             self._log(f"[SETUP] Cloned {len(cloned)} recipe(s) from {source!r} to {name!r}.")
         self._bench_var.set(name)
         self._refresh_benches()
@@ -139,9 +140,7 @@ class AccretechSetupPanel(ttk.Frame):
             return
         new = simpledialog.askstring(
             "Rename Prober",
-            f"New name for {old!r} - its instruments, switch wiring, and any "
-            "recipes tagged for it all move to the new name (a straight "
-            "rename, not a copy):",
+            f"New name for {old!r}:",
             parent=self, initialvalue=old)
         if not new:
             return
@@ -200,17 +199,6 @@ class AccretechSetupPanel(ttk.Frame):
         self._remove_btn = ttk.Button(btns, text="🗑 Remove", command=self._remove_instrument)
         self._remove_btn.pack(side="left", padx=(6, 0))
         self._tree.bind("<<TreeviewSelect>>", lambda _e: self._update_remove_state())
-
-        note = ttk.Frame(frame)
-        note.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(4, 0))
-        ttk.Label(note, text="Restart the app (or Refresh Connections) for a change to "
-                             "take effect on an open session. Uncheck Fitted for "
-                             "equipment that isn't physically connected on this bench - "
-                             "it won't be pinged or shown as failed. + Add Instrument "
-                             "works even with no driver written yet (Generic model) - "
-                             "it will still open the address and answer *IDN?.",
-                 foreground="#6b7280", font=("Segoe UI", 8), wraplength=680,
-                 justify="left").pack(anchor="w")
 
     def _refresh_table(self):
         self._tree.delete(*self._tree.get_children())
@@ -316,10 +304,7 @@ class AccretechSetupPanel(ttk.Frame):
         entry = accretech_profiles.instruments(bench).get(key, {})
         if not messagebox.askyesno(
                 "Remove Instrument",
-                f"Remove {entry.get('name', key)!r} from {bench!r}? "
-                "This deletes the slot entirely (not just marking it "
-                "unfitted) - use Edit Selected's Fitted checkbox instead if "
-                "you might reconnect it later."):
+                f"Remove {entry.get('name', key)!r} from {bench!r}?"):
             return
         try:
             accretech_profiles.remove_instrument(bench, key)
@@ -394,8 +379,7 @@ class _InstrumentDialog(tk.Toplevel):
 
         row += 1
         self._fitted_var = tk.BooleanVar(value=bool(fitted0))
-        ttk.Checkbutton(body, text="Fitted (physically connected on this bench - "
-                                   "uncheck to skip pinging it)",
+        ttk.Checkbutton(body, text="Fitted (will ping on startup)",
                        variable=self._fitted_var).grid(
                        row=row, column=0, columnspan=2, sticky="w", pady=3)
 

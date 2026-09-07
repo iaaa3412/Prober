@@ -131,14 +131,14 @@ class SwitchDebugPanel(ttk.Frame):
     def _close_named(self, letter: str):
         ch = self._conn_vars[letter].get().strip()
         if not ch:
-            self._log(f"[SW] {letter} Connection: no channel entered")
+            self._log(f"[INSTRUMENT] {letter} Connection: no channel entered")
             return
         drv = self._drv()
         if not drv:
-            self._log(f"[SW] Switch not connected — cannot close {letter} → {ch}")
+            self._log(f"[INSTRUMENT] Switch not connected — cannot close {letter} → {ch}")
             return
         drv.close_channel(ch)
-        self._log(f"[SW] Closed {letter} Connection → {ch}")
+        self._log(f"[INSTRUMENT] Closed {letter} Connection → {ch}")
         slot, row, col = self._parse_ch(ch)
         if slot:
             self._state[(slot, row, col)] = True
@@ -242,12 +242,12 @@ class SwitchDebugPanel(ttk.Frame):
                 if drv:
                     drv.open_crosspoint(f"{slot}{row}", f"{col:02d}")
                 self._state[(slot, row, col)] = False
-                self._log(f"[SW] open {ch}")
+                self._log(f"[INSTRUMENT] open {ch}")
             else:
                 if drv:
                     drv.close_channel(ch)
                 self._state[(slot, row, col)] = True
-                self._log(f"[SW] close {ch}")
+                self._log(f"[INSTRUMENT] close {ch}")
             self._refresh_dot(slot, row, col)
 
 
@@ -256,7 +256,7 @@ class SwitchDebugPanel(ttk.Frame):
         if drv:
             drv.open_all()
         self.mark_all_open()
-        self._log("[SW] All channels open")
+        self._log("[INSTRUMENT] All channels open")
 
 
     def mark_closed(self, ch: str):
@@ -287,7 +287,7 @@ class SwitchDebugPanel(ttk.Frame):
     def _read_all(self):
         drv = self._drv()
         if not drv:
-            self._log("[SW] Read State: switch not connected")
+            self._log("[INSTRUMENT] Read State: switch not connected")
             return
         for spec in _CARDS:
             slot   = spec["slot"]
@@ -300,7 +300,7 @@ class SwitchDebugPanel(ttk.Frame):
                     for c in range(1, n_col + 1)
                 )
                 raw = drv.query_state(chan_list)
-                self._log(f"[SW] getstate slot {slot}: {raw!r}")
+                self._log(f"[INSTRUMENT] getstate slot {slot}: {raw!r}")
                 n_exp  = len(rows) * n_col
                 clean  = raw.replace(",","").replace(";","").replace(" ","").replace("\n","")
                 if all(ch in "01" for ch in clean) and len(clean) == n_exp:
@@ -324,7 +324,7 @@ class SwitchDebugPanel(ttk.Frame):
                         self._refresh_dot(slot, r, c)
 
             except Exception as e:
-                self._log(f"[SW] Read error slot {slot}: {e}")
+                self._log(f"[INSTRUMENT] Read error slot {slot}: {e}")
 
 
     def _build_recipe_connections(self):

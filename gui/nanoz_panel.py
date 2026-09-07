@@ -275,19 +275,19 @@ class NanoZPanel(ttk.Frame):
         tab = self._make_scrollable_tab(nb, "Setup")
         tab.columnconfigure(0, weight=1)
 
-        boards_lf = ttk.LabelFrame(tab, text="NanoZ Boards  (all connected boards are always live)")
+        boards_lf = ttk.LabelFrame(tab, text="NanoZ Boards")
         boards_lf.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
 
         brow = ttk.Frame(boards_lf)
         brow.pack(fill="x", padx=6, pady=(6, 2))
-        self._btn_discover = ttk.Button(brow, text="🔍 Discover Boards", command=self._discover_boards)
+        self._btn_discover = ttk.Button(brow, text="Discover Boards", command=self._discover_boards)
         self._btn_discover.pack(side="left", padx=(0, 4))
-        self._btn_connect_boards = ttk.Button(brow, text="🔌 Connect All", command=self._connect_boards)
+        self._btn_connect_boards = ttk.Button(brow, text="Connect All", command=self._connect_boards)
         self._btn_connect_boards.pack(side="left", padx=4)
-        self._btn_disconnect_boards = ttk.Button(brow, text="🔌 Disconnect Boards",
+        self._btn_disconnect_boards = ttk.Button(brow, text="Disconnect Boards",
                                                  command=self._disconnect_boards)
         self._btn_disconnect_boards.pack(side="left", padx=4)
-        self._btn_refresh_status = ttk.Button(brow, text="🔄 Refresh Status",
+        self._btn_refresh_status = ttk.Button(brow, text="Refresh Status",
                                               command=self._refresh_board_status)
         self._btn_refresh_status.pack(side="left", padx=4)
         ttk.Separator(brow, orient="vertical").pack(side="left", fill="y", padx=8)
@@ -354,51 +354,45 @@ class NanoZPanel(ttk.Frame):
 
         cmds = ttk.LabelFrame(console_lf, text="Commands")
         cmds.grid(row=1, column=0, sticky="ew", padx=6)
-        crow1 = ttk.Frame(cmds)
-        crow1.pack(fill="x", padx=6, pady=(6, 2))
-        ttk.Button(crow1, text="ver", width=10,
+        crow = ttk.Frame(cmds)
+        crow.pack(fill="x", padx=6, pady=6)
+        ttk.Button(crow, text="ver", width=10,
                   command=lambda: self._console_send("ver")).pack(side="left", padx=2)
-        ttk.Button(crow1, text="whoami", width=10,
+        ttk.Button(crow, text="whoami", width=10,
                   command=lambda: self._console_send("whoami")).pack(side="left", padx=2)
-        ttk.Button(crow1, text="#env?", width=10,
+        ttk.Button(crow, text="#env?", width=10,
                   command=lambda: self._console_send("#env?")).pack(side="left", padx=2)
-        ttk.Button(crow1, text="calib ?", width=10,
+        ttk.Button(crow, text="calib ?", width=10,
                   command=lambda: self._console_send("calib ?")).pack(side="left", padx=2)
-        ttk.Button(crow1, text="⚠ calib!", width=10,
+        ttk.Button(crow, text="calib!", width=10,
                   command=self._console_calib_bang).pack(side="left", padx=2)
-        ttk.Button(crow1, text="⚠ cleep", width=10,
+        ttk.Button(crow, text="cleep", width=10,
                   command=self._console_cleep).pack(side="left", padx=2)
 
-        crow2 = ttk.Frame(cmds)
-        crow2.pack(fill="x", padx=6, pady=(2, 6))
-        ttk.Label(crow2, text="Cycle #:").pack(side="left")
+        ttk.Separator(crow, orient="vertical").pack(side="left", fill="y", padx=8)
+        ttk.Label(crow, text="Cycle #:").pack(side="left")
         self.console_cycle_var = tk.StringVar(value="0")
-        ttk.Entry(crow2, textvariable=self.console_cycle_var, width=5).pack(side="left", padx=(4, 8))
-        ttk.Button(crow2, text="▶ run", command=self._console_run).pack(side="left", padx=2)
-        ttk.Button(crow2, text="⏸ pause",
+        ttk.Entry(crow, textvariable=self.console_cycle_var, width=5).pack(side="left", padx=(4, 8))
+        ttk.Button(crow, text="run", command=self._console_run).pack(side="left", padx=2)
+        ttk.Button(crow, text="pause",
                   command=lambda: self._console_send("pause")).pack(side="left", padx=2)
-        ttk.Separator(crow2, orient="vertical").pack(side="left", fill="y", padx=8)
-        ttk.Label(crow2, text="Raw command:").pack(side="left")
-        self.console_raw_var = tk.StringVar(value="")
-        ttk.Entry(crow2, textvariable=self.console_raw_var, width=16).pack(side="left", padx=(4, 4))
-        ttk.Button(crow2, text="Send", command=self._console_send_raw).pack(side="left", padx=2)
 
-        crow3 = ttk.Frame(cmds)
-        crow3.pack(fill="x", padx=6, pady=(0, 6))
-        ttk.Label(crow3, text="Read EEPROM — addr:").pack(side="left")
+        ttk.Separator(crow, orient="vertical").pack(side="left", fill="y", padx=8)
+        ttk.Label(crow, text="Raw command:").pack(side="left")
+        self.console_raw_var = tk.StringVar(value="")
+        ttk.Entry(crow, textvariable=self.console_raw_var, width=16).pack(side="left", padx=(4, 4))
+        ttk.Button(crow, text="Send", command=self._console_send_raw).pack(side="left", padx=2)
+
+        ttk.Separator(crow, orient="vertical").pack(side="left", fill="y", padx=8)
+        ttk.Label(crow, text="Read EEPROM — addr:").pack(side="left")
         self.console_eep_addr_var = tk.StringVar(value="0")
-        ttk.Entry(crow3, textvariable=self.console_eep_addr_var, width=8).pack(
+        ttk.Entry(crow, textvariable=self.console_eep_addr_var, width=8).pack(
             side="left", padx=(4, 8))
-        ttk.Label(crow3, text="len:").pack(side="left")
+        ttk.Label(crow, text="len:").pack(side="left")
         self.console_eep_len_var = tk.StringVar(value="64")
-        ttk.Entry(crow3, textvariable=self.console_eep_len_var, width=6).pack(
+        ttk.Entry(crow, textvariable=self.console_eep_len_var, width=6).pack(
             side="left", padx=(4, 8))
-        ttk.Button(crow3, text="Read", command=self._console_read_eeprom).pack(side="left", padx=2)
-        ttk.Label(crow3, text="Read-only — rdeep does not run or change anything on the "
-                             "board. No known map of what cycle/sequence data lives at "
-                             "which address yet.",
-                 foreground="#6b7280", font=("Segoe UI", 8), wraplength=420,
-                 justify="left").pack(side="left", padx=(10, 0))
+        ttk.Button(crow, text="Read", command=self._console_read_eeprom).pack(side="left", padx=2)
 
         reading_lf = ttk.LabelFrame(console_lf, text="Latest Reading")
         reading_lf.grid(row=2, column=0, sticky="ew", padx=6, pady=6)
@@ -508,14 +502,10 @@ class NanoZPanel(ttk.Frame):
         td_lf.grid(row=3, column=0, sticky="ew", padx=8, pady=(0, 4))
         td_lf.columnconfigure(0, weight=1)
 
-        self._nz_td_var = tk.StringVar(value="No touchdowns yet — pick dies on the "
-                                             "Run tab's map, then ⬅ Take from map selection.")
-        ttk.Label(td_lf, textvariable=self._nz_td_var, font=("Arial", 8),
-                 foreground="#555", justify="left", wraplength=760).grid(
-                 row=0, column=0, sticky="w")
+        self._nz_td_var = tk.StringVar()
 
         td_bar = ttk.Frame(td_lf)
-        td_bar.grid(row=1, column=0, sticky="ew", pady=(4, 4))
+        td_bar.grid(row=0, column=0, sticky="ew", pady=(4, 4))
         ttk.Button(td_bar, text="⬅ Take from map selection",
                   command=self._nz_td_from_map).pack(side="left")
         ttk.Button(td_bar, text="🏷 Take die IDs",
@@ -551,9 +541,9 @@ class NanoZPanel(ttk.Frame):
                                          ("col", "Col", 60, "center")):
             self._nz_td_tree.heading(cid, text=text)
             self._nz_td_tree.column(cid, width=width, anchor=anchor, stretch=(cid == "die_id"))
-        self._nz_td_tree.grid(row=2, column=0, sticky="ew")
+        self._nz_td_tree.grid(row=1, column=0, sticky="ew")
         td_sb = ttk.Scrollbar(td_lf, orient="vertical", command=self._nz_td_tree.yview)
-        td_sb.grid(row=2, column=1, sticky="ns")
+        td_sb.grid(row=1, column=1, sticky="ns")
         self._nz_td_tree.configure(yscrollcommand=td_sb.set)
 
         bar = ttk.Frame(tab)
@@ -834,7 +824,7 @@ class NanoZPanel(ttk.Frame):
         if not path:
             return
         if not os.path.isfile(path):
-            self._log_main(f"{note}'{path}' but that file is no longer there — "
+            self._log_main(f"{note}'{os.path.basename(path)}' but that file is no longer there — "
                            "Wafer Map tab left as-is.")
             return
         # Resolved on the MAIN thread, before spawning - self._probe_height()
@@ -851,7 +841,7 @@ class NanoZPanel(ttk.Frame):
             plan = nzb.load_wafer_plan(path, probe_height=probe_height)
         except Exception as e:
             self.after(0, lambda e=e: self._log_main(
-                f"Could not auto-reload wafer plan '{path}': {e}"))
+                f"Could not auto-reload wafer plan '{os.path.basename(path)}': {e}"))
             return
 
         def _finish():
@@ -1046,7 +1036,7 @@ class NanoZPanel(ttk.Frame):
         self._log_main(
             f"Compute Recipe: built {len(shots)} shot(s) from {len(sites)} selected die(s)"
             + (f" and saved to '{active_name}'." if active_name
-               else " — not saved yet, use ＋ New on the Recipe tab to keep this."))
+               else " — not saved yet."))
 
     # -- touchdown list -----------------------------------------------------
     #
@@ -1084,15 +1074,14 @@ class NanoZPanel(ttk.Frame):
         self._log_main(
             f"Touchdown list {verb} {len(touchdowns)} die(s)"
             + (f" — saved to '{self._current_recipe_name}'." if self._current_recipe_name
-               else " — not saved yet, use ＋ New on the Recipe tab to keep this."))
+               else " — not saved yet."))
 
     def _nz_td_from_map(self):
         picks = list(self.wafer_map.get_picked())
         if not picks:
             messagebox.showinfo(
                 "Touchdowns",
-                "No dies are selected on the Run tab's map.\n\n"
-                "Click dies there, then come back and press this again.")
+                "No dies are selected on the Run tab's map.")
             return
         picks.sort()
         touchdowns = [{"die_id": self.wafer_map.die_ids.get(rc, ""),
@@ -1131,8 +1120,7 @@ class NanoZPanel(ttk.Frame):
         missing = [rc for rc in picks if rc not in self.wafer_map.dies]
         self.wafer_map.set_picked(picks)
         self._on_sites_changed(picks)
-        note = (f" ({len(missing)} not on the loaded map — wrong wafer map for "
-               "this recipe?)" if missing else "")
+        note = (f" ({len(missing)} not on the loaded map)" if missing else "")
         self._log_main(f"Highlighted {len(picks)} touchdown(s) on the Run map.{note}")
 
     def _nz_td_remove(self):
@@ -1215,9 +1203,7 @@ class NanoZPanel(ttk.Frame):
                   f"{len(plan.touchdowns)} touchdown(s), probe head {plan.probe_height} "
                   f"dies tall. Physical positions across all touchdowns: "
                   f"{stats['product']} product, "
-                  f"{stats['reference']} reference, {stats['off_wafer']} off-wafer. "
-                  f"Use ☑ Select Plan (Run tab) to highlight one die per touchdown, then "
-                  f"Compute Recipe to build the recipe.")
+                  f"{stats['reference']} reference, {stats['off_wafer']} off-wafer.")
             self._log_main(msg)
             self.refresh_eg_anchor_choices()
         self.after(0, _finish)
@@ -1258,8 +1244,7 @@ class NanoZPanel(ttk.Frame):
         except Exception:
             dpx = dpy = None
         if not dpx or not dpy:
-            _warn("No Wafer Builder die map yet - set die IDs on the "
-                  "normal Electroglas side's Wafer Builder tab first.")
+            _warn("No Wafer Builder die map yet.")
             return
         dies, serial_to_rc = {}, {}
         for d in gen._die_positions():
@@ -1270,8 +1255,7 @@ class NanoZPanel(ttk.Frame):
             dies[(row, col)] = {"serial": serial, "status": "product"}
             serial_to_rc[serial.upper()] = (row, col)
         if not dies:
-            _warn("No Wafer Builder die map yet - set die IDs on the "
-                  "normal Electroglas side's Wafer Builder tab first.")
+            _warn("No Wafer Builder die map yet.")
             return
         probe_height = self._probe_height()
         by_col: dict = {}
@@ -1296,7 +1280,7 @@ class NanoZPanel(ttk.Frame):
         lbl = getattr(self, "_recipe_plan_status_lbl", None)
         if lbl is not None:
             lbl.config(text=status, foreground="black")
-        self._log_main(f"Wafer data refreshed from Wafer Builder: {len(plan.dies)} die(s), "
+        self._log_main(f"Wafer data refreshed: {len(plan.dies)} die(s), "
                        f"{len(plan.touchdowns)} touchdown(s).")
         self.refresh_eg_anchor_choices()
 
@@ -1392,7 +1376,7 @@ class NanoZPanel(ttk.Frame):
     def _nzmap_load_csv_dialog(self):
         pma_wafer = self._nzmap_pma_wafer()
         if pma_wafer is None:
-            self._log_main("CSV wafer map isn't available (main Wafer Map tab not found).")
+            self._log_main("CSV wafer map isn't available.")
             return
         path = filedialog.askopenfilename(
             title="Load CSV Wafer Map",
@@ -1400,9 +1384,7 @@ class NanoZPanel(ttk.Frame):
         if not path:
             return
         pma_wafer.load_csv_path(path)
-        self._log_main(f"NanoZ Wafer Map: CSV loaded via the shared Wafer Map source — {path}. "
-                       "Also visible on the main Wafer Map tab and used by both Run tabs' "
-                       "Overlay… button.")
+        self._log_main("NanoZ Wafer Map")
         self._nzmap_source_var.set("csv")
         self._redraw_nanoz_wafer_map()
 
@@ -1737,11 +1719,7 @@ class NanoZPanel(ttk.Frame):
         picks = nzb.tile_windows_covering_wafer(die_keys, window_height)
         self.wafer_map.set_picked(picks)
         self._on_sites_changed(picks)
-        self._log_main(
-            f"NanoZ Run: selected {len(picks)} die(s) — the top die of every "
-            f"{window_height}-tall window tiling the wafer map, no overlap "
-            f"(a window may extend past the wafer edge at a column's end). "
-            f"Press Compute Recipe to build the recipe from this.")
+        self._log_main(f"NanoZ Run: selected {len(picks)} die(s)")
 
     _NZMAP_MAX_VISIBLE_LABELS = 900
 
@@ -2228,13 +2206,10 @@ class NanoZPanel(ttk.Frame):
             side="left", padx=4)
         ttk.Button(path_row, text="Save to CSV", command=self._nz_save_results_csv).pack(
             side="left", padx=10)
-        ttk.Button(path_row, text="📤 Export Raw", command=self._nz_export_raw).pack(
+        ttk.Button(path_row, text="Export Raw", command=self._nz_export_raw).pack(
             side="left", padx=(0, 10))
-        ttk.Button(path_row, text="🗑 Clear", command=self._nz_clear_results).pack(
+        ttk.Button(path_row, text="Clear", command=self._nz_clear_results).pack(
             side="left", padx=(0, 4))
-        ttk.Label(path_row, text="(every individual sample, tagged with its die — "
-                                 "not the V/I now/avg summary above)",
-                 foreground="#6b7280", font=("Segoe UI", 8)).pack(side="left")
 
         results_frame = ttk.Frame(tab)
         results_frame.grid(row=2, column=0, sticky="nsew", padx=8, pady=(0, 8))
@@ -2433,9 +2408,7 @@ class NanoZPanel(ttk.Frame):
             return
         skipped_note = (f", {n_unassigned} unassigned-slot sample(s) skipped (no die ID)"
                         if n_unassigned else "")
-        self._log_main(f"NanoZ Export Raw: {len(rows)} raw sample(s) — every settled SPL "
-                       f"reading since the current run started, tagged with its die"
-                       f"{skipped_note} — saved to {dest}")
+        self._log_main(f"NanoZ Export Raw: {len(rows)} raw sample(s){skipped_note}")
 
     def _nz_save_results_csv(self):
         folder = self._nz_export_path_var.get().strip() or self._nanoz_ata_folder
@@ -2458,8 +2431,7 @@ class NanoZPanel(ttk.Frame):
         except OSError as e:
             messagebox.showerror("Save Failed", str(e))
             return
-        self._log_main(f"NanoZ Results: saved {len(self._results_tree.get_children())} "
-                       f"row(s) to {path}")
+        self._log_main(f"NanoZ Results: saved {len(self._results_tree.get_children())} row(s)")
 
     def _nz_clear_results(self):
         """Clears the Results table's live data (_latest_spl, what
@@ -2480,10 +2452,8 @@ class NanoZPanel(ttk.Frame):
                 try:
                     open(path, "w", encoding="utf-8").close()
                 except OSError as e:
-                    self._log_main(f"NanoZ Results: could not clear log file {path}: {e}")
-        self._log_main(f"NanoZ Results: cleared ({n} board+chip reading(s) removed from view, "
-                       f"raw SPL/ENV CSV logs truncated — Export Raw will come back empty "
-                       f"until the next cycle runs).")
+                    self._log_main(f"NanoZ Results: could not clear log file: {e}")
+        self._log_main(f"NanoZ Results: cleared")
 
     def _results_tab_visible(self):
         try:
@@ -2572,13 +2542,13 @@ class NanoZPanel(ttk.Frame):
 
         bar = ttk.Frame(tab, padding=(6, 4))
         bar.grid(row=0, column=0, sticky="ew")
-        self._cst_go_btn = ttk.Button(bar, text="▶  Arm Cassette Automation",
+        self._cst_go_btn = ttk.Button(bar, text="▶  Cassette Automation",
                                       command=self._cst_arm)
         self._cst_go_btn.pack(side="left", padx=4)
         self._cst_stop_btn = ttk.Button(bar, text="⏹  Stop Automation", state="disabled",
                                         command=lambda: self._cst_disarm("Stopped by user."))
         self._cst_stop_btn.pack(side="left", padx=4)
-        ttk.Button(bar, text="🔄 Reset to Slot #1", command=self._cst_reset_slot).pack(
+        ttk.Button(bar, text="Reset to Slot #1", command=self._cst_reset_slot).pack(
             side="left", padx=4)
         ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=10)
         ttk.Label(bar, text="Pass yield ≥").pack(side="left")
@@ -2599,22 +2569,19 @@ class NanoZPanel(ttk.Frame):
                                         font=("Consolas", 11, "bold"), foreground="#6b7280")
         self._cst_state_lbl.pack(side="right", padx=8)
 
-        lf = ttk.LabelFrame(
-            tab, text="Cassette Slots — one Lot ID/Wafer ID per physical wafer, in slot order "
-                      "(slot #1 is whatever the operator already manually loaded and pressed "
-                      "▶ Start for)", padding=6)
+        lf = ttk.LabelFrame(tab, text="Cassette Slots", padding=6)
         lf.grid(row=1, column=0, sticky="ew", padx=6, pady=(4, 2))
         lf.columnconfigure(0, weight=1)
         btns = ttk.Frame(lf)
         btns.grid(row=0, column=0, sticky="w", pady=(0, 4))
-        ttk.Button(btns, text="＋ Add Slot", command=self._cst_add_slot).pack(side="left", padx=2)
-        ttk.Button(btns, text="✎ Edit", command=self._cst_edit_slot).pack(side="left", padx=2)
-        ttk.Button(btns, text="🗑 Remove", command=self._cst_remove_slot).pack(side="left", padx=2)
+        ttk.Button(btns, text="Add Slot", command=self._cst_add_slot).pack(side="left", padx=2)
+        ttk.Button(btns, text="Edit", command=self._cst_edit_slot).pack(side="left", padx=2)
+        ttk.Button(btns, text="Remove", command=self._cst_remove_slot).pack(side="left", padx=2)
         ttk.Button(btns, text="▲", width=3, command=lambda: self._cst_move_slot(-1)).pack(
             side="left", padx=(10, 2))
         ttk.Button(btns, text="▼", width=3, command=lambda: self._cst_move_slot(1)).pack(
             side="left", padx=2)
-        ttk.Button(btns, text="🗑 Clear All", command=self._cst_clear_slots).pack(
+        ttk.Button(btns, text="Clear All", command=self._cst_clear_slots).pack(
             side="left", padx=(10, 2))
         cols = ("slot", "lot", "wafer")
         self._cst_tree = ttk.Treeview(lf, columns=cols, show="headings", height=5,
@@ -2626,16 +2593,25 @@ class NanoZPanel(ttk.Frame):
         self._cst_tree.grid(row=1, column=0, sticky="ew")
         self._cst_tree.bind("<Double-1>", lambda _e: self._cst_edit_slot())
 
-        ef = ttk.LabelFrame(tab, text="Auto-Export (after every wafer, using the Results tab's "
-                                      "own Export Path — Lot ID/Wafer ID come from the slot)",
-                            padding=6)
-        ef.grid(row=2, column=0, sticky="ew", padx=6, pady=(2, 2))
+        ef = ttk.Frame(lf)
+        ef.grid(row=2, column=0, sticky="ew", pady=(6, 0))
         self._cst_auto_export_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(ef, text="Auto-export after each wafer",
+        ttk.Checkbutton(ef, text="Auto Export",
                        variable=self._cst_auto_export_var).pack(side="left", padx=(0, 16))
-        ttk.Label(ef, text="Export Path:").pack(side="left")
+        ttk.Label(ef, text="Export Directory:").pack(side="left")
         ttk.Entry(ef, textvariable=self._nz_export_path_var, width=32).pack(side="left", padx=6)
         ttk.Button(ef, text="Browse...", command=self._nz_browse_export_path).pack(side="left")
+        export_dir_choices = getattr(self._main_layout, "_export_dir_choices", None)
+        if export_dir_choices:
+            export_dir_var = tk.StringVar(value=next(iter(export_dir_choices)))
+            export_dir_cb = ttk.Combobox(
+                ef, textvariable=export_dir_var, state="readonly",
+                width=16, values=list(export_dir_choices.keys()))
+            export_dir_cb.pack(side="left", padx=(4, 0))
+            export_dir_cb.bind(
+                "<<ComboboxSelected>>",
+                lambda _e: self._nz_export_path_var.set(
+                    export_dir_choices[export_dir_var.get()]))
 
         pf = ttk.LabelFrame(tab, text="Cassette Automation Log", padding=6)
         pf.grid(row=3, column=0, sticky="nsew", padx=6, pady=(2, 6))
@@ -2777,7 +2753,7 @@ class NanoZPanel(ttk.Frame):
                                  "done — 🔄 Reset to Slot #1 to run it again.")
             return
         if self._on_wafer_finished not in (None, self._cst_on_wafer_finished):
-            messagebox.showerror("Already Hooked", "Another automation is already watching "
+            messagebox.showerror("Arm Blocked", "Another automation is already watching "
                                  "for the run to finish.")
             return
         self._cst_armed = True
@@ -2908,15 +2884,12 @@ class NanoZPanel(ttk.Frame):
             pick, textvariable=self._ek_board_label_var, state="readonly", width=26)
         self._ek_board_cb.pack(side="left", padx=(4, 12))
         self._ek_board_cb.bind("<<ComboboxSelected>>", self._on_ek_board_picked)
-        self._btn_ek_read = ttk.Button(pick, text="🔄 Read Configuration",
+        self._btn_ek_read = ttk.Button(pick, text="Read Configuration",
                                        command=self._ek_read_configuration)
         self._btn_ek_read.pack(side="left")
-        self._btn_ek_write = ttk.Button(pick, text="💾 Write Sequence to Device",
+        self._btn_ek_write = ttk.Button(pick, text="Write Sequence to Device",
                                         command=self._ek_write_sequence, state="disabled")
         self._btn_ek_write.pack(side="left", padx=(6, 0))
-        ttk.Label(pick, text="(writes D.a/D.b only — Chip/Resolution/Cycle/Configuration untouched; "
-                             "read a sequence first)",
-                  foreground="#9ca3af").pack(side="left", padx=(4, 0))
         self._ek_status_var = tk.StringVar(value="")
         ttk.Label(pick, textvariable=self._ek_status_var, foreground="#6b7280").pack(
                   side="left", padx=(10, 0))
@@ -2968,8 +2941,6 @@ class NanoZPanel(ttk.Frame):
         self._ek_cycle_index_spin.grid(row=0, column=1, sticky="w")
         self._ek_cycle_index_spin.bind("<Return>", self._ek_on_cycle_index_changed)
         self._ek_cycle_index_spin.bind("<FocusOut>", self._ek_on_cycle_index_changed)
-        ttk.Label(cyc_lf, text="(cycle numbering starts at 1, per the manual)",
-                 foreground="#9ca3af").grid(row=0, column=2, sticky="w", padx=(6, 0))
         ttk.Label(cyc_lf, text="Number of sequences:").grid(row=1, column=0, sticky="e", padx=4, pady=2)
         ttk.Entry(cyc_lf, textvariable=self._ek_cycle_numseq_var, width=10).grid(row=1, column=1, sticky="w")
         ttk.Label(cyc_lf, text="Sequence order (comma-sep, UI index):").grid(row=2, column=0, sticky="e", padx=4, pady=2)
@@ -2996,14 +2967,11 @@ class NanoZPanel(ttk.Frame):
         self._ek_seq_index_spin.bind("<FocusOut>", self._ek_on_seq_index_changed)
         ttk.Label(seq_lf, text="Duration (s):").grid(row=1, column=0, sticky="e", padx=4, pady=2)
         ttk.Entry(seq_lf, textvariable=self._ek_seq_duration_var, width=10).grid(row=1, column=1, sticky="w")
-        ttk.Label(seq_lf, text="(CONFIRMED offset)", foreground="#16a34a").grid(row=1, column=2, sticky="w", padx=(6, 0))
         ttk.Label(seq_lf, text="Delay (s):").grid(row=2, column=0, sticky="e", padx=4, pady=2)
         ttk.Entry(seq_lf, textvariable=self._ek_seq_delay_var, width=10).grid(row=2, column=1, sticky="w")
         ttk.Label(seq_lf, text="Chip:").grid(row=3, column=0, sticky="e", padx=4, pady=2)
         ttk.Combobox(seq_lf, textvariable=self._ek_seq_chip_var, values=("1", "2"),
                     state="readonly", width=4).grid(row=3, column=1, sticky="w")
-        ttk.Label(seq_lf, text="(offset ambiguous — see tab description)",
-                 foreground="#9ca3af").grid(row=3, column=2, sticky="w", padx=(6, 0))
         ttk.Label(seq_lf, text="Sensors-NZG2 (mV, all sensors):").grid(row=4, column=0, sticky="e", padx=4, pady=2)
         ttk.Entry(seq_lf, textvariable=self._ek_seq_sensor_var, width=10).grid(row=4, column=1, sticky="w")
 
@@ -3034,10 +3002,6 @@ class NanoZPanel(ttk.Frame):
             ttk.Label(heat_lf, text=unit).grid(row=i, column=2, sticky="w")
             ttk.Label(heat_lf, text=lo, foreground="#9ca3af").grid(row=i, column=3)
             ttk.Label(heat_lf, text=hi, foreground="#9ca3af").grid(row=i, column=4)
-        ttk.Label(heat_lf, text="Rows 6/7 pairing and the Chip/Resolution offset ambiguity are "
-                       "best-effort.",
-                 foreground="#9ca3af", wraplength=380, justify="left").grid(
-                 row=len(heater_rows) + 1, column=0, columnspan=5, sticky="w", padx=4, pady=(4, 2))
 
         raw_lf = ttk.LabelFrame(body, text="Raw sequence record (debug)")
         raw_lf.grid(row=2, column=0, columnspan=2, sticky="new")
@@ -3327,7 +3291,7 @@ class NanoZPanel(ttk.Frame):
         else:
             self._ek_status_var.set("Write sent, but readback did NOT match — check Console tab log for an error line, then re-read.")
             self._log_main(f"NanoZ_EK: wrote sequence {idx}, readback MISMATCH — "
-                           f"got {readback.hex() if readback else None}. Re-read to confirm current state.")
+                           f"got {readback.hex() if readback else None}.")
 
     def _ek_write_failed(self, msg: str):
         self._btn_ek_write.config(state="normal")
@@ -3801,8 +3765,7 @@ class NanoZPanel(ttk.Frame):
     def _connect_boards(self):
         targets = [b for b in self._boards.values() if b.state != "connected"]
         if not targets:
-            self._log_main("Connect All: nothing to connect (discover boards first, "
-                           "or everything known is already connected).")
+            self._log_main("Connect All: nothing to connect.")
             return
         threading.Thread(target=self._connect_boards_thread, args=(targets,), daemon=True).start()
 
@@ -3847,8 +3810,7 @@ class NanoZPanel(ttk.Frame):
 
         if still_missing:
             self.after(0, lambda n=len(still_missing): self._log_main(
-                f"Connect All: {n} known board(s) didn't respond on their last-known port — "
-                f"scanning all COM ports to relocate them."))
+                f"Connect All: {n} known board(s) didn't respond on their last-known port"))
             found = nzb.discover_boards(
                 log=lambda m: self.after(0, lambda m=m: self._log(m)))
             found_by_sn = {f.serial_number: f for f in found if f.serial_number}
@@ -3857,7 +3819,7 @@ class NanoZPanel(ttk.Frame):
                 if not ident:
                     self.after(0, lambda b=board: self._log_main(
                         f"Connect All: {b.identity.serial_number or '(no S/N)'} not found on "
-                        f"any COM port — check it's plugged in and powered."))
+                        f"any COM port."))
                     continue
                 board.port = ident.port
                 self.after(0, lambda ident=ident: self._add_board(ident))
@@ -4341,9 +4303,7 @@ class NanoZPanel(ttk.Frame):
         if not self._running:
             return
         self._running = False
-        self._log_main("Stop requested — pausing heaters now; the prober "
-                       "handshake in progress will still finish or time out "
-                       "before the run actually stops.")
+        self._log_main("Stop requested.")
         for board in self._boards.values():
             try:
                 board.pause()
@@ -4496,7 +4456,7 @@ class NanoZPanel(ttk.Frame):
             return
         sites = self.wafer_map.get_picked()
         if len(sites) != 1:
-            self._log_main("Move to Selected: pick exactly one die on the map first.")
+            self._log_main("Move to Selected:")
             return
         threading.Thread(target=self._manual_move_to_selected_thread,
                          args=(sites[0],), daemon=True).start()
@@ -4535,7 +4495,7 @@ class NanoZPanel(ttk.Frame):
             return
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            messagebox.showerror("Prober Not Connected", "🔌 Connect Prober first.")
+            messagebox.showerror("Prober Not Connected", "Connect Prober first.")
             return
         threading.Thread(target=self._manual_next_die_thread, daemon=True).start()
 
@@ -4567,7 +4527,7 @@ class NanoZPanel(ttk.Frame):
             return
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            messagebox.showerror("Prober Not Connected", "🔌 Connect Prober first.")
+            messagebox.showerror("Prober Not Connected", "Connect Prober first.")
             return
         threading.Thread(target=self._move_to_shot_thread, args=(idx,),
                          kwargs={"label": "Go to Touchdown"}, daemon=True).start()
@@ -4747,7 +4707,7 @@ class NanoZPanel(ttk.Frame):
         active = [b for b in self._boards.values() if b.state == "connected"]
         if not active:
             messagebox.showerror("No Boards Connected",
-                                 "🔌 Connect All (Setup tab) — no NanoZ boards are connected.")
+                                 "Connect All (Setup tab) — no NanoZ boards are connected.")
             return
         try:
             cycle = int(self.cycle_var.get())
@@ -4806,7 +4766,7 @@ class NanoZPanel(ttk.Frame):
         if not active:
             messagebox.showerror(
                 "No Active Boards",
-                "🔌 Connect All (Setup tab) — no NanoZ boards are connected and allowed to "
+                "Connect All (Setup tab) — no NanoZ boards are connected and allowed to "
                 "run (per the wafer plan) at the current position window.")
             return
         self._mark_cycle_start(pin_chart=True)
@@ -4843,7 +4803,7 @@ class NanoZPanel(ttk.Frame):
     def _toggle_select_all(self):
         dies = self.wafer_map._last_dies
         if not dies:
-            self._log_main("No wafer map loaded — load one before selecting dies.")
+            self._log_main("No wafer map loaded")
             return
         all_rc = [(d["row"], d["col"]) for d in dies]
         already_all = set(self.wafer_map.get_picked()) == set(all_rc)
@@ -4854,8 +4814,7 @@ class NanoZPanel(ttk.Frame):
         else:
             self.wafer_map.set_picked(all_rc)
             self._on_sites_changed(all_rc)
-            self._log_main(f"Selected all {len(all_rc)} die(s) — click any die to deselect "
-                           "it, or press again to deselect all.")
+            self._log_main(f"Selected all {len(all_rc)} die(s)")
 
     def _randomize_sites(self):
         if self._run_guard("Randomize"):
@@ -4901,7 +4860,7 @@ class NanoZPanel(ttk.Frame):
         if not z_down_confirmed:
             self._running = False
             self.after(0, lambda: self._log_main(
-                "Z Down not confirmed — stopping (safety gate, same as Full Die)."))
+                "Z Down not confirmed — stopping."))
         return ok
 
     def _start_test_die(self):
@@ -4915,18 +4874,16 @@ class NanoZPanel(ttk.Frame):
             # (Active)/Measure to step through touchdowns manually
             # instead; the fully automated multi-touchdown walk for
             # Electroglas is not built yet.
-            self._log_main("Test Die: this walk is Accretech-only (native wafer-map "
-                           "stepping). Use Next Die (Recipe) + Run Cycle (Active) to "
-                           "step through touchdowns on Electroglas instead.")
+            self._log_main("Test Die:")
             return
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            messagebox.showerror("Prober Not Connected", "🔌 Connect Prober first.")
+            messagebox.showerror("Prober Not Connected", "Connect Prober first.")
             return
         active = [b for b in self._boards.values() if b.state == "connected"]
         if not active:
             messagebox.showerror("No Boards Connected",
-                                 "🔌 Connect All (Setup tab) — no NanoZ boards are connected.")
+                                 "Connect All (Setup tab) — no NanoZ boards are connected.")
             return
         sites = self.wafer_map.get_picked()
         if not sites:
@@ -5180,10 +5137,7 @@ class NanoZPanel(ttk.Frame):
         if self._system == "electroglas":
             # Same Accretech-only walk as _start_test_die - see that
             # method's own comment.
-            self._log_main("Run Recipe: the automated multi-touchdown walk is "
-                           "Accretech-only. Use Next Die (Recipe) + Run Cycle "
-                           "(Active)/Measure to step through touchdowns on "
-                           "Electroglas instead.")
+            self._log_main("Run Recipe:")
             return
         if not self._shots:
             messagebox.showerror("No Recipe",
@@ -5192,11 +5146,11 @@ class NanoZPanel(ttk.Frame):
             return
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
-            messagebox.showerror("Prober Not Connected", "🔌 Connect Prober first.")
+            messagebox.showerror("Prober Not Connected", "Connect Prober first.")
             return
         if not any(b.state == "connected" for b in self._boards.values()):
             messagebox.showerror("No Boards Connected",
-                                 "🔌 Connect All (Setup tab) — no NanoZ boards are connected.")
+                                 "Connect All (Setup tab) — no NanoZ boards are connected.")
             return
         try:
             cycle = int(self.cycle_var.get())

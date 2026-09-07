@@ -13,8 +13,10 @@ _DEFAULT_ID_QUERIES = ("*IDN?", "ID?")
 def build_address_panel(parent, instruments, log_fn, reconnect_fn, height=220):
     outer = ttk.LabelFrame(parent, text="GPIB / VISA Addresses (instruments.yaml)", padding=6)
 
-    canvas = tk.Canvas(outer, highlightthickness=0, height=height)
-    vsb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+    body = ttk.Frame(outer)
+
+    canvas = tk.Canvas(body, highlightthickness=0, height=height)
+    vsb = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
     canvas.configure(yscrollcommand=vsb.set)
     canvas.pack(side="left", fill="both", expand=True)
     vsb.pack(side="right", fill="y")
@@ -23,6 +25,8 @@ def build_address_panel(parent, instruments, log_fn, reconnect_fn, height=220):
     win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
     inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
     canvas.bind("<Configure>", lambda e: canvas.itemconfig(win_id, width=e.width))
+    inner.columnconfigure(0, weight=1)
+    inner.columnconfigure(1, weight=1)
 
     def _wheel(e):
         canvas.yview_scroll(-1 if e.delta > 0 else 1, "units")
@@ -70,12 +74,12 @@ def build_address_panel(parent, instruments, log_fn, reconnect_fn, height=220):
         def _run():
             ok, msg = ping_address(address, id_queries=id_queries,
                                    write_probe=write_probe)
-            text = f"{'✅' if ok else '❌'} {msg}"
+            text = msg
             def _apply():
                 status_var.set(text)
                 status_lbl.config(foreground="green" if ok else "red")
             inner.after(0, _apply)
-            log_fn(f"[PING] {name} ({address}): {text}")
+            log_fn(f"[INSTRUMENT] {name} ({address}): {text}")
         threading.Thread(target=_run, daemon=True).start()
 
     # Tkinter is not thread-safe. Every StringVar.get() below happens on the
@@ -105,19 +109,19 @@ def build_address_panel(parent, instruments, log_fn, reconnect_fn, height=220):
                 inner.after(0, lambda k=key: ping_vars[k].set("pinging…"))
                 ok, msg = ping_address(address, id_queries=id_queries,
                                        write_probe=write_probe)
-                text = f"{'✅' if ok else '❌'} {msg}"
+                text = msg
                 def _apply(k=key, t=text, good=ok):
                     ping_vars[k].set(t)
                     ping_lbls[k].config(foreground="green" if good else "red")
                 inner.after(0, _apply)
-                log_fn(f"[PING] {name} ({address}): {text}")
+                log_fn(f"[INSTRUMENT] {name} ({address}): {text}")
         threading.Thread(target=_run, daemon=True).start()
 
     def _scan_bus():
         # Identifies everything actually answering, including instruments that
         # are not in instruments.yaml - the point being that the EG probers are
         # fitted differently, so this reports the bench rather than the config.
-        log_fn("[SCAN] Identifying every instrument on the bus…")
+        log_fn("[INSTRUMENT] Identifying every instrument on the bus…")
         configured = {addr_vars[key].get().strip().upper(): name
                       for name, key, _, _, _ in entries if addr_vars[key].get().strip()}
 
@@ -125,10 +129,10 @@ def build_address_panel(parent, instruments, log_fn, reconnect_fn, height=220):
             try:
                 found = discover_bus()
             except Exception as e:
-                log_fn(f"[SCAN] failed: {e}")
+                log_fn(f"[INSTRUMENT] failed: {e}")
                 return
             if not found:
-                log_fn("[SCAN] nothing answering — check the GPIB adapter and that "
+                log_fn("[INSTRUMENT] nothing answering — check the GPIB adapter and that "
                        "the instruments are powered on")
                 return
 
@@ -137,15 +141,15 @@ def build_address_panel(parent, instruments, log_fn, reconnect_fn, height=220):
                 known = configured.get(address.upper())
                 label = known or "NOT IN instruments.yaml"
                 identity = item["identity"] or "(answers no ID query)"
-                log_fn(f"[SCAN]   {address:<22} {identity}   [{label}]")
+                log_fn(f"[INSTRUMENT]   {address:<22} {identity}   [{label}]")
                 for line in item["detail"]:
-                    log_fn(f"[SCAN]   {'':<22}   {line}")
+                    log_fn(f"[INSTRUMENT]   {'':<22}   {line}")
 
             seen = {item["address"].upper() for item in found}
             for address, name in configured.items():
                 if address not in seen:
-                    log_fn(f"[SCAN]   ⚠ {name}: {address} is configured but nothing answers there")
-            log_fn(f"[SCAN] {len(found)} instrument(s) responding.")
+                    log_fn(f"[INSTRUMENT]   {name}: {address} is configured but nothing answers there")
+            log_fn(f"[INSTRUMENT] {len(found)} instrument(s) responding.")
         threading.Thread(target=_run, daemon=True).start()
 
     def _send(name, addr_var, cmd_var, status_var):
@@ -163,10 +167,32 @@ def build_address_panel(parent, instruments, log_fn, reconnect_fn, height=220):
             log_fn(f"[{name}] >> {cmd!r}  << {text}")
         threading.Thread(target=_run, daemon=True).start()
 
-    for name, key, id_queries, fitted, write_probe in entries:
+    def _save_all():
+        try:
+            for name, key, _, _, _ in entries:
+                address = addr_vars[key].get().strip()
+                if not address:
+                    messagebox.showerror("Invalid Address", f"Address for '{name}' cannot be empty.")
+                    return
+                set_instrument_address(key, address)
+        except Exception as e:
+            messagebox.showerror("Save Failed", str(e))
+            return
+        log_fn("[SYSTEM] GPIB addresses saved to instruments.yaml — reconnecting...")
+        reconnect_fn()
+
+    btns = ttk.Frame(outer)
+    btns.pack(fill="x", pady=(0, 6))
+    ttk.Button(btns, text="Scan Bus", command=_scan_bus).pack(side="left")
+    ttk.Button(btns, text="Ping All", command=_ping_all).pack(side="left", padx=(6, 0))
+    ttk.Button(btns, text="Save & Reconnect All", command=_save_all).pack(side="right")
+
+    body.pack(fill="both", expand=True)
+
+    for idx, (name, key, id_queries, fitted, write_probe) in enumerate(entries):
         row_lf = ttk.LabelFrame(inner, text=name if fitted else f"{name}  (not fitted)",
                                 padding=4)
-        row_lf.pack(fill="x", padx=2, pady=2)
+        row_lf.grid(row=idx // 2, column=idx % 2, sticky="nsew", padx=2, pady=2)
 
         addr_row = ttk.Frame(row_lf)
         addr_row.pack(fill="x")
@@ -202,32 +228,5 @@ def build_address_panel(parent, instruments, log_fn, reconnect_fn, height=220):
         ttk.Label(cmd_row, textvariable=send_status, foreground="gray",
                   font=("Consolas", 8), wraplength=260, justify="left").pack(
                   side="left", padx=(6, 0))
-
-    ttk.Label(outer, text="Ping/Send act on the address typed above right now, saved or not. "
-                          "Ping is a GPIB serial poll, so it also detects instruments that "
-                          "answer no ID query. Commands ending or starting with '?' are "
-                          "sent as queries.",
-              foreground="gray", font=("Arial", 8), wraplength=520,
-              justify="left").pack(anchor="w", pady=(4, 0))
-
-    def _save_all():
-        try:
-            for name, key, _, _, _ in entries:
-                address = addr_vars[key].get().strip()
-                if not address:
-                    messagebox.showerror("Invalid Address", f"Address for '{name}' cannot be empty.")
-                    return
-                set_instrument_address(key, address)
-        except Exception as e:
-            messagebox.showerror("Save Failed", str(e))
-            return
-        log_fn("[SYSTEM] GPIB addresses saved to instruments.yaml — reconnecting...")
-        reconnect_fn()
-
-    btns = ttk.Frame(outer)
-    btns.pack(fill="x", pady=(6, 0))
-    ttk.Button(btns, text="Scan Bus", command=_scan_bus).pack(side="left")
-    ttk.Button(btns, text="Ping All", command=_ping_all).pack(side="left", padx=(6, 0))
-    ttk.Button(btns, text="Save & Reconnect All", command=_save_all).pack(side="right")
 
     return outer

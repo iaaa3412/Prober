@@ -44,9 +44,28 @@ class InstrumentsEgPanel(ttk.Frame):
         self.controller = controller
         self._addr_panel = None
 
-        self.columnconfigure(0, weight=1)
-        self.columnconfigure(1, weight=1)
-        self.rowconfigure(2, weight=1)
+        # The bench selector, SMU/PS/DMM cards and address panel together can
+        # run taller than the notebook tab, so the whole tab scrolls instead
+        # of clipping the bottom sections.
+        canvas = tk.Canvas(self, highlightthickness=0)
+        vsb = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+        self._body = ttk.Frame(canvas)
+        win_id = canvas.create_window((0, 0), window=self._body, anchor="nw")
+        self._body.bind("<Configure>",
+                        lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(win_id, width=e.width))
+
+        def _wheel(e):
+            canvas.yview_scroll(-1 if e.delta > 0 else 1, "units")
+        canvas.bind("<MouseWheel>", _wheel)
+        self._body.bind("<MouseWheel>", _wheel)
+
+        self._body.columnconfigure(0, weight=1)
+        self._body.columnconfigure(1, weight=1)
 
         self._build_bench_selector()
         self._build_addresses()
@@ -62,7 +81,7 @@ class InstrumentsEgPanel(ttk.Frame):
         return drv if (drv and drv.inst) else None
 
     def _build_bench_selector(self):
-        lf = ttk.LabelFrame(self, text="Prober bench", padding=6)
+        lf = ttk.LabelFrame(self._body, text="Prober bench", padding=6)
         lf.grid(row=0, column=0, columnspan=2, sticky="new", padx=8, pady=(8, 0))
 
         # The bench is CHOSEN from the toolbar picker next to the ATA folder,
@@ -75,8 +94,6 @@ class InstrumentsEgPanel(ttk.Frame):
         self._bench_var = tk.StringVar(value=eg_profiles.active_name())
         ttk.Label(row, textvariable=self._bench_var,
                   font=("Segoe UI", 10, "bold")).pack(side="left")
-        ttk.Label(row, text="— selected from the Prober box in the toolbar",
-                  foreground="#888", font=("Arial", 8)).pack(side="left", padx=(6, 0))
         ttk.Button(row, text="↻ Scan bus & match",
                    command=self._match_bench).pack(side="right")
 
@@ -105,7 +122,7 @@ class InstrumentsEgPanel(ttk.Frame):
                 found = {d["address"]: (d["identity"], d["detail"])
                          for d in discover_bus(timeout_ms=700)}
             except Exception as e:
-                self.after(0, lambda: self._log(f"[BENCH] Scan failed: {e}"))
+                self.after(0, lambda: self._log(f"[SYSTEM] Scan failed: {e}"))
                 return
             lines = []
             for name in eg_profiles.profile_names():
@@ -115,7 +132,7 @@ class InstrumentsEgPanel(ttk.Frame):
                 lines.append((hit / max(1, len(want)), hit, len(want), name))
             lines.sort(reverse=True)
             best = lines[0]
-            msg = ["[BENCH] Bus scan matched:"]
+            msg = ["[SYSTEM] Bus scan matched:"]
             for score, hit, total, name in lines:
                 mark = "  <-- best" if name == best[3] else ""
                 msg.append(f"   {name}: {hit}/{total} fitted addresses present{mark}")
@@ -134,12 +151,12 @@ class InstrumentsEgPanel(ttk.Frame):
         # the ping/address section is a diagnostic, not the first thing an
         # operator needs.
         self._addr_panel = build_address_panel(
-            self, _eg_instruments(), self._log, self.controller.init_hardware_eg)
+            self._body, _eg_instruments(), self._log, self.controller.init_hardware_eg)
         self._addr_panel.grid(row=3, column=0, columnspan=2, sticky="new",
                               padx=8, pady=8)
 
     def _build_smu(self):
-        lf = ttk.LabelFrame(self, text="SMU — Keithley 2400", padding=8)
+        lf = ttk.LabelFrame(self._body, text="SMU — Keithley 2400", padding=8)
         lf.grid(row=1, column=0, sticky="new", padx=8, pady=8)
 
         row = ttk.Frame(lf)
@@ -170,7 +187,7 @@ class InstrumentsEgPanel(ttk.Frame):
     def _smu_output_on(self):
         drv = self._drv("smu")
         if not drv:
-            self._log("[SMU] Not connected")
+            self._log("[INSTRUMENT] Not connected")
             return
         try:
             level = float(self._smu_level_var.get())
@@ -182,25 +199,25 @@ class InstrumentsEgPanel(ttk.Frame):
                 drv.set_current("", level)
                 drv.set_voltage_limit("", limit)
             drv.turn_output_on("")
-            self._log(f"[SMU] Output ON — {self._smu_src_var.get()}={level}, limit={limit}")
+            self._log(f"[INSTRUMENT] Output ON — {self._smu_src_var.get()}={level}, limit={limit}")
         except Exception as e:
-            self._log(f"[SMU] Error: {e}")
+            self._log(f"[INSTRUMENT] Error: {e}")
 
     def _smu_output_off(self):
         drv = self._drv("smu")
         if not drv:
-            self._log("[SMU] Not connected")
+            self._log("[INSTRUMENT] Not connected")
             return
         try:
             drv.turn_output_off("")
-            self._log("[SMU] Output OFF")
+            self._log("[INSTRUMENT] Output OFF")
         except Exception as e:
-            self._log(f"[SMU] Error: {e}")
+            self._log(f"[INSTRUMENT] Error: {e}")
 
     def _smu_measure(self):
         drv = self._drv("smu")
         if not drv:
-            self._log("[SMU] Not connected")
+            self._log("[INSTRUMENT] Not connected")
             return
 
         def _run():
@@ -210,13 +227,13 @@ class InstrumentsEgPanel(ttk.Frame):
                 r = drv.measure_resistance("")
                 self.after(0, lambda: self._smu_reading_var.set(
                     f"V: {v:.6g} V    I: {i:.6g} A    R: {r:.6g} Ω"))
-                self._log(f"[SMU] V={v:.6g} V  I={i:.6g} A  R={r:.6g} Ω")
+                self._log(f"[INSTRUMENT] V={v:.6g} V  I={i:.6g} A  R={r:.6g} Ω")
             except Exception as e:
-                self._log(f"[SMU] Measure error: {e}")
+                self._log(f"[INSTRUMENT] Measure error: {e}")
         threading.Thread(target=_run, daemon=True).start()
 
     def _build_dmm(self):
-        lf = ttk.LabelFrame(self, text="DMM — HP 3458A", padding=8)
+        lf = ttk.LabelFrame(self._body, text="DMM — HP 3458A", padding=8)
         lf.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=8, pady=(0, 8))
         lf.rowconfigure(0, weight=1)
         lf.columnconfigure(0, weight=1)
@@ -224,7 +241,7 @@ class InstrumentsEgPanel(ttk.Frame):
         self.dmm_debug.grid(row=0, column=0, sticky="nsew")
 
     def _build_ps(self):
-        lf = ttk.LabelFrame(self, text="Power Supply — Agilent 6634B", padding=8)
+        lf = ttk.LabelFrame(self._body, text="Power Supply — Agilent 6634B", padding=8)
         lf.grid(row=1, column=1, sticky="new", padx=8, pady=8)
 
         row = ttk.Frame(lf)
@@ -251,37 +268,37 @@ class InstrumentsEgPanel(ttk.Frame):
     def _ps_output_on(self):
         drv = self._drv("power_supply")
         if not drv:
-            self._log("[PS] Not connected")
+            self._log("[INSTRUMENT] Not connected")
             return
         try:
             drv.set_voltage(float(self._ps_v_var.get()))
             drv.set_current_limit(float(self._ps_i_var.get()))
             drv.turn_output_on()
-            self._log(f"[PS] Output ON — V={self._ps_v_var.get()}, "
+            self._log(f"[INSTRUMENT] Output ON — V={self._ps_v_var.get()}, "
                      f"I limit={self._ps_i_var.get()}")
         except Exception as e:
-            self._log(f"[PS] Error: {e}")
+            self._log(f"[INSTRUMENT] Error: {e}")
 
     def _ps_output_off(self):
         drv = self._drv("power_supply")
         if not drv:
-            self._log("[PS] Not connected")
+            self._log("[INSTRUMENT] Not connected")
             return
         try:
             drv.turn_output_off()
-            self._log("[PS] Output OFF")
+            self._log("[INSTRUMENT] Output OFF")
         except Exception as e:
-            self._log(f"[PS] Error: {e}")
+            self._log(f"[INSTRUMENT] Error: {e}")
 
     def _ps_measure(self):
         drv = self._drv("power_supply")
         if not drv:
-            self._log("[PS] Not connected")
+            self._log("[INSTRUMENT] Not connected")
             return
         try:
             v = drv.measure_voltage()
             i = drv.measure_current()
             self._ps_reading_var.set(f"V: {v:.6g} V    I: {i:.6g} A")
-            self._log(f"[PS] V={v:.6g} V  I={i:.6g} A")
+            self._log(f"[INSTRUMENT] V={v:.6g} V  I={i:.6g} A")
         except Exception as e:
-            self._log(f"[PS] Error: {e}")
+            self._log(f"[INSTRUMENT] Error: {e}")

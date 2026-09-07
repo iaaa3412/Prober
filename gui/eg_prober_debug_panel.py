@@ -183,7 +183,7 @@ class EgProberDebugPanel(ttk.Frame):
                    command=self._cmd_read_telemetry).pack(side="right", padx=2)
         ttk.Button(bar, text="Send LaMP Init",
                    command=self._cmd_send_init).pack(side="right", padx=2)
-        ttk.Button(bar, text="⚡ Resync Link",
+        ttk.Button(bar, text="Resync Link",
                    command=self._cmd_recover).pack(side="right", padx=2)
 
     def _build_main(self):
@@ -210,7 +210,7 @@ class EgProberDebugPanel(ttk.Frame):
             except Exception as e:
                 result = f"recovery failed: {e}"
             ok = result.startswith("recovered")
-            self._log(f"[RESYNC] {result}")
+            self._log(f"[INSTRUMENT] {result}")
             self.after(0, lambda: self._set_status(result,
                                                    "#22bb55" if ok else "red"))
             if ok:
@@ -248,10 +248,10 @@ class EgProberDebugPanel(ttk.Frame):
                    if k in ("status", "wafer_info", "die_counts", "cassette", "run_state")]
 
             def _apply():
-                self._log("[TELEMETRY] decoded:")
+                self._log("[INSTRUMENT] decoded:")
                 for line in lines:
                     self._log(line)
-                self._log("[TELEMETRY] raw replies:")
+                self._log("[INSTRUMENT] raw replies:")
                 for line in raw:
                     self._log(line)
                 err = data.get("error", "")
@@ -295,14 +295,14 @@ class EgProberDebugPanel(ttk.Frame):
         def _run():
             try:
                 count = drv.send_init_sequence(
-                    log=lambda line: self.after(0, lambda t=line: self._log(f"[INIT] {t}")))
+                    log=lambda line: self.after(0, lambda t=line: self._log(f"[SYSTEM] {t}")))
             except Exception as e:
                 self.after(0, lambda: self._set_status(f"Init failed: {e}", "red"))
                 return
             self.after(0, lambda: self._set_status(
                 f"Init sequence sent ({count} commands)", "green"))
             self.after(0, lambda: self._log(
-                "[INIT] complete — press Refresh Telemetry to read back the result"))
+                "[SYSTEM] complete — press Refresh Telemetry to read back the result"))
         self._run_bg(_run)
 
     def _build_jog(self, parent):
@@ -381,20 +381,6 @@ class EgProberDebugPanel(ttk.Frame):
         ttk.Label(lf, textvariable=self._jog_pos, font=("Consolas", 9),
                   wraplength=380, justify="left").pack(anchor="w", pady=(4, 0))
 
-        ttk.Label(lf, text="Arrow labels above were measured against a "
-                           "BOTTOM-RIGHT (load-position) datum. After Set First "
-                           "Die (FD) at a centre datum, which physical "
-                           "direction is +X/+Y is NOT confirmed - verify by eye "
-                           "before trusting these labels.",
-                  foreground="#aa5500", font=("Arial", 8), wraplength=380,
-                  justify="left").pack(anchor="w", pady=(4, 0))
-
-        ttk.Label(lf, text="MD is bounded by the driver's step cap and, once set, "
-                           "its die envelope — the prober itself does NOT stop "
-                           "you going off the platen.",
-                  foreground="#aa5500", font=("Arial", 8), wraplength=380,
-                  justify="left").pack(anchor="w", pady=(4, 0))
-
         # Arrow keys follow the physical direction, same mapping as the
         # buttons - but ONLY while explicitly enabled below. This used to
         # be an unconditional self.bind_all(), which grabs arrow keys for
@@ -417,8 +403,7 @@ class EgProberDebugPanel(ttk.Frame):
                 for key, (dx, dy) in (("<Up>", _JOG_UP), ("<Down>", _JOG_DOWN),
                                       ("<Left>", _JOG_LEFT), ("<Right>", _JOG_RIGHT)):
                     self.bind_all(key, lambda e, x=dx, y=dy: self._jog_xy(x, y))
-                self._log("[JOG] Arrow-key jog ENABLED — arrow keys anywhere in the "
-                         "app will now move the chuck until this is turned off.")
+                self._log("[JOG] Arrow-key jog ENABLED.")
             else:
                 for key in ("<Up>", "<Down>", "<Left>", "<Right>"):
                     self.unbind_all(key)
@@ -462,13 +447,6 @@ class EgProberDebugPanel(ttk.Frame):
 
         mk("↻ CW", lambda: self._jog_theta(1))
         mk("↺ CCW", lambda: self._jog_theta(-1))
-
-        ttk.Label(lf, text="MT's unit is NOT confirmed to be degrees, and "
-                           "CW/CCW here just means +MT/-MT — verify against "
-                           "?T (and by eye) before trusting the direction. "
-                           "Rotation is normally left to Auto Align (AA).",
-                  foreground="#aa5500", font=("Arial", 8), wraplength=380,
-                  justify="left").pack(anchor="w", pady=(4, 0))
 
     def _jog_theta(self, direction):
         try:
@@ -528,7 +506,7 @@ class EgProberDebugPanel(ttk.Frame):
             try:
                 text = work(drv)
             except Exception as e:
-                hint = ("  —  press ⚡ Resync Link"
+                hint = ("  —  press Resync Link"
                         if "VI_ERROR_TMO" in str(e) or "Timeout" in str(e) else "")
                 text = f"blocked: {e}{hint}"
                 self._log(f"[JOG] {label} refused: {e}")
@@ -666,7 +644,7 @@ class EgProberDebugPanel(ttk.Frame):
         self._setup_section(left, "Wafer / Die Setup", _SETUP_COMMANDS)
         infer_row = ttk.Frame(left)
         infer_row.pack(fill="x", padx=4, pady=(0, 6))
-        ttk.Button(infer_row, text="🔍 Infer Current Die Size (no direct query exists)",
+        ttk.Button(infer_row, text="🔍 Infer Current Die Size",
                   command=self._cmd_infer_die_size).pack(fill="x")
         self._setup_section(left, "Z Limits & Profile", _LIMIT_COMMANDS)
         self._setup_section(left, "Counters & Yield", _COUNTER_COMMANDS)
@@ -726,23 +704,9 @@ class EgProberDebugPanel(ttk.Frame):
         entry.pack(side="left", padx=(0, 4))
         entry.bind("<Return>", lambda _e: self._send_raw())
         ttk.Button(term, text="Send", command=self._send_raw).pack(side="left", padx=2)
-        ttk.Label(tf,
-                  text="Commands starting with '?' are sent as queries (e.g. "
-                       "?S, ?X, ?Y); everything else is written as-is. Known "
-                       "motion mnemonics ask for confirmation first.",
-                  foreground="gray", font=("Arial", 8), justify="left",
-                  wraplength=360).pack(anchor="w", pady=(4, 0))
 
         nf = ttk.LabelFrame(right, text="About Status Reporting", padding=6)
         nf.grid(row=2, column=0, sticky="new")
-        ttk.Label(nf,
-                  text="The Electroglas 2001CXE reports status as a string "
-                       "via '?S' (e.g. 'idle', 'moving', 'error: ...') rather "
-                       "than a numeric GP-IB status byte, so there is no STB "
-                       "code table here — read the status line above after "
-                       "sending a command.",
-                  foreground="gray", font=("Arial", 8), justify="left",
-                  wraplength=360).pack(anchor="w")
 
     def _cmd_read_status(self):
         def _run():

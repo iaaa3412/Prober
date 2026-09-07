@@ -314,8 +314,7 @@ class AtomicaDashboard(tk.Tk):
                           if name != "folder" and not present]
                 if not missing:
                     self._pending_setup_log = (
-                        f"[SYSTEM] Working directory set to '{selected}' - "
-                        "GUI System found, all setup files present.")
+                        f"[SYSTEM] Working directory set to '{selected}'.")
                     return
                 # Still missing something at the newly-picked location -
                 # loop back and show the (now updated) prompt again rather
@@ -352,14 +351,11 @@ class AtomicaDashboard(tk.Tk):
 
         frm = ttk.Frame(dlg, padding=16)
         frm.pack(fill="both", expand=True)
-        ttk.Label(frm, text=prompt, wraplength=420, justify="left").pack(
-            anchor="w", pady=(0, 12))
         ttk.Label(
-            frm, wraplength=420, justify="left", foreground="#555555",
-            text=("Browse to a working directory that already has a GUI "
-                  "System folder (e.g. a shared network location or a "
-                  "cloned project folder), or create a blank starter setup "
-                  "here instead. Nothing is guessed either way.")
+            frm, wraplength=420, justify="left",
+            text=("GUI System and ATA Folders not found. Expected working "
+                  "directory is \\\\prober\\M\\ETL\\proberautomation or "
+                  "default defined in json file.")
         ).pack(anchor="w", pady=(0, 12))
 
         def pick(choice):
@@ -370,7 +366,7 @@ class AtomicaDashboard(tk.Tk):
         btns.pack(fill="x", pady=(4, 0))
         ttk.Button(btns, text="Browse for Working Directory...",
                   command=lambda: pick("browse")).pack(side="left")
-        ttk.Button(btns, text="Create Blank Setup Here",
+        ttk.Button(btns, text="Create Blank Setup Locally",
                   command=lambda: pick("create")).pack(side="left", padx=(8, 0))
         ttk.Button(btns, text="Continue Without",
                   command=lambda: pick("skip")).pack(side="right")
@@ -407,8 +403,7 @@ class AtomicaDashboard(tk.Tk):
                 ui.exec_panel.set_wafer_map(ui.wafer_map, wafer_id=folder_name)
                 ui.wafer_id_var.set(folder_name)
             ui.exec_panel.log(
-                f"[SYSTEM] Default ATA folder '{folder_name}' auto-loaded — "
-                f"{n_dies} dies found.")
+                f"[SYSTEM] Default ATA folder '{folder_name}'.")
 
     @property
     def drivers(self):
@@ -671,8 +666,7 @@ class AtomicaDashboard(tk.Tk):
             try:
                 stb, _desc = prober.read_stb_decoded()
                 if stb == 76 and prober.confirm_and_clear_alarm():
-                    self.log("[SYSTEM] Alarm detected while idle : "
-                            "buzzer auto-cleared (es sent).")
+                    self.log("[SYSTEM] Alarm detected.")
             except Exception:
                 stb = None
             self.after(0, lambda: self._set_prober_ready(stb))
@@ -762,7 +756,11 @@ class AtomicaDashboard(tk.Tk):
         # No title() - overrideredirect windows show no title bar anyway,
         # and this keeps it out of _find_other_instance_window's title match.
         splash.overrideredirect(True)
-        splash.configure(bg="#374558")
+        # overrideredirect windows get no OS border, so the black border is
+        # faked here: the Toplevel itself is black, and an inner frame in
+        # the real splash colour is packed inset by BORDER px on every side.
+        BORDER = 3
+        splash.configure(bg="black")
         w, h = 420, 260
         sw, sh = splash.winfo_screenwidth(), splash.winfo_screenheight()
         splash.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
@@ -770,6 +768,9 @@ class AtomicaDashboard(tk.Tk):
             splash.attributes("-topmost", True)
         except Exception:
             pass
+
+        body = tk.Frame(splash, bg="#374558")
+        body.pack(fill="both", expand=True, padx=BORDER, pady=BORDER)
 
         logo_path = os.path.join(os.path.dirname(__file__), "logo_otto.jpg")
         if os.path.exists(logo_path):
@@ -784,16 +785,16 @@ class AtomicaDashboard(tk.Tk):
                 # bg matches the splash background exactly - the PNG's own
                 # transparent areas are the same colour, so this makes the
                 # edges disappear instead of showing a mismatched box.
-                lbl_img = tk.Label(splash, image=img, bg="#374558", bd=0,
+                lbl_img = tk.Label(body, image=img, bg="#374558", bd=0,
                                    highlightthickness=0)
                 lbl_img.image = img
                 lbl_img.pack(pady=(20, 8))
             except Exception:
                 pass
-        tk.Label(splash, text="Electrical Prober", bg="#374558", fg="#f0a020",
+        tk.Label(body, text="Electrical Prober", bg="#374558", fg="#f0a020",
                  font=("Arial", 16)).pack()
-        msg_lbl = tk.Label(splash, text=message, bg="#374558", fg="#cbd5e1",
-                           font=("Arial", 12))
+        msg_lbl = tk.Label(body, text=message, bg="#374558", fg="#cbd5e1",
+                           font=("Consolas", 12))
         msg_lbl.pack(pady=(14, 0))
         splash._msg_label = msg_lbl
         splash.update()
@@ -1003,7 +1004,7 @@ class AtomicaDashboard(tk.Tk):
     def cmd_fit_windows(self):
         self.update_idletasks()
         self._fit_all_panes(self)
-        self.log("[UI] Fit Windows: resized all panes to the current window size.")
+        self.log("[SYSTEM] Resized windows.")
 
     def _fit_all_panes(self, widget):
         for child in widget.winfo_children():
@@ -1571,7 +1572,7 @@ class AtomicaDashboard(tk.Tk):
 
         if ready != self._sys_ready_prev:
             if ready:
-                self.ui.exec_panel.log("[SYSTEM] All criteria met. System is READY for a run.")
+                self.ui.exec_panel.log("[SYSTEM] System ready.")
             elif self._sys_ready_prev is not None:
                 self.ui.exec_panel.log(f"[SYSTEM] No longer ready — missing: {', '.join(missing)}")
             self._sys_ready_prev = ready
@@ -1651,7 +1652,7 @@ class AtomicaDashboard(tk.Tk):
         self._routing_toggle_btn = ttk.Button(
             toolbar, text="▸ Show Routing", command=self.cmd_toggle_routing)
         self._refresh_routing_button()
-        ttk.Button(toolbar, text="⛶ Fit Windows", command=self.cmd_fit_windows).pack(
+        ttk.Button(toolbar, text="Fit Windows", command=self.cmd_fit_windows).pack(
             side="right", padx=2, pady=2)
         self.after(200, self._refresh_ata_picker)
 
@@ -1878,9 +1879,7 @@ class AtomicaDashboard(tk.Tk):
     def cmd_refresh_ata(self):
         folder = self.ui._ata_folder
         if not folder:
-            self.log("[SYSTEM] No ATA folder loaded — pick one from the "
-                     "toolbar's ATA Folder dropdown, or use 📁 Load ATA "
-                     "Folder on the ATA Folder tab.")
+            self.log("[SYSTEM] No ATA folder loaded.")
             return
         if not os.path.isdir(folder):
             self.log(f"[SYSTEM] ATA folder no longer exists: {folder}")
@@ -1935,10 +1934,8 @@ class AtomicaDashboard(tk.Tk):
         if not path:
             return
         workdir.set_default_working_dir(path)
-        messagebox.showinfo(
-            "Working Directory",
-            f"'{path}' set as this computer's default working directory.\n"
-            "Takes effect the next time the app is launched.")
+        self.log(f"[SETUP] '{os.path.basename(path)}' set as this computer's default "
+                "working directory. Takes effect the next time the app is launched.")
 
     # kind=META rows use these (one row, none repeated per RESULT/DIE row -
     # see cmd_import_results_csv for the matching read side). kind=RESULT
@@ -1984,7 +1981,7 @@ class AtomicaDashboard(tk.Tk):
             self.ui.exec_panel.log("[ERROR] Please enter a valid Lot ID.")
             return None
         if not self.results_data:
-            self.ui.exec_panel.log("[ERROR] No measurement results yet — nothing to save.")
+            self.ui.exec_panel.log("[ERROR] No measurement results yet.")
             return None
         wafer_id = self.ui.wafer_id_var.get().strip()
         name_parts = [current_lot] + ([wafer_id] if wafer_id else []) + ["results"]
@@ -2027,8 +2024,8 @@ class AtomicaDashboard(tk.Tk):
                                      "status": status})
 
             self.ui.exec_panel.log(
-                f"[SYSTEM] Success! {len(self.results_data)} result(s), "
-                f"{len(self.die_status)} die verdict(s) saved to -> {filepath}")
+                f"[RESULTS] Export Succesful {len(self.results_data)} result(s), "
+                f"{len(self.die_status)} die verdict(s)")
             return filepath
         except Exception as e:
             self.ui.exec_panel.log(f"[ERROR] Failed to save CSV file: {e}")
@@ -2055,7 +2052,7 @@ class AtomicaDashboard(tk.Tk):
             with open(path, newline='', encoding='utf-8') as f:
                 rows = list(csv.DictReader(f))
         except Exception as e:
-            self.ui.exec_panel.log(f"[ERROR] Could not read {path}: {e}")
+            self.ui.exec_panel.log(f"[ERROR] Could not read {os.path.basename(path)}: {e}")
             return
         meta = next((r for r in rows if r.get("kind") == "META"), None)
         if meta is None:
@@ -2103,18 +2100,18 @@ class AtomicaDashboard(tk.Tk):
                 self._ata_picker_var.set(self._ata_display_name(os.path.basename(folder)))
                 ui.exec_panel.set_wafer_map(ui.wafer_map, wafer_id=os.path.basename(folder))
             except Exception as e:
-                ui.exec_panel.log(f"[IMPORT] Could not load ATA folder {folder!r}: {e}")
+                ui.exec_panel.log(f"[SETUP] Could not load ATA folder {os.path.basename(folder)!r}: {e}")
         elif folder:
             ui.exec_panel.log(
-                f"[IMPORT] ATA folder {folder!r} not found on this machine - "
-                "continuing without it (results/pass-fail will still load).")
+                f"[SETUP] ATA folder {os.path.basename(folder)!r} not found on this machine - "
+                "continuing without it.")
 
         probe_card = (meta.get("probe_card") or "").strip()
         if probe_card and hasattr(ui, "pin_wiring"):
             try:
                 ui.pin_wiring.switch_to_card(probe_card)
             except Exception as e:
-                ui.exec_panel.log(f"[IMPORT] Could not switch to probe card "
+                ui.exec_panel.log(f"[SETUP] Could not switch to probe card "
                                   f"{probe_card!r}: {e}")
 
         recipe = (meta.get("recipe") or "").strip()
@@ -2122,7 +2119,7 @@ class AtomicaDashboard(tk.Tk):
             try:
                 ui._exec2_load_recipe_by_name(recipe)
             except Exception as e:
-                ui.exec_panel.log(f"[IMPORT] Could not load recipe {recipe!r}: {e}")
+                ui.exec_panel.log(f"[SETUP] Could not load recipe {recipe!r}: {e}")
 
         lot_id = (meta.get("lot_id") or "").strip()
         wafer_id = (meta.get("wafer_id") or "").strip()
@@ -2193,8 +2190,8 @@ class AtomicaDashboard(tk.Tk):
         self.update_statistics_visuals()
         self.check_system_ready()
         ui.exec_panel.log(
-            f"[IMPORT] Loaded {len(results)} result(s), {len(die_status)} die "
-            f"verdict(s) from {path} — recipe '{recipe or '?'}', "
+            f"[SETUP] Loaded {len(results)} result(s), {len(die_status)} die "
+            f"verdict(s) — recipe '{recipe or '?'}', "
             f"probe card '{probe_card or '?'}'.")
 
     def cmd_export_sql(self):
@@ -2208,8 +2205,7 @@ class AtomicaDashboard(tk.Tk):
             return None
         fmt = self.ui.get_selected_export_format()
         if not fmt:
-            self.ui.exec_panel.log("[ERROR] No export format selected — pick one, or "
-                                   "➕ New Format… to define one first.")
+            self.ui.exec_panel.log("[ERROR] No export format selected")
             return None
         wafer_id = self.ui.wafer_id_var.get().strip()
         fmt_type = fmt.get("type", "sql")
@@ -2226,8 +2222,7 @@ class AtomicaDashboard(tk.Tk):
             if fmt_type == "csv":
                 reason = "at least one current or resistance reading from a die touchdown"
             else:
-                reason = ("readings that carry a device-ID string — the wafer map "
-                         "needs an ID column, or set the IDs with Wafer Builder > Overlay"
+                reason = ("readings that carry a device-ID string"
                          if fmt.get("requires_die_id", True) else "measurement results")
             self.ui.exec_panel.log(
                 f"[ERROR] No matching results yet from the last run for '{fmt['name']}' — "
@@ -2272,7 +2267,7 @@ class AtomicaDashboard(tk.Tk):
                     writer.writeheader()
                     writer.writerows(rows)
                 self.ui.exec_panel.log(
-                    f"[SYSTEM] Success! {len(rows)} '{fmt['name']}' row(s) saved to -> {filepath}")
+                    f"[RESULTS] Export Succesful {len(rows)} '{fmt['name']}' row(s)")
                 return filepath
             else:
                 statements = xfmt.build_insert_statements(
@@ -2283,7 +2278,7 @@ class AtomicaDashboard(tk.Tk):
                 with open(filepath, "w", newline="", encoding="utf-8") as f:
                     f.write("\n".join(statements) + "\n")
                 self.ui.exec_panel.log(
-                    f"[SYSTEM] Success! {len(statements)} '{fmt['name']}' row(s) saved to -> {filepath}")
+                    f"[RESULTS] Export Succesful {len(statements)} '{fmt['name']}' row(s)")
                 return filepath
         except Exception as e:
             self.ui.exec_panel.log(f"[ERROR] Failed to save {ext.upper()} file: {e}")
@@ -2291,46 +2286,46 @@ class AtomicaDashboard(tk.Tk):
 
     def cmd_align(self):
         self.ui.align_panel.lock_alignment()
-        self.ui.exec_panel.log("[ALIGN] Alignment locked by operator.")
+        self.ui.exec_panel.log("[ALIGN REMOVE] Alignment locked by operator.")
 
     def cmd_buzzer_clear(self):
         if self.active_system == "electroglas":
-            self.log("[BUZZER] Electroglas has no buzzer_clear (E + es is a "
+            self.log("[PROBER] Electroglas has no buzzer_clear (E + es is a "
                      "UF200R-only mnemonic) - nothing sent.")
             return
         drv = self.drivers.get("prober")
         if not (drv and drv.inst):
-            self.log("[BUZZER] Prober not connected.")
+            self.log("[PROBER] Prober not connected.")
             return
         import threading
         def _run():
             try:
-                self.log("[BUZZER] >> E + es  (read error code, clear alarm)")
+                self.log("[PROBER] >> E + es  (read error code, clear alarm)")
                 code = drv.buzzer_clear()
-                self.log(f"[BUZZER] Cleared — error code: {code or '(none pending)'}")
+                self.log(f"[PROBER] Cleared — error code: {code or '(none pending)'}")
             except Exception as e:
-                self.log(f"[BUZZER] Error: {e}")
+                self.log(f"[PROBER] Error: {e}")
         threading.Thread(target=_run, daemon=True).start()
 
     def cmd_abort(self):
         self.ui.exec_panel.abort()
         drv = self.drivers.get("prober")
         if drv and drv.inst and self.active_system != "accretech":
-            self.log(f"[ABORT] {self.active_system.capitalize()} prober stop command "
-                    "not yet implemented — verify chuck/output state manually.")
+            self.log(f"[PROBER] {self.active_system.capitalize()} prober stop command "
+                    "not yet implemented.")
         if drv and drv.inst and self.active_system == "accretech":
             import threading
             def _send_k():
                 try:
                     drv.write("K")
-                    self.log("[ABORT] K sent to prober (emergency stop)")
+                    self.log("[PROBER] K sent (emergency stop)")
                 except Exception as e:
-                    self.log(f"[ABORT] K error: {e}")
+                    self.log(f"[PROBER] K error: {e}")
                 try:
                     drv.send_es()
-                    self.log("[ABORT] es sent (buzzer clear)")
+                    self.log("[PROBER] es sent (buzzer clear)")
                 except Exception as e:
-                    self.log(f"[ABORT] es error: {e}")
+                    self.log(f"[PROBER] es error: {e}")
             threading.Thread(target=_send_k, daemon=True).start()
 
 _SINGLE_INSTANCE_MUTEX_NAME = "Global\\AtomicaTesterSingleInstanceMutex"

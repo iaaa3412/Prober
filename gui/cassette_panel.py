@@ -114,7 +114,7 @@ class CassettePanel(ttk.Frame):
         self._stop_btn = ttk.Button(bar, text="⏹  Stop Automation", state="disabled",
                                     command=lambda: self._disarm("Stopped by user."))
         self._stop_btn.pack(side="left", padx=4)
-        ttk.Button(bar, text="🔄 Reset to Slot #1",
+        ttk.Button(bar, text="Reset to Slot #1",
                   command=self._reset_slot).pack(side="left", padx=4)
         # Bookkeeping-only, same as Reset to Slot #1 (no hardware command -
         # the prober's cassette mechanism has no "jump to slot N", only
@@ -124,18 +124,10 @@ class CassettePanel(ttk.Frame):
         # own ➡ Move to Selected (instrument_panel._exec2_move_selected_
         # button): click to arm, click a slot ROW below, click again
         # ("📍 Move") to confirm.
-        self._move_slot_btn = ttk.Button(bar, text="📍 Move to Selected Slot",
+        self._move_slot_btn = ttk.Button(bar, text="Move to Selected Slot",
                                          command=self._move_selected_slot_button)
         self._move_slot_btn.pack(side="left", padx=4)
-        # U was found to error out often when used as part of cassette
-        # advance (see cassette_unload_and_load_next's own comment) - "L"
-        # is what automation uses now. This button is for a deliberate,
-        # standalone unload (e.g. pulling a bad wafer) - if automation is
-        # armed/paused it now disarms it too (see _manual_unload), matching
-        # its name: this ends the lot, it isn't a substitute for L.
-        ttk.Button(bar, text="⏏ Unload/Abort Lot",
-                  command=self._manual_unload).pack(side="left", padx=4)
-        ttk.Button(bar, text="📥 Load Next Wafer",
+        ttk.Button(bar, text="Load Next Wafer",
                   command=self._manual_load_next).pack(side="left", padx=4)
 
         ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=10)
@@ -162,6 +154,7 @@ class CassettePanel(ttk.Frame):
         lf = ttk.LabelFrame(self, text="Cassette Slots", padding=6)
         lf.grid(row=1, column=0, sticky="ew", padx=6, pady=(4, 2))
         lf.columnconfigure(0, weight=1)
+        self._slots_lf = lf
 
         btns = ttk.Frame(lf)
         btns.grid(row=0, column=0, sticky="w", pady=(0, 4))
@@ -172,12 +165,12 @@ class CassettePanel(ttk.Frame):
         ttk.Separator(btns, orient="vertical").pack(side="left", fill="y", padx=10)
         ttk.Button(btns, text="＋ Add Slot", command=self._add_slot).pack(side="left", padx=2)
         ttk.Button(btns, text="✎ Edit", command=self._edit_slot).pack(side="left", padx=2)
-        ttk.Button(btns, text="🗑 Remove", command=self._remove_slot).pack(side="left", padx=2)
+        ttk.Button(btns, text="Remove", command=self._remove_slot).pack(side="left", padx=2)
         ttk.Button(btns, text="▲", width=3, command=lambda: self._move_slot(-1)).pack(
             side="left", padx=(10, 2))
         ttk.Button(btns, text="▼", width=3, command=lambda: self._move_slot(1)).pack(
             side="left", padx=2)
-        ttk.Button(btns, text="🗑 Clear All", command=self._clear_slots).pack(side="left", padx=(10, 2))
+        ttk.Button(btns, text="Clear All", command=self._clear_slots).pack(side="left", padx=(10, 2))
 
         cols = ("slot", "lot", "wafer")
         self._slot_tree = ttk.Treeview(lf, columns=cols, show="headings", height=5,
@@ -193,24 +186,40 @@ class CassettePanel(ttk.Frame):
         self._slot_tree.bind("<<TreeviewSelect>>", self._on_move_slot_row_selected)
 
     def _build_export(self):
-        ef = ttk.LabelFrame(self, text="Auto-Export", padding=6)
-        ef.grid(row=2, column=0, sticky="ew", padx=6, pady=(2, 2))
+        # Shares the "Cassette Slots" LabelFrame instead of its own - one
+        # section for slots + export, not two stacked ones.
+        ef = ttk.Frame(self._slots_lf)
+        ef.grid(row=2, column=0, sticky="ew", pady=(6, 0))
 
         self._auto_export_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(ef, text="Auto-export after each wafer",
+        ttk.Checkbutton(ef, text="Auto Export",
                        variable=self._auto_export_var).pack(side="left", padx=(0, 16))
         # In addition to the Format export below (last-run-only, see
         # MainLayout.get_last_run_results) - "Save to CSV" writes the plain
         # self-contained results CSV (cmd_save_csv) the Results tab's own
         # button already writes, same file every manual export uses.
         self._auto_export_csv_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(ef, text="Also save plain CSV",
+        ttk.Checkbutton(ef, text="Also Save CSV",
                        variable=self._auto_export_csv_var).pack(side="left", padx=(0, 16))
 
         ttk.Label(ef, text="Export Directory:").pack(side="left")
         ttk.Entry(ef, textvariable=self.ui.export_path_var, width=32).pack(
             side="left", padx=6)
         ttk.Button(ef, text="Browse...", command=self._browse_export_dir).pack(side="left")
+        # Same quick-choice dropdown as the Results tab's own Export Path
+        # row (self.ui._export_dir_choices, built there) - Accretech-only,
+        # same as this whole Cassette tab.
+        export_dir_choices = getattr(self.ui, "_export_dir_choices", None)
+        if export_dir_choices:
+            export_dir_var = tk.StringVar(value=next(iter(export_dir_choices)))
+            export_dir_cb = ttk.Combobox(
+                ef, textvariable=export_dir_var, state="readonly",
+                width=16, values=list(export_dir_choices.keys()))
+            export_dir_cb.pack(side="left", padx=(4, 0))
+            export_dir_cb.bind(
+                "<<ComboboxSelected>>",
+                lambda _e: self.ui.export_path_var.set(
+                    export_dir_choices[export_dir_var.get()]))
 
         ttk.Label(ef, text="Format:").pack(side="left", padx=(16, 2))
         self._export_format_cb = ttk.Combobox(
@@ -429,7 +438,7 @@ class CassettePanel(ttk.Frame):
             return
         if not self._move_slot_armed:
             self._move_slot_armed = True
-            self._move_slot_btn.config(text="✕ Cancel Move")
+            self._move_slot_btn.config(text="Cancel Move")
             return
         idx = self._selected_slot_index()
         self._disarm_move_slot()
@@ -442,11 +451,11 @@ class CassettePanel(ttk.Frame):
         if not self._move_slot_armed:
             return
         if self._selected_slot_index() is not None:
-            self._move_slot_btn.config(text="📍 Move")
+            self._move_slot_btn.config(text="Move")
 
     def _disarm_move_slot(self):
         self._move_slot_armed = False
-        self._move_slot_btn.config(text="📍 Move to Selected Slot")
+        self._move_slot_btn.config(text="Move to Selected Slot")
 
     def _do_move_to_slot(self, idx: int):
         if not (0 <= idx < len(self._wafers)):
@@ -500,9 +509,7 @@ class CassettePanel(ttk.Frame):
             self._log("[CASSETTE] >> U  (Unload only)")
             stb = drv.unload_wafer()
             if stb == 71:
-                self._log("[CASSETTE] << STB=71  (wafer unloaded - prober now "
-                          "waits for the next load command, it will NOT "
-                          "auto-advance to the next wafer on its own)")
+                self._log("[CASSETTE] Wafer unloaded")
             else:
                 self._log(f"[CASSETTE] << STB={stb}  (unexpected)")
         threading.Thread(target=_run, daemon=True).start()
@@ -534,7 +541,8 @@ class CassettePanel(ttk.Frame):
             if stb == 70:
                 self._log("[CASSETTE] << STB=70  (next wafer loaded, start die positioned, chuck DOWN)")
             else:
-                self._log("[CASSETTE] No next wafer — cassette empty / idle / timed out.")
+                self._log("[CASSETTE] No next wafer — cassette empty / idle / timed out "
+                         "or wafer load error.")
         threading.Thread(target=_run, daemon=True).start()
 
     # ------------------------------------------------------------- automation
@@ -557,7 +565,7 @@ class CassettePanel(ttk.Frame):
                                  "turn off auto-export.")
             return
         if getattr(self.ui, "_exec2_on_run_finished", None) not in (None, self._on_wafer_finished):
-            messagebox.showerror("Already Hooked", "Another automation is already watching "
+            messagebox.showerror("Arm Blocked", "Another automation is already watching "
                                  "for the run to finish.")
             return
 

@@ -216,7 +216,7 @@ class EgPmaRunPanel(ttk.Frame):
         btns.pack(fill="x")
         ttk.Button(btns, text="↻ Sync ?P", command=self._sync_position).pack(
             side="left")
-        ttk.Button(btns, text="🗺 Sync Run map", command=self._sync_run_map).pack(
+        ttk.Button(btns, text="Sync Run map", command=self._sync_run_map).pack(
             side="left", padx=(6, 0))
 
         mode = ttk.Frame(lf)
@@ -943,7 +943,7 @@ class EgPmaRunPanel(ttk.Frame):
                 # top-left corner.
                 self._anchor_rc.setdefault(d["seq"], rc)
         if missing:
-            self._log(f"[PMA] ⚠ {missing} of {len(dies)} recipe dies are not on "
+            self._log(f"[PMA] {missing} of {len(dies)} recipe dies are not on "
                       "the Wafer Builder map — the .PMA and the published map "
                       "look like they are for different wafers, or the map has "
                       "not been (re)published since this recipe loaded.")
@@ -1400,13 +1400,13 @@ class EgPmaRunPanel(ttk.Frame):
                     note = "  (could not parse ?P - unable to verify the anchor)"
                 elif real != expect:
                     self._anchored = False
-                    note = (f"  ⚠ MISMATCH: software expected X{expect[0]}Y{expect[1]} "
+                    note = (f"  MISMATCH: software expected X{expect[0]}Y{expect[1]} "
                             f"(touchdown #{self._touchdowns[self._index]['seq']}, "
                             "accounting for the origin offset from the last anchor) - "
                             "re-anchor (Set Initial) before running.")
                     self._ui(self._fill_table)
                 else:
-                    note = "  ✓ matches the anchored touchdown."
+                    note = "  matches the anchored touchdown."
             self._ui(lambda: (self._status_var.set(f"?P={pos}  {status}"),
                               self._log(f"[PMA] ?P={pos}  {status}{note}")))
 
@@ -1596,7 +1596,7 @@ class EgPmaRunPanel(ttk.Frame):
         origin = rp.get_shot_origin()
         if origin is None:
             self._log("[PMA] Minor Moves: no shot origin set for this recipe "
-                      "— press 📍 Set Shot Origin on the Recipe tab (with the "
+                      "— press Set Shot Origin on the Recipe tab (with the "
                       "chuck on shot R0C0's die R0C0), then Run again.")
             return
         gen = getattr(self._main_layout, "recipe_gen", None)
@@ -1626,7 +1626,7 @@ class EgPmaRunPanel(ttk.Frame):
             pass
         self._abort = False
         self._set_run_state("RUNNING (Minor Moves)", "#2563eb")
-        self._log(f"[PMA] ▶ Run (Minor Moves) — {len(shots)} shot(s).")
+        self._log(f"[PMA] Run (Minor Moves) — {len(shots)} shot(s).")
         threading.Thread(
             target=self._minor_move_thread,
             args=(shots, origin, shot_rows, shot_cols, shot_cells),
@@ -1656,7 +1656,7 @@ class EgPmaRunPanel(ttk.Frame):
         die1_rc = shot_die_rc(shot_cells, shot_rows, shot_cols, 1)
         if die1_rc is None:
             self._ui(lambda: self._log(
-                "[PMA] ⚠ Minor Moves: this shot has no die #1 - treating "
+                "[PMA] Minor Moves: this shot has no die #1 - treating "
                 "grid cell (0,0) as the reference instead."))
             die1_rc = (0, 0)
         r1, c1 = die1_rc
@@ -1697,7 +1697,7 @@ class EgPmaRunPanel(ttk.Frame):
                     layout._exec2_move_fn = None
                 drv.z_down()
                 self._ui(lambda p=ok, sr=shot_row, sc=shot_col: self._log(
-                    f"[RESULT] {'PASS' if p else 'FAIL'}  shot R{sr}C{sc}"))
+                    f"[RESULTS] {'PASS' if p else 'FAIL'}  shot R{sr}C{sc}"))
         except Exception as e:
             error_msg = str(e)
             self._ui(lambda: self._log(f"[PMA] ERROR: {e}"))
@@ -1770,7 +1770,7 @@ class EgPmaRunPanel(ttk.Frame):
                 opener()
             except Exception as e:
                 self._ui(lambda: self._log(
-                    f"[PMA] ⚠ Could not open the switch channels — "
+                    f"[PMA] Could not open the switch channels — "
                     f"{type(e).__name__}: {e}"))
         if drv is not None:
             try:
@@ -1778,7 +1778,7 @@ class EgPmaRunPanel(ttk.Frame):
                 self._ui(lambda: self._log("[PMA] Chuck separated (Z down)."))
             except Exception as e:
                 self._ui(lambda: self._log(
-                    f"[PMA] ⚠ Could not separate the chuck — "
+                    f"[PMA] Could not separate the chuck — "
                     f"{type(e).__name__}: {e}  Check Z before moving."))
 
     def _publish_total_dies(self) -> int:

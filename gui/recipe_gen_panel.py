@@ -307,15 +307,15 @@ class RecipeGenPanel(ttk.Frame):
         self._map_picker_cb.bind(
             "<<ComboboxSelected>>",
             lambda _e: self._load_named_map(self.map_name_var.get()))
-        ttk.Button(bar, text="＋ New", command=self._new_named_map).pack(
+        ttk.Button(bar, text="New", command=self._new_named_map).pack(
             side="left", padx=1)
-        ttk.Button(bar, text="✎ Rename", command=self._rename_named_map).pack(
+        ttk.Button(bar, text="Rename", command=self._rename_named_map).pack(
             side="left", padx=1)
-        ttk.Button(bar, text="🗑 Delete", command=self._delete_named_map).pack(
+        ttk.Button(bar, text="Delete", command=self._delete_named_map).pack(
             side="left", padx=1)
-        ttk.Button(bar, text="⭐ Set Default", command=self._set_default_map).pack(
+        ttk.Button(bar, text="Set Default", command=self._set_default_map).pack(
             side="left", padx=(6, 12))
-        ttk.Button(bar, text="📥 Import CSV…", command=self._import_csv).pack(
+        ttk.Button(bar, text="Import CSV…", command=self._import_csv).pack(
             side="left", padx=(0, 6))
         # Both systems get these now - _import_pma/_import_recipe_gen_xls
         # only ever touch this tab's own Shot/Shot Map/Die Map state (via
@@ -323,9 +323,9 @@ class RecipeGenPanel(ttk.Frame):
         # from the Electroglas PMA Process tab's own .PMA loading, which
         # also feeds the Run tab's EgPmaRunPanel bridge - this one doesn't
         # affect anything outside Wafer Builder.
-        ttk.Button(bar, text="📥 Load PMA…", command=self._import_pma).pack(
+        ttk.Button(bar, text="Load PMA…", command=self._import_pma).pack(
             side="left", padx=(0, 6))
-        ttk.Button(bar, text="📥 Load Recipe Gen (.xls)…",
+        ttk.Button(bar, text="Load Recipe Gen (.xls)…",
                   command=self._import_recipe_gen_xls).pack(side="left", padx=(0, 6))
 
     # ==================================================================
@@ -351,7 +351,7 @@ class RecipeGenPanel(ttk.Frame):
             side="left", padx=(4, 2))
         ttk.Entry(top, textvariable=self._die_pitch_y_var, width=8).pack(
             side="left", padx=(2, 16))
-        ttk.Label(top, text="Shot pitch X/Y (µm, blank = touching):").pack(side="left")
+        ttk.Label(top, text="Shot pitch X/Y:").pack(side="left")
         ttk.Entry(top, textvariable=self._shot_pitch_x_var, width=8).pack(
             side="left", padx=(4, 2))
         ttk.Entry(top, textvariable=self._shot_pitch_y_var, width=8).pack(
@@ -377,18 +377,16 @@ class RecipeGenPanel(ttk.Frame):
         side.grid(row=0, column=1, sticky="ns")
         ttk.Label(side, text="Die order in the shot", font=("Segoe UI", 9, "bold")
                  ).pack(anchor="w")
-        ttk.Label(side, text="Click a blank square to add a die there; click "
-                            "a die to renumber it (which die it is - 1, 2, "
-                            "3...  in this shot). Shift-click a die to name "
-                            "its ID - applied to every shot's die at that "
-                            "same slot across the whole wafer (an individual "
-                            "die can still be renamed on its own on the Die "
-                            "Map tab). Right-click removes a die (makes it "
-                            "blank).\n\nPins are assigned per measurement "
-                            "step on the Recipe tab, not here - this only "
-                            "records die order, which is what the Recipe "
-                            "tab's Die # field and the Results tab use to "
-                            "know which square a measurement belongs to.",
+        ttk.Label(side, text="Right click to remove, Left click to add back.\n"
+                            "Left click to edit die ordering, Shift Click to "
+                            "set a global die id\n"
+                            "Use die order number in recipe tab to sync "
+                            "measurements \nTo correct dies in shots, refer "
+                            "to manual for more details\n\n"
+                            "Continue to shot map to create overall shape, "
+                            "then \nContinue to die map to assign die ids,\n"
+                            "Then overlay to map this map to accretech and "
+                            "save to run tab",
                  foreground="#6b7280",
                  wraplength=220, justify="left").pack(anchor="w", pady=(2, 6))
         ttk.Label(side, textvariable=self._shot_status_var, foreground="#374151",
@@ -714,9 +712,9 @@ class RecipeGenPanel(ttk.Frame):
                            variable=self._diemap_mode_var).pack(side="left", padx=(6, 0))
         ttk.Label(top, text="right click to clear",
                  foreground="#6b7280").pack(side="left", padx=(10, 0))
-        ttk.Button(top, text="🗺 Save Wafer Map",
+        ttk.Button(top, text="Save Wafer Map",
                   command=self._save_wafer_map).pack(side="left", padx=(16, 0))
-        ttk.Button(top, text="📤 Export CSV",
+        ttk.Button(top, text="Export CSV",
                   command=self._export_diemap_csv).pack(side="left", padx=(6, 0))
         ttk.Label(top, text="Label min width (px):",
                  foreground="#6b7280").pack(side="left", padx=(16, 0))
@@ -1325,7 +1323,7 @@ class RecipeGenPanel(ttk.Frame):
         except OSError as exc:
             messagebox.showerror("Create Failed", str(exc))
             return
-        self._log(f"[WAFER BUILDER] Created new map '{name}'")
+        self._log(f"[MAP] Created new map '{name}'")
         self._refresh_map_picker()
         self._sync_partner_after_change(folder, name)
 
@@ -1368,7 +1366,7 @@ class RecipeGenPanel(ttk.Frame):
                 pass
         self.map_name_var.set(new_name)
         self._redraw_diemap()  # title reads map_name_var live
-        self._log(f"[WAFER BUILDER] Renamed map '{old_name}' → '{new_name}'")
+        self._log(f"[MAP] Renamed map '{old_name}' → '{new_name}'")
         self._refresh_map_picker()
         folder = self._current_folder()
         if folder:
@@ -1395,7 +1393,7 @@ class RecipeGenPanel(ttk.Frame):
         # redraw.
         self.map_name_var.set(name)
         self._state_from_dict(data)
-        self._log(f"[WAFER BUILDER] Loaded map '{name}' from {path}")
+        self._log(f"[MAP] Loaded map '{name}'")
 
     def _delete_named_map(self):
         name = self.map_name_var.get().strip()
@@ -1408,10 +1406,7 @@ class RecipeGenPanel(ttk.Frame):
             messagebox.showerror("Not Found", f"No saved map named '{name}'.")
             return
         if not messagebox.askyesno(
-                "Delete Map", f"Delete the saved map '{name}'?\n\n"
-                "This only removes the saved definition - it does not "
-                "touch whatever is currently on the Run tab's wafer map "
-                "unless you Save Wafer Map again afterward."):
+                "Delete Map", f"Delete the saved map '{name}'?"):
             return
         try:
             os.remove(path)
@@ -1427,7 +1422,7 @@ class RecipeGenPanel(ttk.Frame):
                     os.remove(marker)
             except OSError:
                 pass
-        self._log(f"[WAFER BUILDER] Deleted map '{name}' ({path})")
+        self._log(f"[MAP] Deleted map '{name}'")
         self.map_name_var.set("")
         self._refresh_map_picker()
 
@@ -1466,7 +1461,7 @@ class RecipeGenPanel(ttk.Frame):
         except OSError as exc:
             messagebox.showerror("Set Default Failed", str(exc))
             return
-        self._log(f"[WAFER BUILDER] '{name}' set as the default map for this "
+        self._log(f"[MAP] '{name}' set as the default map for this "
                  f"ATA folder — it will auto-load whenever this folder opens.")
         messagebox.showinfo("Default Set", f"'{name}' will now auto-load "
                            f"whenever this ATA folder is opened.")
@@ -1516,12 +1511,12 @@ class RecipeGenPanel(ttk.Frame):
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
         except (OSError, ValueError) as exc:
-            self._log(f"[WAFER BUILDER] Could not auto-load map '{target}': "
+            self._log(f"[MAP] Could not auto-load map '{target}': "
                      f"{type(exc).__name__}: {exc}")
             return
         self.map_name_var.set(target)
         self._state_from_dict(data)
-        self._log(f"[WAFER BUILDER] Auto-loaded map '{target}' from {path}")
+        self._log(f"[MAP] Auto-loaded map '{target}'")
 
     def _autosave_named_map_quiet(self, folder: str):
         name = self.map_name_var.get().strip() or "NewMap"
@@ -1533,7 +1528,7 @@ class RecipeGenPanel(ttk.Frame):
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(self._state_to_dict(), f, indent=2)
         except OSError as exc:
-            self._log(f"[WAFER BUILDER] Could not auto-save map definition "
+            self._log(f"[MAP] Could not auto-save map definition "
                      f"'{name}': {exc}")
             return
         self._sync_partner_after_change(folder, name)
@@ -1580,7 +1575,7 @@ class RecipeGenPanel(ttk.Frame):
             return
         self._state_from_dict(data)
         self.map_name_var.set(name)
-        self._log(f"[WAFER BUILDER] Synced map '{name}' — updated on the "
+        self._log(f"[MAP] Synced map '{name}' — updated on the "
                  f"other system's tab.")
 
     # ------------------------------------------------------------------
@@ -1653,7 +1648,7 @@ class RecipeGenPanel(ttk.Frame):
             messagebox.showerror("Write Failed", str(exc))
             return
         self._diemap_status_var.set(f"Wrote {len(dies)} die(s) to the Run tab's wafer map.")
-        self._log(f"[WAFER MAP] Wrote {path} — {len(dies)} die(s), {n_id} with an "
+        self._log(f"[MAP] Wrote {len(dies)} die(s), {n_id} with an "
                  f"ID, {n_skip} skip.")
         self._autosave_named_map_quiet(folder)
         self._refresh_map_picker()
@@ -1700,7 +1695,7 @@ class RecipeGenPanel(ttk.Frame):
         except OSError as exc:
             messagebox.showerror("Export Failed", str(exc))
             return
-        self._log(f"[WAFER BUILDER] Exported {len(dies)} die(s) to {path}")
+        self._log(f"[MAP] Exported {len(dies)} die(s)")
         messagebox.showinfo("Exported", f"Wrote {len(dies)} die(s) to:\n{path}")
 
     def _sync_views(self, folder: str):
@@ -1729,12 +1724,12 @@ class RecipeGenPanel(ttk.Frame):
                     try:
                         self._write_active_wafer_map_csv(folder, dies)
                     except OSError as exc:
-                        self._log(f"[WAFER MAP] Could not publish the Run "
+                        self._log(f"[MAP] Could not publish the Run "
                                  f"tab's map: {exc}")
                 layout._exec2_map_source_var.set("Wafer Builder")
             layout._exec2_draw_wafer_map()
         except Exception as exc:
-            self._log(f"[WAFER MAP] Map written, but the Run tab did not "
+            self._log(f"[MAP] Map written, but the Run tab did not "
                      f"redraw: {type(exc).__name__}: {exc}")
         proc = getattr(layout, "pma_process", None)
         if proc is not None:
@@ -1810,7 +1805,7 @@ class RecipeGenPanel(ttk.Frame):
                 csv.writer(f).writerows(rows)
             wafer.load_csv_path(path)
         except Exception as exc:
-            self._log(f"[WAFER MAP] Could not sync the legacy .PMA-recipe "
+            self._log(f"[MAP] Could not sync the .PMA-recipe "
                      f"wafer view: {type(exc).__name__}: {exc}")
 
     # ==================================================================
@@ -2006,7 +2001,7 @@ class RecipeGenPanel(ttk.Frame):
         self._shotmap_cells = cells
         self._draw_shotmap()
         self._redraw_diemap()
-        self._log(f"[WAFER BUILDER] Imported Die Map from '{name}': {n} die(s) "
+        self._log(f"[MAP] Imported Die Map from '{name}': {n} die(s) "
                  f"placed on a {shot_rows}x{shot_cols} shot grid "
                  f"(shot map from {source}).")
         self._sub_nb.select(2)
@@ -2057,13 +2052,13 @@ class RecipeGenPanel(ttk.Frame):
                             f"A Wafer Builder map named '{target}' already "
                             "exists.\n\nOverwrite it with this LOAD ALL's "
                             "wafer?"):
-                        self._log(f"[WAFER BUILDER] LOAD ALL: kept the "
+                        self._log(f"[MAP] LOAD ALL: kept the "
                                   f"existing map '{target}' - cancelled by "
                                   "the operator.")
                         return
                 self.map_name_var.set(target)
             else:
-                self._log("[WAFER BUILDER] LOAD ALL: could not save a "
+                self._log("[MAP] LOAD ALL: could not save a "
                           f"named map for '{save_as}' - no ATA folder "
                           "loaded.")
 
@@ -2078,10 +2073,10 @@ class RecipeGenPanel(ttk.Frame):
             try:
                 with open(save_path, "w", encoding="utf-8") as f:
                     json.dump(self._state_to_dict(), f, indent=2)
-                self._log(f"[WAFER BUILDER] Saved map '{self.map_name_var.get()}'")
+                self._log(f"[MAP] Saved map '{self.map_name_var.get()}'")
                 self._refresh_map_picker()
             except OSError as exc:
-                self._log(f"[WAFER BUILDER] Could not save map: {exc}")
+                self._log(f"[MAP] Could not save map: {exc}")
 
     def _import_pma(self):
         path = filedialog.askopenfilename(
@@ -2188,7 +2183,7 @@ class RecipeGenPanel(ttk.Frame):
         self._draw_shotmap()
         self._redraw_diemap()
         align_note = f", {n_align} marked align" if n_align else ""
-        self._log(f"[WAFER BUILDER] Imported '{name}' ({source_label}): "
+        self._log(f"[MAP] Imported '{name}' ({source_label}): "
                  f"{len(cells)} touchdown(s), {shot_rows}x{shot_cols} dies per "
                  f"touchdown, {n} die(s) with an ID{align_note}.")
         self._sub_nb.select(2)

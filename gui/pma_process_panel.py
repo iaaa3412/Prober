@@ -87,7 +87,7 @@ class PmaProcessPanel(ttk.Frame):
             bar, textvariable=self._xls_picker_var, state="readonly", width=28)
         self._xls_picker.pack(side="left", padx=(4, 2))
         self._xls_picker.bind("<<ComboboxSelected>>", self._on_xls_picked)
-        ttk.Button(bar, text="📥 Open…", command=self._open_recipe_generator).pack(
+        ttk.Button(bar, text="📥 Load…", command=self._open_recipe_generator).pack(
             side="left", padx=(0, 2))
         ttk.Button(bar, text="🗑", width=3, command=self._delete_xls).pack(
             side="left", padx=(0, 12))
@@ -414,7 +414,7 @@ class PmaProcessPanel(ttk.Frame):
             if len(pma_files) > 1:
                 self._log(f"[PMA] {len(pma_files)} .PMA file(s) found in "
                           f"{PMA_SOURCE_SUBDIR}\\ — pick one from the PMA dropdown "
-                          "(or ⭐ Set Default to auto-load it next time).")
+                          "(or Set Default to auto-load it next time).")
 
         xls_default = next(
             (p for p in xls_files if os.path.basename(p) == defaults.get("xls")), None)
@@ -429,7 +429,7 @@ class PmaProcessPanel(ttk.Frame):
             if len(xls_files) > 1:
                 self._log(f"[PMA] {len(xls_files)} recipe-generator .xls file(s) found "
                           f"in {PMA_SOURCE_SUBDIR}\\ — pick one from the Recipe "
-                          "Generator dropdown (or ⭐ Set Default to auto-load it next time).")
+                          "Generator dropdown (or Set Default to auto-load it next time).")
 
 
     def _copy_if_missing(self, src: str, dest_dir: str) -> str:
@@ -448,7 +448,7 @@ class PmaProcessPanel(ttk.Frame):
                 shutil.copy2(src, dest)
                 self._log(f"[PMA] Copied {os.path.basename(src)} → {PMA_SOURCE_SUBDIR}\\")
             except OSError as exc:
-                self._log(f"[PMA] Could not copy {src} to {PMA_SOURCE_SUBDIR}\\: {exc}")
+                self._log(f"[PMA] Could not copy {os.path.basename(src)} to {PMA_SOURCE_SUBDIR}\\: {exc}")
                 return src
         return dest
 
@@ -496,7 +496,7 @@ class PmaProcessPanel(ttk.Frame):
         try:
             os.remove(path)
         except OSError as exc:
-            self._log(f"[PMA] Could not delete {path}: {exc}")
+            self._log(f"[PMA] Could not delete {name}: {exc}")
             return
         if self._pma_path == path:
             self._clear_pma()
@@ -522,7 +522,7 @@ class PmaProcessPanel(ttk.Frame):
         try:
             os.remove(path)
         except OSError as exc:
-            self._log(f"[PMA] Could not delete {path}: {exc}")
+            self._log(f"[PMA] Could not delete {name}: {exc}")
             return
         pma_wafer = getattr(self._main_layout, "pma_wafer", None)
         xls_data = getattr(pma_wafer, "_xls_shot_data", None) if pma_wafer else None
@@ -622,8 +622,7 @@ class PmaProcessPanel(ttk.Frame):
         the run has to be adopted before the list can be attached to it.
         """
         if not self._pma_path:
-            self._log("[PMA] LOAD ALL: no PMA file loaded — pick one from the "
-                      "PMA dropdown (or 📥 Load…) first.")
+            self._log("[PMA] LOAD ALL: no PMA file loaded")
             return
         self._log(f"[PMA] LOAD ALL — {os.path.basename(self._pma_path)}")
 
@@ -645,9 +644,7 @@ class PmaProcessPanel(ttk.Frame):
                       "built, but nothing to run it with.")
             return
         if getattr(run, "_running", False):
-            self._log("[PMA] LOAD ALL: a run is in progress on the Run tab, "
-                      "so it was left alone. Stop or let it finish, then "
-                      "LOAD ALL again.")
+            self._log("[PMA] LOAD ALL: a run is in progress")
             return
         # _anchored alone is not enough to block on anymore - it now stays
         # True after a run finishes or is stopped too (the chuck's real
@@ -658,10 +655,7 @@ class PmaProcessPanel(ttk.Frame):
         # every later LOAD ALL here, silently leaving both the Run tab and
         # the Recipe tab's touchdown list on the PREVIOUS recipe.
         if getattr(run, "_anchored", False) and not getattr(run, "_needs_restart", False):
-            self._log("[PMA] LOAD ALL: the Run tab is anchored to a die "
-                      "(paused mid-run), so it was left alone — re-adopting "
-                      "would lose where the chuck is. Resume or stop the "
-                      "run, then LOAD ALL again.")
+            self._log("[PMA] LOAD ALL: Resume or stop the run, then LOAD ALL again.")
             return
         try:
             run.adopt_from_process(quiet=True)
@@ -671,8 +665,7 @@ class PmaProcessPanel(ttk.Frame):
 
         self._write_wafer_map(run)
         n = self._push_touchdowns_to_recipe(run, recipe_panel, recipe)
-        self._log(f"[PMA] LOAD ALL: done — recipe '{recipe}', {n} touchdown(s), "
-                  "Run tab ready.")
+        self._log(f"[PMA] LOAD ALL: done — recipe '{recipe}', {n} touchdown(s).")
 
     def _write_wafer_map(self, run) -> int:
         """Write the Run tab's wafer map from the recipe generator workbook.
@@ -691,8 +684,7 @@ class PmaProcessPanel(ttk.Frame):
         folder = getattr(layout, "_exec2_map_folder", None) or \
             getattr(layout, "_ata_folder", None)
         if not folder or not os.path.isdir(folder):
-            self._log("[PMA] LOAD ALL: no ATA folder, so the wafer map was not "
-                      "written.")
+            self._log("[PMA] LOAD ALL: no ATA folder")
             return 0
         try:
             shots = run._map_source_touchdowns()
@@ -706,8 +698,7 @@ class PmaProcessPanel(ttk.Frame):
                       f"{type(exc).__name__}: {exc}")
             return 0
         source = ("the recipe generator workbook" if from_workbook
-                  else "the PMA's touchdowns (NO WORKBOOK LOADED — this draws "
-                       "only the dies this recipe probes, not the wafer)")
+                  else "the PMA's touchdowns")
         self._log(f"[PMA] LOAD ALL: wafer map built from {source} — "
                   f"{len(shots)} shot(s), {n} die(s)")
         layout._exec2_map_folder = folder
@@ -841,8 +832,7 @@ class PmaProcessPanel(ttk.Frame):
                       "wafer map — the .PMA and the .xls look like they are "
                       "for different wafers.")
         if not sites:
-            self._log("[PMA] LOAD ALL: the recipe has no touchdowns to attach "
-                      "(is the Run tab's wafer map synced?).")
+            self._log("[PMA] LOAD ALL: the recipe has no touchdowns to attach.")
             return 0
         set_sites(recipe, sites)
         return len(sites)
@@ -865,13 +855,10 @@ class PmaProcessPanel(ttk.Frame):
         if run is None or not hasattr(run, "adopt_from_process"):
             return
         if getattr(run, "_running", False):
-            self._log("[PMA] Run tab left alone — a run is in progress. "
-                      "Stop or let it finish, then press LOAD ALL.")
+            self._log("[PMA] Run tab left alone — a run is in progress.")
             return
         if getattr(run, "_anchored", False) and not getattr(run, "_needs_restart", False):
-            self._log("[PMA] Run tab left alone — it is anchored to a die "
-                      "(paused mid-run). Resume or stop the run, then "
-                      "press LOAD ALL.")
+            self._log("[PMA] Run tab left alone — it is anchored to a die")
             return
         try:
             run.adopt_from_process(quiet=True)
@@ -947,7 +934,7 @@ class PmaProcessPanel(ttk.Frame):
         try:
             fields = egpma.parse_pma_file(path)
         except OSError as exc:
-            self._log(f"[PMA] Error reading {path}: {exc}")
+            self._log(f"[PMA] Error reading {os.path.basename(path)}: {exc}")
             return
         self._pma_path = path
         self._fields = fields
@@ -1043,5 +1030,5 @@ class PmaProcessPanel(ttk.Frame):
         elif move_list:
             move_note = " — select/create a probe card first to save the move list"
 
-        self._log(f"[PMA] Loaded {path}: {len(touchdowns)} touchdown(s), "
+        self._log(f"[PMA] Loaded {os.path.basename(path)}: {len(touchdowns)} touchdown(s), "
                   f"{len(move_list)} move(s){saved_note}{recipe_note}{move_note}")

@@ -1260,17 +1260,17 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         ttk.Label(bar, text="Probe Card:").pack(side="left")
         self._picker_var = tk.StringVar()
         self._picker = ttk.Combobox(bar, textvariable=self._picker_var,
-                                    state="readonly", width=14)
+                                    state="readonly", width=22)
         self._picker.pack(side="left", padx=(2, 4))
         self._picker.bind("<<ComboboxSelected>>", lambda _e: self._switch_card())
-        ttk.Button(bar, text="＋ New", width=9, command=self._new_card).pack(side="left", padx=1)
-        ttk.Button(bar, text="✎ Rename", width=11, command=self._rename_card).pack(
+        ttk.Button(bar, text="New", width=9, command=self._new_card).pack(side="left", padx=1)
+        ttk.Button(bar, text="Rename", width=11, command=self._rename_card).pack(
             side="left", padx=1)
-        ttk.Button(bar, text="🗑 Delete", width=11, command=self._delete_card).pack(
+        ttk.Button(bar, text="Delete", width=11, command=self._delete_card).pack(
             side="left", padx=1)
-        ttk.Button(bar, text="⭐ Set Default", width=12,
+        ttk.Button(bar, text="Set Default", width=12,
                   command=self._set_default_card).pack(side="left", padx=(6, 1))
-        ttk.Button(bar, text="💾 Save All", command=self._save).pack(side="right", padx=1)
+        ttk.Button(bar, text="Save All", command=self._save).pack(side="right", padx=1)
 
     # ------------------------------------------------------------------
     # DEFAULT CARD — probe cards live in one shared probe_cards\ folder per
@@ -1301,10 +1301,10 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         except OSError as exc:
             messagebox.showerror("Set Default Failed", str(exc))
             return
-        self._log(f"[WIRING] '{self._current}' set as the default {self._system} "
+        self._log(f"[PROBE CARD] '{self._current}' set as the default {self._system} "
                  f"probe card for this ATA folder.")
         messagebox.showinfo(
-            "Default Set", f"'{self._current}' will now auto-select whenever "
+            "Default Set", f"'{self._current}' will now auto-load whenever "
             f"this ATA folder is opened on {self._system.capitalize()}.")
 
     def _default_card_name(self) -> str:
@@ -1368,9 +1368,9 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         self._refresh()
         self._refresh_card_picker()
         if name:
-            self._log(f"[WIRING] Active probe card: {name}")
+            self._log(f"[PROBE CARD] Active probe card: {name}")
         else:
-            self._log("[WIRING] Probe card deselected.")
+            self._log("[PROBE CARD] Probe card deselected.")
         self._on_card_change(name)
 
     def _new_card(self):
@@ -1412,7 +1412,7 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         self._rows = self._cards[name]
         self._refresh()
         self._refresh_card_picker()
-        self._log(f"[WIRING] Created probe card '{name}' → {path}")
+        self._log(f"[PROBE CARD] Created probe card '{name}'")
         self._on_card_change(name)
 
     def _rename_card(self):
@@ -1473,9 +1473,9 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
                 if old_path and os.path.exists(old_path) and \
                         os.path.normcase(old_path) != os.path.normcase(new_path):
                     os.remove(old_path)
-                self._log(f"[WIRING] Renamed probe card '{old_name}' → '{new_name}'")
+                self._log(f"[PROBE CARD] Renamed probe card '{old_name}' → '{new_name}'")
             except OSError as exc:
-                self._log(f"[WIRING] Rename failed: {exc}")
+                self._log(f"[PROBE CARD] Rename failed: {exc}")
 
         self._current = new_name
         self._rows = self._cards[new_name]
@@ -1488,9 +1488,7 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
             return
         if len(self._cards) <= 1 and not messagebox.askyesno(
                 "Delete Probe Card",
-                f"Delete probe card '{self._current}'? This removes the "
-                "last probe card — no recipes will be selectable until a "
-                "new one is created."):
+                f"Delete probe card '{self._current}'?"):
             return
         elif len(self._cards) > 1 and not messagebox.askyesno(
                 "Delete Probe Card", f"Delete probe card '{self._current}'?"):
@@ -1505,9 +1503,9 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         if path:
             try:
                 os.remove(path)
-                self._log(f"[WIRING] Deleted {path}")
+                self._log(f"[PROBE CARD] Deleted probe card '{name}'")
             except OSError as exc:
-                self._log(f"[WIRING] File delete error: {exc}")
+                self._log(f"[PROBE CARD] File delete error: {exc}")
             base = path[:-4] if path.lower().endswith(".csv") else path
             card_dir = os.path.dirname(path)
             if os.path.isdir(card_dir):
@@ -1623,7 +1621,7 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         self._rows = self._cards[unique]
         self._refresh()
         self._refresh_card_picker()
-        self._log(f"[WIRING] Loaded '{unique}' ({len(rows)} pin(s)) from {path}")
+        self._log(f"[PROBE CARD] Loaded '{unique}' ({len(rows)} pin(s))")
         self._on_card_change(unique)
 
     def _read_csv(self, path: str):
@@ -1648,7 +1646,7 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
                                      if row.get(k)), ""),
                     })
         except OSError as exc:
-            self._log(f"[WIRING] Error reading {os.path.basename(path)}: {exc}")
+            self._log(f"[PROBE CARD] Error reading {os.path.basename(path)}: {exc}")
             return None
         return rows
 
@@ -1659,7 +1657,7 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
                          for k, v in raw.items() if k}
                         for raw in csv.DictReader(f)]
         except OSError as exc:
-            self._log(f"[WIRING] Error reading {os.path.basename(path)}: {exc}")
+            self._log(f"[PROBE CARD] Error reading {os.path.basename(path)}: {exc}")
             return None, None, None
         pins = []
         die_pins = {}
@@ -1700,7 +1698,7 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
             except Exception:
                 existing = []
             if existing:
-                self._log(f"[WIRING] {os.path.basename(path)}: save supplied no "
+                self._log(f"[PROBE CARD] {os.path.basename(path)}: save supplied no "
                           f"pins, so the {len(existing)} already on file were "
                           f"kept rather than erased.")
                 pins = existing
@@ -1767,7 +1765,7 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
             os.makedirs(os.path.dirname(side), exist_ok=True)
             electroglas_pma.save_move_list_csv(side, move_list)
         except OSError as exc:
-            self._log(f"[WIRING] Save error for probe card '{card}' move list: {exc}")
+            self._log(f"[PROBE CARD] Save error for probe card '{card}' move list: {exc}")
             return False
         return True
 
@@ -1821,8 +1819,8 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         self._refresh()
         self._refresh_card_picker()
 
-        msg = f"[WIRING] {len(found)} probe card(s) from {cards_dir}: {', '.join(found)}" \
-              if found else f"[WIRING] No probe cards found in {cards_dir}"
+        msg = f"[PROBE CARD] {len(found)} probe card(s): {', '.join(found)}" \
+              if found else "[PROBE CARD] No probe cards found"
         if stale:
             msg += f" — removed {len(stale)} no longer on disk: {', '.join(stale)}"
         self._log(msg)
@@ -1832,7 +1830,7 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
     def _save(self):
         folder = self._get_folder()
         if not folder:
-            self._log("[WIRING] No ATA folder loaded — load one first.")
+            self._log("[PROBE CARD] No ATA folder loaded — load one first.")
             return
         if not self._cards:
             return
@@ -1840,7 +1838,7 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         try:
             os.makedirs(target_dir, exist_ok=True)
         except OSError as exc:
-            self._log(f"[WIRING] Could not create probe_cards\\ subfolder: {exc}")
+            self._log(f"[PROBE CARD] Could not create probe_cards\\ subfolder: {exc}")
             return
         saved = []
         for name, rows in self._cards.items():
@@ -1854,13 +1852,13 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
                 self._write_card_file(path, rows, recipes_for_main)
                 saved.append(path)
             except OSError as exc:
-                self._log(f"[WIRING] Save error for '{name}': {exc}")
-        self._log(f"[WIRING] Saved {len(saved)} probe card(s) (wiring + recipes), "
+                self._log(f"[PROBE CARD] Save error for '{name}': {exc}")
+        self._log(f"[PROBE CARD] Saved {len(saved)} probe card(s) (wiring + recipes), "
                   "one file each")
         try:
             self._on_save_all()
         except Exception as exc:
-            self._log(f"[WIRING] Save All: extra save failed: "
+            self._log(f"[PROBE CARD] Save All: extra save failed: "
                      f"{type(exc).__name__}: {exc}")
 
 
@@ -1897,9 +1895,9 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
             self._write_card_file(path, self._cards.get(card, []), recipes,
                                   die_pins=clean)
         except OSError as exc:
-            self._log(f"[WIRING] Could not save die pins for '{card}': {exc}")
+            self._log(f"[PROBE CARD] Could not save die pins for '{card}': {exc}")
             return False
-        self._log(f"[WIRING] '{card}': die-pin map saved — "
+        self._log(f"[PROBE CARD] '{card}': die-pin map saved — "
                   + ", ".join(f"die {s} = {h}/{l}" for s, (h, l) in sorted(clean.items())))
         return True
 
@@ -1967,7 +1965,7 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
                     self._write_card_file(path, self._cards.get(card, []), {})
                 self._write_side_recipes(path, self._card_recipes[card])
         except OSError as exc:
-            self._log(f"[WIRING] Save error for probe card '{card}' recipes: {exc}")
+            self._log(f"[PROBE CARD] Save error for probe card '{card}' recipes: {exc}")
             return False
         self._card_src[card] = path
         return True

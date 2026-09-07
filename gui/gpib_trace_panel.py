@@ -43,35 +43,21 @@ class GpibTracePanel(ttk.Frame):
         bar.grid(row=0, column=0, sticky="ew", padx=8, pady=8)
         bar.columnconfigure(1, weight=1)
 
-        ttk.Label(bar, text="Explanation:", font=("Segoe UI", 8, "bold")).grid(
-            row=0, column=0, columnspan=3, sticky="w")
-        ttk.Label(
-            bar, wraplength=760, justify="left", foreground="#6b7280",
-            font=("Segoe UI", 8),
-            text="Logs every write/query/read/serial-poll THIS app sends over "
-                 "GPIB or USB (switch matrix, SMU, DMM, prober), with a "
-                 "millisecond timestamp. It can only see this process's own "
-                 "traffic - to see LabVIEW's own commands for comparison, run "
-                 "NI I/O Trace (Start Menu -> \"NI I/O Trace\", or NI MAX's "
-                 "Tools menu) at the same time; it hooks the driver itself so "
-                 "it sees any app, LabVIEW included, with no setup here."
-        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 8))
-
-        ttk.Label(bar, text="Log file:").grid(row=2, column=0, sticky="w")
+        ttk.Label(bar, text="Log file:").grid(row=0, column=0, sticky="w")
         entry = ttk.Entry(bar, textvariable=self._log_path_var)
-        entry.grid(row=2, column=1, sticky="ew", padx=6)
-        ttk.Button(bar, text="Browse…", command=self._browse).grid(row=2, column=2)
+        entry.grid(row=0, column=1, sticky="ew", padx=6)
+        ttk.Button(bar, text="Browse…", command=self._browse).grid(row=0, column=2)
 
         btn_row = ttk.Frame(bar)
-        btn_row.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
-        self._start_btn = ttk.Button(btn_row, text="▶ Start Trace", command=self._start)
+        btn_row.grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        self._start_btn = ttk.Button(btn_row, text="Start Trace", command=self._start)
         self._start_btn.pack(side="left")
-        self._stop_btn = ttk.Button(btn_row, text="⏹ Stop", command=self._stop,
+        self._stop_btn = ttk.Button(btn_row, text="Stop", command=self._stop,
                                     state="disabled")
         self._stop_btn.pack(side="left", padx=(6, 0))
-        ttk.Button(btn_row, text="🗑 Clear view", command=self._clear_view).pack(
+        ttk.Button(btn_row, text="Clear view", command=self._clear_view).pack(
             side="left", padx=(6, 0))
-        ttk.Button(btn_row, text="📂 Open log folder", command=self._open_folder).pack(
+        ttk.Button(btn_row, text="Open log folder", command=self._open_folder).pack(
             side="left", padx=(6, 0))
         ttk.Label(btn_row, textvariable=self._status_var, foreground="#2563eb").pack(
             side="left", padx=(12, 0))
@@ -154,7 +140,7 @@ class GpibTracePanel(ttk.Frame):
         try:
             os.startfile(folder)
         except Exception as e:
-            self.controller.log(f"[GPIB TRACE] Could not open {folder!r}: {e}")
+            self.controller.log(f"[SETUP] Could not open folder: {e}")
 
     def _on_destroy(self, event):
         if event.widget is not self:

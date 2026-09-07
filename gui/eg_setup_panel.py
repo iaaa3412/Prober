@@ -82,10 +82,9 @@ class EgSetupPanel(ttk.Frame):
     def _update_active_label(self):
         active = eg_profiles.active_name()
         if self._bench_var.get() == active:
-            self._active_lbl.set(f"● currently active ({active})")
+            self._active_lbl.set(f"● active ({active})")
         else:
-            self._active_lbl.set(f"active bench is {active!r} - "
-                                 "switch to it from the toolbar to test changes live")
+            self._active_lbl.set(f"active bench is {active!r}")
 
     def _on_bench_picked(self):
         self._update_active_label()
@@ -98,8 +97,7 @@ class EgSetupPanel(ttk.Frame):
             return
         name = simpledialog.askstring(
             "Add Prober",
-            f"New prober name (starts as a copy of {source!r} - "
-            "every instrument, address, and note comes along, ready to edit):",
+            f"New prober name (starts as a copy of {source!r}):",
             parent=self)
         if not name:
             return
@@ -304,7 +302,7 @@ class _InstrumentDialog(tk.Toplevel):
 
         row += 1
         self._fitted_var = tk.BooleanVar(value=bool(fitted0))
-        ttk.Checkbutton(body, text="Fitted (physically on this bench)",
+        ttk.Checkbutton(body, text="Fitted (will ping on startup)",
                        variable=self._fitted_var).grid(
                        row=row, column=0, columnspan=2, sticky="w", pady=(6, 3))
 

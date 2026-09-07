@@ -77,7 +77,7 @@ class ExecutionDashboard(ttk.Frame):
             self._wafer_map._last_dies if self._wafer_map else None
         )
         if not src:
-            self.log("[SIM] No wafer map data yet.")
+            self.log("[SIM REMOVE] No wafer map data yet.")
             return
 
         self.dies = []
@@ -108,7 +108,7 @@ class ExecutionDashboard(ttk.Frame):
         self._prev_die = None
         self._update_current_die()
         self._refresh()
-        self.log(f"[SIM] {len(self.dies)} dies loaded from wafer map.")
+        self.log(f"[SIM REMOVE] {len(self.dies)} dies loaded from wafer map.")
         self._fire_stats()
 
     def load_recipe(self):
@@ -444,15 +444,15 @@ class ExecutionDashboard(ttk.Frame):
 
     def toggle_running(self):
         if not self.dies:
-            self.log("[SIM] No dies loaded. Load an ATA folder first.")
+            self.log("[SIM REMOVE] No dies loaded. Load an ATA folder first.")
             return
         self.running = not self.running
         self.aborted = False
         if self.running:
-            self.log("[SIM] Run started.")
+            self.log("[SIM REMOVE] Run started.")
             self._auto_step()
         else:
-            self.log("[SIM] Run paused.")
+            self.log("[SIM REMOVE] Run paused.")
         self._refresh()
 
     def start_run(self):
@@ -463,7 +463,7 @@ class ExecutionDashboard(ttk.Frame):
         if not self.running or self.aborted:
             return
         if not self.current_die:
-            self.log("[SIM] No current die available.")
+            self.log("[SIM REMOVE] No current die available.")
             self.running = False
             self._refresh()
             return
@@ -483,7 +483,7 @@ class ExecutionDashboard(ttk.Frame):
         total_testable = len([d for d in self.dies if d["status"] != "SKIP"])
         if self.stats["tested"] >= total_testable:
             self.running = False
-            self.log("[SIM] Full wafer demo complete.")
+            self.log("[SIM REMOVE] Full wafer demo complete.")
             self._refresh()
             return
         self.after(700, self._auto_step)
@@ -494,7 +494,7 @@ class ExecutionDashboard(ttk.Frame):
         self.alignment["theta_deg"]   = random.uniform(-0.025, 0.025)
         self.alignment["confidence"]  = random.uniform(98.2, 99.9)
         self.log(
-            f"[ALIGN] dX={self.alignment['offset_x_um']:.2f} µm, "
+            f"[ALIGN REMOVE] dX={self.alignment['offset_x_um']:.2f} µm, "
             f"dY={self.alignment['offset_y_um']:.2f} µm, "
             f"θ={self.alignment['theta_deg']:.4f}°, "
             f"conf={self.alignment['confidence']:.2f}%."
@@ -516,10 +516,10 @@ class ExecutionDashboard(ttk.Frame):
         if not self.current_die:
             return
         if not self.in_contact:
-            self.log("[TEST] Cannot run: probes not in contact. Press Touchdown first.")
+            self.log("[TEST REMOVE] Cannot run: probes not in contact. Press Touchdown first.")
             return
         d = self.current_die
-        self.log(f"[TEST] Running {self.recipe} on {d['die_id']}.")
+        self.log(f"[TEST REMOVE] Running {self.recipe} on {d['die_id']}.")
 
         leakage        = abs(random.gauss(0.45, 0.25))
         sensor_current = abs(random.gauss(0.120, 0.018))
@@ -550,7 +550,7 @@ class ExecutionDashboard(ttk.Frame):
         if passed:
             self.stats["pass"] += 1
             self.log(
-                f"[RESULT] PASS {d['die_id']}: "
+                f"[RESULTS] PASS {d['die_id']}: "
                 f"leak={leakage:.3f} nA, "
                 f"I_nanoz={sensor_current:.4f} mA, "
                 f"I_heater={heater_current:.3f} mA."
@@ -558,7 +558,7 @@ class ExecutionDashboard(ttk.Frame):
         else:
             self.stats["fail"] += 1
             self.log(
-                f"[RESULT] FAIL {d['die_id']}: "
+                f"[RESULTS] FAIL {d['die_id']}: "
                 f"leak={leakage:.3f} nA, "
                 f"I_nanoz={sensor_current:.4f} mA, "
                 f"I_heater={heater_current:.3f} mA."
@@ -611,7 +611,7 @@ class ExecutionDashboard(ttk.Frame):
         self.running    = False
         self.in_contact = False
         self.aborted    = True
-        self.log("[ABORT] Run Stopped.")
+        self.log("[PROBER] Run Stopped.")
         self._refresh()
 
 class _FakeLabel:

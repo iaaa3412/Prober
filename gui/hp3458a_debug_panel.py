@@ -76,11 +76,11 @@ class HP3458ADebugPanel(ttk.Frame):
     def _run(self, label: str, fn):
         """Run `fn` off the UI thread, one at a time."""
         if self._busy:
-            self._log(f"[3458A] Busy — {label} ignored")
+            self._log(f"[INSTRUMENT] Busy — {label} ignored")
             return
         drv = self._drv()
         if not drv:
-            self._log("[3458A] Not connected")
+            self._log("[INSTRUMENT] Not connected")
             return
         self._busy = True
         self._state_var.set(f"… {label}")
@@ -90,7 +90,7 @@ class HP3458ADebugPanel(ttk.Frame):
                 done = fn(drv)
             except Exception as e:
                 err = f"{type(e).__name__}: {str(e).splitlines()[0][:90]}"
-                self._ui(lambda: self._log(f"[3458A] {label} failed — {err}"))
+                self._ui(lambda: self._log(f"[INSTRUMENT] {label} failed — {err}"))
                 done = None
             finally:
                 self._busy = False
@@ -211,7 +211,6 @@ class HP3458ADebugPanel(ttk.Frame):
     def _build_readout(self):
         lf = ttk.LabelFrame(self, text="Reading", padding=6)
         lf.grid(row=3, column=0, sticky="nsew", padx=6, pady=(2, 6))
-        lf.rowconfigure(2, weight=1)
         lf.columnconfigure(0, weight=1)
 
         btns = ttk.Frame(lf)
@@ -228,11 +227,8 @@ class HP3458ADebugPanel(ttk.Frame):
         tk.Label(lf, textvariable=self._reading_var, font=("Consolas", 20, "bold"),
                  fg="#0077cc", anchor="w").grid(row=1, column=0, sticky="ew", pady=(6, 4))
 
-        self._out = tk.Text(lf, height=9, font=("Consolas", 8), wrap="none")
-        self._out.grid(row=2, column=0, sticky="nsew")
-
         raw = ttk.Frame(lf)
-        raw.grid(row=3, column=0, sticky="ew", pady=(6, 0))
+        raw.grid(row=2, column=0, sticky="ew", pady=(6, 0))
         ttk.Label(raw, text="Raw:").pack(side="left")
         self._raw_var = tk.StringVar()
         entry = ttk.Entry(raw, textvariable=self._raw_var)
@@ -243,9 +239,7 @@ class HP3458ADebugPanel(ttk.Frame):
     # -- helpers ------------------------------------------------------------
 
     def _emit(self, text: str):
-        self._out.insert("end", text + "\n")
-        self._out.see("end")
-        self._log(f"[3458A] {text}")
+        self._log(f"[INSTRUMENT] {text}")
 
     def _on_func(self):
         self._func = self._func_var.get()

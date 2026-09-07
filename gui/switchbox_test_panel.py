@@ -153,10 +153,6 @@ class SwitchboxTestPanel(ttk.Frame):
 
         bar = ttk.Frame(lf)
         bar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 4))
-        ttk.Label(bar, text="Double-click a row to assign it. Pins come from "
-                            "the active probe card - they are what actually "
-                            "lands on the relay.",
-                  foreground="#4b5563", font=("Segoe UI", 8)).pack(side="left")
         ttk.Button(bar, text="↻ Refresh",
                    command=self._refresh_assignments).pack(side="right")
 
@@ -238,7 +234,7 @@ class SwitchboxTestPanel(ttk.Frame):
             return
         app_settings.set_channel_assignment(self._bench(), iid, new)
         tree.item(iid, values=(card, chan, known, new.strip()))
-        self._log(f"[SWITCH] {card} ch{chan} assigned to "
+        self._log(f"[SETUP] {card} ch{chan} assigned to "
                   f"{new.strip() or '(cleared)'}")
 
     # -- plumbing -----------------------------------------------------------
@@ -259,11 +255,11 @@ class SwitchboxTestPanel(ttk.Frame):
 
     def _run(self, label, fn):
         if self._busy:
-            self._log(f"[RELAY] Busy — {label} ignored")
+            self._log(f"[INSTRUMENT] Busy — {label} ignored")
             return
         drv = self._drv()
         if not drv:
-            self._log(f"[RELAY] {self._key or 'card'} not connected")
+            self._log(f"[INSTRUMENT] {self._key or 'card'} not connected")
             return
         self._busy = True
         self._status.set(f"… {label}")
@@ -273,7 +269,7 @@ class SwitchboxTestPanel(ttk.Frame):
                 done = fn(drv)
             except Exception as e:
                 err = f"{type(e).__name__}: {str(e).splitlines()[0][:90]}"
-                self._ui(lambda: self._log(f"[RELAY] {label} failed — {err}"))
+                self._ui(lambda: self._log(f"[INSTRUMENT] {label} failed — {err}"))
                 done = None
             finally:
                 self._busy = False
@@ -307,7 +303,7 @@ class SwitchboxTestPanel(ttk.Frame):
         self._card_cb.pack(side="left", padx=6)
         self._card_cb.bind("<<ComboboxSelected>>", lambda _e: self._select_card())
 
-        ttk.Button(row, text="■ ALL OPEN", command=self._all_open).pack(
+        ttk.Button(row, text="Open all", command=self._all_open).pack(
             side="left", padx=(8, 0))
         ttk.Button(row, text="↻ Read state", command=self._read_all).pack(
             side="left", padx=4)
@@ -402,7 +398,7 @@ class SwitchboxTestPanel(ttk.Frame):
         self._scan_port = scan_port
         self._draw()
         self._build_family_actions()
-        self._log(f"[RELAY] {self._key}: {card_type} -> {family}"
+        self._log(f"[INSTRUMENT] {self._key}: {card_type} -> {family}"
                   + (f", SCAN:PORT {scan_port}" if scan_port else ""))
 
     # -- drawing ------------------------------------------------------------
@@ -672,7 +668,7 @@ class SwitchboxTestPanel(ttk.Frame):
         self._state = dict(states)
         self._draw()
         if note:
-            self._log(f"[RELAY] {self._key}: {note}")
+            self._log(f"[INSTRUMENT] {self._key}: {note}")
 
     def _read_all(self):
         def _work(d):
@@ -701,7 +697,7 @@ class SwitchboxTestPanel(ttk.Frame):
             def _done():
                 self._scan_port = got
                 self._draw()
-                self._log(f"[RELAY] {self._key}: SCAN:PORT {got}")
+                self._log(f"[INSTRUMENT] {self._key}: SCAN:PORT {got}")
             return _done
         self._run(f"SCAN:PORT {port}", _work)
 
@@ -792,4 +788,4 @@ class SwitchboxTestPanel(ttk.Frame):
                              f"{TREE_LABELS[t]}")
         with open(path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
-        self._log(f"[RELAY] State saved to {path}")
+        self._log("[INSTRUMENT] State saved")

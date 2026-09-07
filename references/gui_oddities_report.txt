@@ -1,0 +1,337 @@
+GUI Oddities / Dead-Code Report
+================================
+Running log of odd, dead, or unreachable things found while doing the
+popup-by-popup visual cleanup pass. Not bugs necessarily -- just things
+worth a second look / decision later.
+
+------------------------------------------------------------------------
+
+1. Instrument tab - "Alignment" sub-tab is orphaned / unreachable (dead code)
+   File: gui/instrument_panel.py
+   Found: 2026-09-05
+
+   MainLayout.__init__ calls self._build_alignment_panel() (line 469), which
+   builds a full tab (Marks list, "Lock Alignment" / "Run Handshake" buttons,
+   AlignmentPanel, jog-confirmation popup, computed-transform result bar) and
+   stores its pieces as self.align_panel / self._align_tree / etc. But the
+   `tab` Frame it builds is never passed to nb.add(...) on any notebook -- it
+   is constructed, then left unattached to the widget tree. So there is
+   currently NO way to open this tab, click "Run Handshake", or ever see the
+   "Alignment - Mark N" jog popup (instrument_panel.py:2560) in the running
+   app.
+
+   Looks like leftover code from before the tab layout was restructured.
+   Needs a decision: wire it back into a notebook, or delete the dead code
+   (_build_alignment_panel, _run_alignment_handshake, _show_jog_popup,
+   AlignmentPanel usage here) if the feature is no longer wanted.
+
+------------------------------------------------------------------------
+
+2. Export Format editor - trigger/wiring not yet confirmed
+   File: gui/instrument_panel.py (dialog starts ~line 7948)
+   Found: 2026-09-05
+
+   Did text/visual cleanup on this dialog (New/Edit Export Format) but did
+   not trace how it's actually opened (which button(s), which tab, whether
+   "New" and "Edit" both route through the same builder, how existing_fmt
+   is populated, etc.). More research needed on how this popup is set up
+   before we call the cleanup pass on it fully done.
+
+------------------------------------------------------------------------
+
+3. Accretech instrument add/edit dialog (_InstrumentDialog) - trigger/wiring
+   not yet confirmed, and has an Electroglas sibling
+   File: gui/accretech_setup_panel.py (_InstrumentDialog, ~line 345)
+   Found: 2026-09-05
+
+   Did text cleanup on the "Fitted" checkbox label but did not trace how
+   this dialog is opened (Setup tab -> "+ Add Instrument" / "Edit" per row -
+   assumed but not confirmed), nor how MANDATORY_KEYS slots (prober,
+   switch_matrix) differ in practice from removable ones. Also note:
+   gui/eg_setup_panel.py has a near-identical sibling dialog for
+   Electroglas (same fields/validation) that was NOT updated with this
+   text change - needs the same "Fitted (will ping on startup)" edit for
+   consistency, and its own trigger path confirmed too.
+
+------------------------------------------------------------------------
+
+4. Accretech vs Electroglas Debug tab now inconsistent on confirm prompts
+   Files: gui/prober_debug_panel.py (Accretech), gui/eg_prober_debug_panel.py
+   (Electroglas)
+   Found: 2026-09-05
+
+   Per explicit request, ALL 10 askyesno/askokcancel confirmation popups were
+   removed from the Accretech Prober Debug tab (prober_debug_panel.py) -
+   every motion button (A/S/J/I/Z/D/next die/unload/emergency stop/raw
+   motion command) now sends immediately with no "are you sure" gate.
+
+   gui/eg_prober_debug_panel.py (Electroglas's equivalent debug tab) was
+   NOT touched and still has its 4 confirm prompts (LaMP init sequence,
+   Infer Die Size, Confirm Motion, raw Motion Command). This was a
+   deliberate scope decision (Accretech only, per the request) but leaves
+   the two systems' debug tabs behaving differently for equivalent/parallel
+   actions - worth a decision on whether Electroglas should match (either
+   direction) for consistency.
+
+------------------------------------------------------------------------
+
+5. SwitchDebugPanel (SCPI/TSP Terminal log) is imported but never used -
+   dead code, same pattern as the Alignment tab (item 1)
+   Files: gui/switch_debug_panel.py, gui/instrument_panel.py:18
+   Found: 2026-09-05
+
+   instrument_panel.py has `from switch_debug_panel import SwitchDebugPanel`
+   at the top, but grepping the whole gui/ folder shows SwitchDebugPanel is
+   never instantiated anywhere - no `SwitchDebugPanel(...)` call, no tab
+   ever adds it. Its "SCPI / TSP Terminal" log widget (switch_debug_panel.py
+   ~line 374) and "Recipe Step Connections" readout are both currently
+   unreachable in the running app. Needs a decision: wire it into a tab
+   (Setup? its own Debug sub-tab?) or delete the dead file/import if the
+   feature was superseded by something else (e.g. switchbox_test_panel.py).
+
+------------------------------------------------------------------------
+
+5b. [ALIGN] log tag is ENTIRELY dead, all 13 call sites - corrects the
+    earlier note below that some were live
+    Files: gui/app.py, gui/execution_panel.py, gui/instrument_panel.py
+    Found: 2026-09-05, corrected 2026-09-05
+
+    Originally thought only 7 of the [ALIGN]-tagged messages were dead
+    (inside _run_alignment_handshake/_show_jog_popup, instrument_panel.py -
+    the orphaned Alignment tab from item 1) while app.py's "Alignment
+    locked by operator." and execution_panel.py's "dX=.../dY=..." offset
+    message were live. On closer check, BOTH of those "live" ones are
+    triggered by the "Lock Alignment" button, which itself lives on the
+    same orphaned _build_alignment_panel tab (instrument_panel.py:2387-2390)
+    - so there is no way to click it either. All 13 [ALIGN] call sites are
+    unreachable. Renamed to [ALIGN REMOVE] during the log-tag cleanup pass
+    to flag the whole tag for deletion alongside item 1's dead code.
+
+------------------------------------------------------------------------
+
+5c. Simulation-mode log messages scattered across several tags/files -
+    worth a decision on whether "sim" mode is still a real feature
+    Files: gui/cassette_panel.py, gui/accr_wafer_panel.py,
+    gui/instrument_panel.py, gui/execution_panel.py
+    Found: 2026-09-05
+
+    Found while cataloguing log tags: several messages exist purely for a
+    "no real hardware connected, simulate it" fallback path -
+    cassette_panel.py:818 "(simulated — no prober connected) ...",
+    accr_wafer_panel.py:259 "(sim) Extracting simulated wafer map...",
+    instrument_panel.py:2515/2531 "(sim) A ..." / "(sim) Q -> mark ..."
+    (both inside the dead Alignment tab, item 1), and a whole dedicated
+    [SIM] tag in execution_panel.py (7 messages: "No wafer map data yet.",
+    "{N} dies loaded from wafer map.", "No dies loaded...", "Run started.",
+    "Run paused.", "No current die available.", "Full wafer demo
+    complete.") - all inside the orphaned ExecutionDashboard (item 6), so
+    currently only reach the user via Main Log forwarding, not their own
+    UI. Worth deciding whether simulation mode is a real, load-bearing
+    feature to keep supporting (in which case it deserves consistent
+    tagging/treatment) or leftover test scaffolding from development that
+    can be dropped along with the rest of items 1/5b/6's dead code.
+    [SIM] and [TEST] (execution_panel.py, 7 and 2 sites) were renamed to
+    [SIM REMOVE] / [TEST REMOVE] during the log-tag cleanup pass, same
+    treatment as [ALIGN REMOVE] - both tags are entirely inside the
+    orphaned ExecutionDashboard (item 6) and have no reachable trigger.
+
+------------------------------------------------------------------------
+
+5d. Mixed tags: some already-merged log tags still contain a dead subset
+    that couldn't be renamed without un-merging
+    Files: gui/execution_panel.py, gui/switch_debug_panel.py
+    Found: 2026-09-05
+
+    Two tags merged earlier in the log cleanup pass turned out to contain
+    entries from dead code, but since most of the merged tag IS live,
+    renaming the whole tag would mislabel the working majority:
+    - [PROBER]: 6 of its ~67 messages are execution_panel.py's own
+      separate()/touchdown()/next_die()/abort() methods on the orphaned
+      ExecutionDashboard (item 6) - unreachable, same as [ALIGN REMOVE].
+      The rest (eg_prober_debug_panel.py, prober_debug_panel.py, app.py)
+      are live and unrelated.
+    - [INSTRUMENT]: 9 of its ~89 messages are switch_debug_panel.py's
+      (originally [SW]) - unreachable per item 5 (SwitchDebugPanel is
+      never instantiated). The rest (probe_routing_panel.py,
+      instruments_eg_panel.py, hp3458a_debug_panel.py, switchbox_test_panel.py,
+      eg_prober_debug_panel.py) are live.
+    Flagging here rather than renaming, since these are the ones to
+    physically delete (not just relabel) once items 1/5/6 are resolved.
+
+------------------------------------------------------------------------
+
+5e. [RUN] on Electroglas always refuses the native whole-wafer G/J walk -
+    known limitation, not a bug, but worth having on record
+    File: gui/instrument_panel.py, _exec2_start_full_die_walk (~line 4091)
+    Found: 2026-09-05
+
+    _exec2_start_full_die_walk (called by both the "Full Die" button and
+    "Run"'s own no-saved-touchdowns fallback) immediately refuses and logs
+    "[RUN] {mode_label}: the native whole-wafer walk (G/J) is Accretech-only
+    ..." whenever the active system is Electroglas, before doing anything
+    else. This is intentional per the code's own comment - the G/J walk
+    depends on Accretech's status-byte handshake and onboard wafer map,
+    which Electroglas has neither of; Electroglas is expected to use the
+    PMA Run tab instead. Not a defect, but means "Full Die" and "Run" (with
+    no saved touchdowns) are effectively Accretech-only entry points -
+    worth surfacing in the manual/UI rather than only discovering it via
+    this refusal message.
+
+------------------------------------------------------------------------
+
+5f. [NANOZ] tag in execution_panel.py (2 sites) is dead - same orphaned
+    ExecutionDashboard pattern as items 5b/5c/6
+    File: gui/execution_panel.py (simulate_nanoz_frame, ~line 570)
+    Found: 2026-09-05
+
+    "[NANOZ] Checksum warning: frame discarded." and "[NANOZ] #spl! chip=
+    {chip}, mask=0x0F, I=[...] mA." are both inside ExecutionDashboard.
+    simulate_nanoz_frame(), a fake/simulated NanoZ frame generator on the
+    orphaned dashboard (item 6) - unreachable, same as [ALIGN REMOVE]/
+    [SIM REMOVE]/[TEST REMOVE]. Not renamed to [NANOZ REMOVE] since the
+    tag is shared with a real, live [NANOZ] message in nanoz_panel.py
+    (the actual NanoZ tab's own log forwarder) - renaming the whole tag
+    would mislabel that live one, same reasoning as item 5d's mixed-tag
+    cases (PROBER/INSTRUMENT). Flagging here instead for physical deletion
+    alongside the rest of ExecutionDashboard's dead code.
+
+------------------------------------------------------------------------
+
+5g. [SHOT WINDOW] is a self-described temporary diagnostic left in the code
+    File: gui/instrument_panel.py (~line 7205-7217)
+    Found: 2026-09-05
+
+    Single log site with a comment literally reading "Diagnostic
+    (temporary) - if the box turns out misaligned with the overlay's own
+    die-ID labels, this line has everything needed to tell whether it's
+    the offset, the shot dims, or the current position that's wrong."
+    Fires on the shot-window overlay redraw (live, on the real Run tab),
+    deduplicated against the last logged inputs so panning/zooming doesn't
+    flood the log. Worth a decision on whether the overlay alignment
+    feature is now trusted enough to remove this, or whether it should
+    stay as a permanent debug aid (in which case it's fine as-is, just
+    mislabeled as "temporary").
+
+------------------------------------------------------------------------
+
+5h. [MEASURE]'s REAL per-die measurement loop silently falls back to fake
+    randomized readings when hardware isn't connected - a different,
+    live "sim" path from the dead [SIM REMOVE]/ExecutionDashboard one
+    File: gui/instrument_panel.py, _exec2_run_steps_once (~line 6027-6097
+    onward) and its per-step-type sim fallbacks throughout
+    Found: 2026-09-05
+
+    Unlike item 5c's dead ExecutionDashboard "sim" demo mode, this is a
+    LIVE code path inside the real Run tab's measurement loop. Whenever
+    the switch matrix (or a given step's instrument) isn't connected, `sim`
+    is set True and every measurement in that iteration reads back a fake
+    value instead (e.g. voltage/current steps use `random.gauss(3.3, 0.1)`
+    or similar synthetic noise around the nominal level, current-apply
+    readback synthesizes a value near the commanded level with a tiny
+    gaussian jitter). The only indicator in the log is a small suffix on
+    ONE line - "[MEASURE] One iteration — {N} step(s)  [SIM — no switch
+    matrix connected]" - easy to miss, and none of the individual R=/V=/I=
+    lines that follow are marked as simulated themselves. Worth deciding
+    whether every simulated reading line should carry its own visible
+    marker (not just the one summary line at the top of the iteration),
+    since a user skimming mid-log could otherwise mistake fabricated data
+    for a real measurement.
+
+------------------------------------------------------------------------
+
+5i. NanoZ's _log_main() double-tags 3 messages as "[NANOZ] [CASSETTE] ..."
+    in the Main App Log
+    File: gui/nanoz_panel.py (_log_main ~line 3631; call sites ~2665, 2864,
+    2867)
+    Found: 2026-09-06
+
+    _log_main(msg) writes msg to the NanoZ tab's own log box AND forwards
+    it to the Main App Log as f"[NANOZ] {msg}" (line 3634). Three call
+    sites pass a message that ALREADY has its own "[CASSETTE]" tag baked
+    in (e.g. self._log_main(f"[CASSETTE] Slot {slot_num}: {event}")) -
+    so the NanoZ log box shows a clean "[CASSETTE] ..." line, but the
+    Main App Log shows the same event as "[NANOZ] [CASSETTE] ...",
+    double-tagged. The other ~98 _log_main call sites in this file pass
+    plain untagged text and forward correctly as a single "[NANOZ] ...".
+    Worth a decision: strip the embedded [CASSETTE] tag from those 3
+    call sites (matching the other ~98), or accept the double-tag as
+    intentional (e.g. to distinguish NanoZ's own cassette automation from
+    the non-NanoZ cassette_panel.py's identically-tagged [CASSETTE]
+    messages, which land in the Main App Log untagged by [NANOZ]).
+
+------------------------------------------------------------------------
+
+6. ExecutionDashboard ("Execution Log", widget #2 in the log inventory) is
+   ENTIRELY orphaned - built, actively fed, but never shown anywhere
+   Files: gui/execution_panel.py, gui/instrument_panel.py:3037-3046
+   Found: 2026-09-05
+
+   _build_exec_panel() (instrument_panel.py:3037) builds a full
+   ExecutionDashboard (its own Execution Log text box, recipe-load button,
+   alignment readout, wafer-map display) inside a local `tab = ttk.Frame(self)`
+   - but that `tab` is never passed to nb.add(...) on any notebook. The
+   actual visible "Run" tab the user sees is built by a totally different
+   method, _tab_execution2(main_nb) (instrument_panel.py:3048), which does
+   not use ExecutionDashboard at all.
+
+   So self.exec_panel is a fully headless, invisible widget tree - yet
+   app.py calls self.ui.exec_panel.log(...) roughly 20+ times (ATA folder
+   loads, pad/alignment loads, export/save/import errors, alignment lock,
+   abort, etc.), plus self.ui.exec_panel.set_wafer_map(...),
+   .load_recipe(), .lbl_route.config(...), .abort(), .alignment.update(...).
+   None of that is lost - ExecutionDashboard.log() forwards every message to
+   self.controller.log (the Main App Log), confirmed by reading
+   execution_panel.py:316-323 - but the dashboard's OWN log box, and all its
+   other UI (recipe display, wafer map, alignment numbers), are dead code
+   the user can never see, despite being live-updated the whole time the
+   app runs.
+
+   Same underlying pattern as items 1 and 5 (a tab built, wired to real
+   data, and never attached to a notebook) but this is the biggest instance
+   found so far - a whole dashboard class's worth of built UI, not just one
+   popup or one debug panel. Needs a decision: was _tab_execution2 meant to
+   replace ExecutionDashboard entirely (in which case exec_panel and
+   execution_panel.py's dashboard UI are pure dead code, though its .log()
+   forwarding path is still load-bearing for app.py's many exec_panel.log()
+   calls and would need to be kept or redirected), or was ExecutionDashboard
+   supposed to be wired in somewhere and got dropped by accident?
+
+------------------------------------------------------------------------
+
+7. Electroglas Prober Debug tab - hint text removed from UI, preserved here
+   File: gui/eg_prober_debug_panel.py
+   Found: 2026-09-06
+
+   Per user request, all standalone explanatory/hint Labels on this tab were
+   removed from the GUI (the tab was getting visually noisy). The removed
+   text is kept here in case any of it is worth restoring later, e.g. behind
+   a tooltip:
+
+   - Jog pad, arrow-label caveat:
+     "Arrow labels above were measured against a BOTTOM-RIGHT (load-position)
+     datum. After Set First Die (FD) at a centre datum, which physical
+     direction is +X/+Y is NOT confirmed - verify by eye before trusting
+     these labels."
+
+   - Jog pad, MD step-cap note:
+     "MD is bounded by the driver's step cap and, once set, its die
+     envelope — the prober itself does NOT stop you going off the platen."
+
+   - Theta section, unit caveat:
+     "MT's unit is NOT confirmed to be degrees, and CW/CCW here just means
+     +MT/-MT — verify against ?T (and by eye) before trusting the
+     direction. Rotation is normally left to Auto Align (AA)."
+
+   - Raw GPIB Terminal, query-syntax note:
+     "Commands starting with '?' are sent as queries (e.g. ?S, ?X, ?Y);
+     everything else is written as-is. Known motion mnemonics ask for
+     confirmation first."
+
+   - "About Status Reporting" LabelFrame body text (the LabelFrame itself
+     was kept, now empty of body text):
+     "The Electroglas 2001CXE reports status as a string via '?S' (e.g.
+     'idle', 'moving', 'error: ...') rather than a numeric GP-IB status
+     byte, so there is no STB code table here — read the status line above
+     after sending a command."
+
+------------------------------------------------------------------------

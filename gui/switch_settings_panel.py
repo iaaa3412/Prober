@@ -52,9 +52,6 @@ class SwitchSettingsPanel(ttk.Frame):
         self._bench_cb.pack(side="left", padx=(4, 8))
         self._bench_cb.bind("<<ComboboxSelected>>",
                             lambda _e: self._load_bench(self._bench_var.get()))
-        self._bench_note_var = tk.StringVar(value="")
-        ttk.Label(bar, textvariable=self._bench_note_var, foreground="#6b7280",
-                 font=("Segoe UI", 8, "italic")).pack(side="left")
         self._refresh_bench_choices()
 
     def _refresh_bench_choices(self):
@@ -64,10 +61,6 @@ class SwitchSettingsPanel(ttk.Frame):
             names = []
         names = names or [self._bench_var.get()]
         self._bench_cb.config(values=names)
-        active = self._active_bench()
-        self._bench_note_var.set(
-            "(currently active)" if self._bench_var.get() == active
-            else f"active bench is {active!r}")
 
     def _load_bench(self, bench: str):
         self._slots = [dict(s) for s in topo.slots(bench)]
@@ -95,16 +88,6 @@ class SwitchSettingsPanel(ttk.Frame):
     def _build_header(self):
         hdr = ttk.Frame(self, padding=(10, 10, 10, 4))
         hdr.grid(row=1, column=0, sticky="ew")
-        ttk.Label(hdr, text="Switch Matrix Settings",
-                 font=("Segoe UI", 11, "bold")).pack(anchor="w")
-        ttk.Label(hdr, foreground="gray", font=("Segoe UI", 8), wraplength=780, justify="left",
-                 text="Defines how the switch matrix is physically wired: which slots hold "
-                      "cards (and how many probe-card pins/columns each one covers), how "
-                      "many row letters the matrix has, and which instrument each row "
-                      "connects to. Recipes resolve their HI/LO channel codes from this — "
-                      "saving changes here takes effect immediately for any step computed "
-                      "afterward."
-                 ).pack(anchor="w", pady=(2, 0))
 
     def _build_slots_section(self):
         lf = ttk.LabelFrame(self, text="Slots / Cards", padding=8)
@@ -209,8 +192,7 @@ class SwitchSettingsPanel(ttk.Frame):
         else:
             self._slots.append({"slot": slot_id, "cols": cols, "rows": rows})
         self._refresh_slots_tree()
-        self._log(f"[SETTINGS] Slot '{slot_id}' set: {cols} columns, rows {','.join(rows)} "
-                  "(not saved yet — click Save Settings)")
+        self._log(f"[SETUP] Slot '{slot_id}' set: {cols} columns, rows {','.join(rows)}")
 
     def _remove_slot(self):
         sel = self._slots_tree.selection()
@@ -219,7 +201,7 @@ class SwitchSettingsPanel(ttk.Frame):
         slot_id = sel[0]
         self._slots = [s for s in self._slots if s["slot"] != slot_id]
         self._refresh_slots_tree()
-        self._log(f"[SETTINGS] Slot '{slot_id}' removed (not saved yet — click Save Settings)")
+        self._log(f"[SETUP] Slot '{slot_id}' removed")
 
     def _build_roles_section(self):
         lf = ttk.LabelFrame(self, text="Row Wiring (which instrument each row connects to)",
@@ -315,16 +297,14 @@ class SwitchSettingsPanel(ttk.Frame):
             added = topo.ROW_LETTERS_POOL[len(current):n]
             for letter in added:
                 self._roles[letter] = {"instrument": "", "channel": "", "polarity": ""}
-            self._log(f"[SETTINGS] Added row(s) {','.join(added)} "
-                      "(not saved yet — click Save Settings)")
+            self._log(f"[SETUP] Added row(s) {','.join(added)}")
         else:
             removed = current[n:]
             for letter in removed:
                 self._roles.pop(letter, None)
             for spec in self._slots:
                 spec["rows"] = [r for r in spec.get("rows", []) if r not in removed]
-            self._log(f"[SETTINGS] Removed row(s) {','.join(removed)} from "
-                      "roles and slots (not saved yet — click Save Settings)")
+            self._log(f"[SETUP] Removed row(s) {','.join(removed)} from roles and slots")
         self._row_count_var.set(str(len(self._roles)))
         self._role_row_cb.config(values=self._row_letters())
         if self._role_row_var.get() not in self._roles:
@@ -356,8 +336,8 @@ class SwitchSettingsPanel(ttk.Frame):
         self._roles[letter] = {"instrument": instrument, "channel": channel,
                                "polarity": polarity}
         self._refresh_roles_tree()
-        self._log(f"[SETTINGS] Row {letter} set to "
-                  f"{topo.role_label(self._roles[letter])} (not saved yet — click Save Settings)")
+        self._log(f"[SETUP] Row {letter} set to "
+                  f"{topo.role_label(self._roles[letter])}")
 
     def _build_footer(self):
         bar = ttk.Frame(self, padding=(10, 4, 10, 10))
@@ -373,7 +353,7 @@ class SwitchSettingsPanel(ttk.Frame):
         try:
             self.controller.refresh_probe_routing_panels()
         except Exception as exc:
-            self._log(f"[SETTINGS] Could not refresh Switch Routing view: {exc}")
+            self._log(f"[SETUP] Could not refresh Switch Routing view: {exc}")
 
     def _save(self):
         bench = self._bench_var.get()
@@ -381,8 +361,7 @@ class SwitchSettingsPanel(ttk.Frame):
                "row_roles": {k: dict(v) for k, v in self._roles.items()}}
         topo.save_topology(data, bench)
         self._status_var.set(f"Saved {bench!r} to {topo.TOPOLOGY_PATH}")
-        self._log(f"[SETTINGS] Switch topology saved for {bench!r} — recipe "
-                  "channel resolution updates immediately.")
+        self._log(f"[SETUP] Switch topology saved for {bench!r}")
         self._notify_routing()
 
     def _reset(self):
@@ -402,5 +381,5 @@ class SwitchSettingsPanel(ttk.Frame):
         self._refresh_slots_tree()
         self._refresh_roles_tree()
         self._status_var.set(f"{bench!r} reset to defaults and saved.")
-        self._log(f"[SETTINGS] Switch topology for {bench!r} reset to defaults.")
+        self._log(f"[SETUP] Switch topology for {bench!r} reset to defaults.")
         self._notify_routing()

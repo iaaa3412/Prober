@@ -1198,7 +1198,7 @@ class RecipePanel(ttk.Frame):
                                       font=("Segoe UI", 9, "bold"))
         self._validity_lbl.pack(side="left", padx=(0, 8), pady=4)
 
-        self._btn_set_default = ttk.Button(bar, text="⭐ Set as Default", width=15,
+        self._btn_set_default = ttk.Button(bar, text="Set Default", width=15,
                                            command=self._set_default_recipe)
         self._btn_set_default.pack(side="left", padx=2, pady=4)
 
@@ -1208,7 +1208,7 @@ class RecipePanel(ttk.Frame):
         self._btn_rename = ttk.Button(bar, text="✎ Rename", width=11,
                                       command=self._rename_recipe)
         self._btn_rename.pack(side="left", padx=2, pady=4)
-        self._btn_delete = ttk.Button(bar, text="🗑 Delete", width=11,
+        self._btn_delete = ttk.Button(bar, text="Delete", width=11,
                                       command=self._delete_recipe)
         self._btn_delete.pack(side="left", padx=2, pady=4)
 
@@ -1219,7 +1219,7 @@ class RecipePanel(ttk.Frame):
         # import_legacy_workbook_from_path underneath. Two entry points meant a
         # recipe could be imported here from one PMA while the run adopted
         # another, with nothing to flag the mismatch.
-        self._btn_save = ttk.Button(bar, text="💾  Save", command=self._save)
+        self._btn_save = ttk.Button(bar, text="Save", command=self._save)
         self._btn_save.pack(side="left", padx=2, pady=4)
 
         self._locked_lbl = tk.Label(bar, text="", bg="#e2e8f0", fg="#b45309",
@@ -1263,7 +1263,7 @@ class RecipePanel(ttk.Frame):
         split across two."""
         if self._system == "accretech":
             self._shot_origin_btn = ttk.Button(
-                parent, text="↻ Refresh", state="disabled",
+                parent, text="Refresh", state="disabled",
                 command=self._refresh_shot_origin_label)
         else:
             self._shot_origin_btn = ttk.Button(
@@ -1436,20 +1436,20 @@ class RecipePanel(ttk.Frame):
         bar.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(4, 4))
         ttk.Button(bar, text="⬅ Take from map selection",
                    command=self._sites_from_map).pack(side="left")
-        ttk.Button(bar, text="🏷 Take die IDs",
+        ttk.Button(bar, text="Take die IDs",
                    command=self._sites_from_die_ids).pack(side="left", padx=(6, 0))
         ttk.Button(bar, text="➡ Push to map",
                    command=self._sites_to_map).pack(side="left", padx=(6, 0))
         ttk.Button(bar, text="✕ Remove selected",
                    command=self._site_remove).pack(side="left", padx=(16, 0))
-        ttk.Button(bar, text="🗑 Clear all",
+        ttk.Button(bar, text="Clear all",
                    command=self._sites_clear).pack(side="left", padx=(6, 0))
 
         # Basic map-only builders: fill the table below and nothing else -
         # no map highlighting, no auto-save. ➡ Push to map / 💾 Save (both
         # already exist) are the separate, explicit next steps, same as a
         # hand-picked list from ⬅ Take from map selection.
-        ttk.Button(bar, text="🎯 Pull shots",
+        ttk.Button(bar, text="Pull shots",
                    command=self._sites_pull_shots).pack(side="left", padx=(16, 0))
         ttk.Button(bar, text="🔎 Find all",
                    command=self._sites_find_all).pack(side="left", padx=(6, 0))
@@ -1501,9 +1501,7 @@ class RecipePanel(ttk.Frame):
         if not picks:
             messagebox.showinfo(
                 "Touchdowns",
-                "No dies are selected on the Run tab's map.\n\n"
-                "Click dies there (or use the Run tab's selection tools), then "
-                "come back and press this again.")
+                "No dies are selected on the Run tab's map.")
             return
         # On Electroglas a square is a die and a shot owns several of them -
         # the chuck lands once per shot, so four picked dies of one shot
@@ -1550,8 +1548,7 @@ class RecipePanel(ttk.Frame):
             messagebox.showinfo(
                 "Touchdowns",
                 "No dies on the loaded map carry a die ID.\n\n"
-                "Overlay the map (Run tab) or load a map that has real IDs, "
-                "then press this again.")
+                "Overlay the map (Run tab) or load a map that has real IDs.")
             return
         picks = sorted(ided.keys())
         wm.set_picked(picks)
@@ -1587,8 +1584,7 @@ class RecipePanel(ttk.Frame):
         if shot_rows * shot_cols <= 1:
             messagebox.showinfo(
                 "Touchdowns",
-                "The Wafer Builder Shot template is a single die - there is "
-                "nothing to pick 'the first die of each shot' from.")
+                "The Wafer Builder Shot template is a single die.")
             return
         if not getattr(ui, "_exec2_overlay_offset_confirmed", False):
             messagebox.showinfo(
@@ -1724,7 +1720,7 @@ class RecipePanel(ttk.Frame):
         if not messagebox.askokcancel(
                 "Clear touchdowns",
                 f"Remove all {len(self._sites)} touchdown(s) from "
-                f"'{self._current}'?\n\nThe run will then walk every die."):
+                f"'{self._current}'?\n\nThe run will then touch every die."):
             return
         self._sites.clear()
         self._store_form()
@@ -1960,7 +1956,7 @@ class RecipePanel(ttk.Frame):
         # is usually leaded up directly for a 4-wire check - see
         # _default_route_for.
         self._direct_chk = ttk.Checkbutton(
-            editor, text="Direct wiring (no switchbox)",
+            editor, text="Direct wiring",
             variable=self._direct_var, command=self._on_route_toggle)
         self._direct_chk.grid(row=6, column=0, columnspan=3, sticky="w",
                               padx=(6, 2), pady=(2, 0))
@@ -1986,10 +1982,21 @@ class RecipePanel(ttk.Frame):
         # an ungoverned grid column just takes its natural width from
         # whatever's in it, same as any other).
         self._shortcut_chk = ttk.Checkbutton(
-            editor, text="Don't resend configs (may not work if enabled)",
+            editor, text="Don't resend configs",
             variable=self._shortcut_var, command=self._on_shortcut_toggle)
         self._shortcut_chk.grid(row=6, column=3, columnspan=4, sticky="w",
                                 padx=(6, 2), pady=(2, 0))
+        self._minor_moves_chk = ttk.Checkbutton(
+            editor, text="Minor moves (multi-die shot)",
+            variable=self._minor_moves_var, command=self._on_minor_moves_toggle)
+        self._minor_moves_chk.grid(row=6, column=7, columnspan=7, sticky="w",
+                                   padx=(6, 2), pady=(2, 0))
+        self._fast_current_settle_chk = ttk.Checkbutton(
+            editor, text="Skip auto-clear on Force Current (Keithley 2400 only)",
+            variable=self._fast_current_settle_var,
+            command=self._on_fast_current_settle_toggle)
+        self._fast_current_settle_chk.grid(row=8, column=3, columnspan=4, sticky="w",
+                                           padx=(6, 2), pady=(2, 0))
         # Manual mode: see this class's own _manual_mode_var comment /
         # instruments.keithley2400.measure_resistance. Unchecked (AUTO) is
         # correct for almost every recipe - only check this for one that
@@ -1998,19 +2005,8 @@ class RecipePanel(ttk.Frame):
         self._manual_mode_chk = ttk.Checkbutton(
             editor, text="Manual mode (reuse forced current for Ω, Keithley 2400)",
             variable=self._manual_mode_var, command=self._on_manual_mode_toggle)
-        self._manual_mode_chk.grid(row=6, column=7, columnspan=7, sticky="w",
+        self._manual_mode_chk.grid(row=8, column=7, columnspan=7, sticky="w",
                                    padx=(6, 2), pady=(2, 0))
-        self._minor_moves_chk = ttk.Checkbutton(
-            editor, text="Minor moves (multi-die shot)",
-            variable=self._minor_moves_var, command=self._on_minor_moves_toggle)
-        self._minor_moves_chk.grid(row=8, column=0, columnspan=3, sticky="w",
-                                   padx=(6, 2), pady=(2, 0))
-        self._fast_current_settle_chk = ttk.Checkbutton(
-            editor, text="Skip auto-clear on Force Current (Keithley 2400 only)",
-            variable=self._fast_current_settle_var,
-            command=self._on_fast_current_settle_toggle)
-        self._fast_current_settle_chk.grid(row=8, column=3, columnspan=4, sticky="w",
-                                           padx=(6, 2), pady=(2, 0))
         _lbl(4, 6, "Die #:")
         # Which die of the shot this measurement belongs to (Wafer Builder
         # Shot tab's die order, 1-based) - what the Results tab uses to
@@ -2026,10 +2022,10 @@ class RecipePanel(ttk.Frame):
         btns.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(4, 0))
         self._btn_add_step = ttk.Button(btns, text="＋ Add Step", command=self._step_add)
         self._btn_add_step.pack(side="left", padx=2)
-        self._btn_update_step = ttk.Button(btns, text="✎ Update Selected",
+        self._btn_update_step = ttk.Button(btns, text="Update Selected",
                                            command=self._step_update)
         self._btn_update_step.pack(side="left", padx=2)
-        self._btn_remove_step = ttk.Button(btns, text="🗑 Remove", command=self._step_remove)
+        self._btn_remove_step = ttk.Button(btns, text="Remove", command=self._step_remove)
         self._btn_remove_step.pack(side="left", padx=2)
         self._btn_move_up = ttk.Button(btns, text="▲", width=3,
                                        command=lambda: self._step_move(-1))
@@ -2044,7 +2040,7 @@ class RecipePanel(ttk.Frame):
         # looks like it computes the right answer but can't for most
         # projects is worse than no button - both stay Accretech-only.
         if self._system != "electroglas":
-            self._btn_conn = ttk.Button(btns, text="⚙ Compute Connection",
+            self._btn_conn = ttk.Button(btns, text="Compute Connection",
                                         command=self._conn_from_editor)
             self._btn_conn.pack(side="left", padx=(10, 2))
             self._btn_recompute = ttk.Button(btns, text="↻ Compute All",
@@ -3475,7 +3471,7 @@ class RecipePanel(ttk.Frame):
         try:
             useful = parse_pma_params(path)
         except Exception as exc:
-            self.controller.log(f"[RECIPE] Legacy import error: {exc}")
+            self.controller.log(f"[RECIPE] Import error: {exc}")
             return False
         if not useful:
             messagebox.showwarning(
@@ -3582,13 +3578,13 @@ class RecipePanel(ttk.Frame):
 
         mapped = ", ".join(f"{k}={useful[k]}" for k in _PMA_MAPPED_KEYS if k in useful)
         unmapped = ", ".join(f"{k}={useful[k]}" for k in _PMA_UNMAPPED_KEYS if k in useful)
-        msg = (f"[RECIPE] Imported legacy recipe '{name}' from {path} — "
+        msg = (f"[RECIPE] Imported recipe '{name}' — "
               f"{len(steps)} step(s) generated from: {mapped or '(nothing recognized)'}")
         if unmapped:
             msg += f" — no step field for: {unmapped} (set on the instrument directly if needed)"
         self.controller.log(msg)
         if self._save_recipes(card, self._recipes):
-            self._file_lbl.config(text=f"Imported legacy recipe '{name}'", fg="#374151")
+            self._file_lbl.config(text=f"Imported recipe '{name}'", fg="#374151")
             self.controller.log(f"[RECIPE] Saved '{name}' to probe card '{card}'")
         else:
             self.controller.log(
@@ -3636,7 +3632,7 @@ class RecipePanel(ttk.Frame):
             info = _pma_read_main_menu_info(book)
             useful = info["params"]
         except Exception as exc:
-            self.controller.log(f"[RECIPE] Legacy workbook import error: {exc}")
+            self.controller.log(f"[RECIPE] Workbook import error: {exc}")
             messagebox.showerror("Import Failed", f"Could not read that workbook:\n{exc}")
             return False
         if not useful:
@@ -3683,7 +3679,7 @@ class RecipePanel(ttk.Frame):
 
         mapped = ", ".join(f"{k}={useful[k]}" for k in _PMA_MAPPED_KEYS if k in useful)
         unmapped = ", ".join(f"{k}={useful[k]}" for k in _PMA_UNMAPPED_KEYS if k in useful)
-        msg = (f"[RECIPE] Imported legacy recipe '{name}' from workbook {path} — "
+        msg = (f"[RECIPE] Imported recipe '{name}' from workbook — "
               f"{len(steps)} step(s) generated from: {mapped or '(nothing recognized)'}")
         if dies_per_shot > 1:
             msg += f" — repeated {dies_per_shot}x (this probe card's shots co-touch {dies_per_shot} dies)"
@@ -3691,7 +3687,7 @@ class RecipePanel(ttk.Frame):
             msg += f" — no step field for: {unmapped} (set on the instrument directly if needed)"
         self.controller.log(msg)
         if self._save_recipes(card, self._recipes):
-            self._file_lbl.config(text=f"Imported legacy recipe '{name}'", fg="#374151")
+            self._file_lbl.config(text=f"Imported recipe '{name}'", fg="#374151")
             self.controller.log(f"[RECIPE] Saved '{name}' to probe card '{card}'")
         else:
             self.controller.log(

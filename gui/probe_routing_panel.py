@@ -286,12 +286,12 @@ class ProbeRoutingPanel(ttk.Frame):
             if drv:
                 drv.open_crosspoint(f"{slot}{row_letter}", f"{card_col:02d}")
             self._state[key] = False
-            self._log(f"[SW] open  {ch}  (probe {probe})")
+            self._log(f"[INSTRUMENT] open  {ch}  (probe {probe})")
         else:
             if drv:
                 drv.close_channel(ch)
             self._state[key] = True
-            self._log(f"[SW] close {ch}  (probe {probe})")
+            self._log(f"[INSTRUMENT] close {ch}  (probe {probe})")
         self._refresh_dot(slot, row_letter, card_col)
 
 
@@ -300,7 +300,7 @@ class ProbeRoutingPanel(ttk.Frame):
         if drv:
             drv.open_all()
         self.mark_all_open()
-        self._log("[SW] All channels open")
+        self._log("[INSTRUMENT] All channels open")
 
 
     @staticmethod
@@ -338,7 +338,7 @@ class ProbeRoutingPanel(ttk.Frame):
     def _read_all(self):
         drv = self._drv()
         if not drv:
-            self._log("[SW] Read State: switch not connected")
+            self._log("[INSTRUMENT] Read State: switch not connected")
             return
         rows_in_card = [r[0] for r in self._row_map]
         n_col = 12
@@ -350,7 +350,7 @@ class ProbeRoutingPanel(ttk.Frame):
                     for c in range(1, n_col + 1)
                 )
                 raw = drv.query_state(chan_list)
-                self._log(f"[SW] getstate slot {slot_str}: {raw!r}")
+                self._log(f"[INSTRUMENT] getstate slot {slot_str}: {raw!r}")
                 n_exp = len(rows_in_card) * n_col
                 clean = (raw.replace(",", "").replace(";", "")
                             .replace(" ", "").replace("\n", ""))
@@ -364,7 +364,7 @@ class ProbeRoutingPanel(ttk.Frame):
                     for c in range(1, n_col + 1):
                         self._refresh_dot(slot_str, r, c)
             except Exception as e:
-                self._log(f"[SW] Read error slot {slot_str}: {e}")
+                self._log(f"[INSTRUMENT] Read error slot {slot_str}: {e}")
 
 
     def _scpi_send(self):
@@ -379,7 +379,7 @@ class ProbeRoutingPanel(ttk.Frame):
             self._scpi_history.append(cmd)
         self._scpi_hist_idx = -1
         self._scpi_entry.delete(0, "end")
-        self._log(f"[SCPI] >> {cmd}")
+        self._log(f"[INSTRUMENT] >> {cmd}")
         try:
             if "print(" in cmd.lower():
                 resp = drv.query(cmd)
@@ -392,7 +392,7 @@ class ProbeRoutingPanel(ttk.Frame):
 
     def _scpi_print(self, text: str):
         self._scpi_resp_var.set(text)
-        self._log(f"[SCPI] << {text}")
+        self._log(f"[INSTRUMENT] << {text}")
 
     def _scpi_hist_prev(self, _):
         if not self._scpi_history:
