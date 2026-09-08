@@ -502,7 +502,7 @@ class NanoZPanel(ttk.Frame):
                   command=self._nz_td_to_map).pack(side="left", padx=(6, 0))
         ttk.Button(td_bar, text="Remove selected",
                   command=self._nz_td_remove).pack(side="left", padx=(16, 0))
-        ttk.Button(td_bar, text="🗑 Clear all",
+        ttk.Button(td_bar, text="Clear all",
                   command=self._nz_td_clear).pack(side="left", padx=(6, 0))
         ttk.Button(td_bar, text="🔎 Find all",
                   command=self._nz_td_find_all).pack(side="left", padx=(16, 0))
