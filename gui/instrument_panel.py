@@ -2706,10 +2706,10 @@ class MainLayout(ttk.Frame):
             # resize, not the initial split, so the real ratio is set once
             # via sashpos after the window is first drawn - see the
             # after_idle call below map_lf's own body.add.
-            body.add(self.eg_pma_run, weight=20)
+            body.add(self.eg_pma_run, weight=25)
 
         left_col = ttk.Frame(body)
-        body.add(left_col, weight=20 if self._system == "electroglas" else 1)
+        body.add(left_col, weight=25 if self._system == "electroglas" else 1)
         left_col.rowconfigure(0, weight=0)
         left_col.rowconfigure(1, weight=1)
         left_col.columnconfigure(0, weight=1)
@@ -2903,7 +2903,7 @@ class MainLayout(ttk.Frame):
         self._exec_local_btn.grid(row=0, column=1, sticky="ew", padx=(1, 0))
 
         map_lf = ttk.LabelFrame(body, text="Wafer Map")
-        body.add(map_lf, weight=60 if self._system == "electroglas" else 2)
+        body.add(map_lf, weight=50 if self._system == "electroglas" else 2)
         map_lf.rowconfigure(1, weight=1)
         map_lf.columnconfigure(0, weight=1)
 
@@ -2923,11 +2923,11 @@ class MainLayout(ttk.Frame):
                 w = body.winfo_width()
                 if w <= 1:
                     return
-                # 20 : 20 : 60 - Run column (eg_pma_run) ~20%, left_col
+                # 25 : 25 : 50 - Run column (eg_pma_run) ~25%, left_col
                 # (Chuck Position + Pass/Fail, split 50/50 by pos_row's own
-                # columnconfigure - ~10% each) ~20%, Wafer Map the rest.
-                body.sashpos(0, int(w * 0.20))
-                body.sashpos(1, int(w * 0.40))
+                # columnconfigure - ~12.5% each) ~25%, Wafer Map the rest.
+                body.sashpos(0, int(w * 0.25))
+                body.sashpos(1, int(w * 0.50))
             def _set_initial_sashes(_event=None):
                 if body.winfo_width() <= 1:
                     return
@@ -4449,11 +4449,19 @@ class MainLayout(ttk.Frame):
         name = self._exec_wafer_map_var.get().strip()
         if not name:
             return
-        self._exec_load_and_publish_wafer_map(name)
+        gen = getattr(self, "recipe_gen", None)
+        active = gen.map_name_var.get().strip() if gen is not None else ""
+        if name == active:
+            self._exec_log(f"[RUN] '{name}' is already the active wafer map.")
+            return
+        if self._exec_load_and_publish_wafer_map(name):
+            self._exec_log(f"[RUN] Switched to wafer map '{name}' "
+                           f"(was '{active or '(none)'}').")
 
     def _exec_autoload_recipe_wafer_map(self):
         """Switch to the loaded recipe's own saved wafer map, if it names
-        one and it isn't already the active map.
+        one and it isn't already the active map - and either way, show
+        that name in the Run tab's own Wafer Map: dropdown.
 
         recipe_panel.get_wafer_map() is the recipe's preference (set from
         its own Wafer Map: dropdown, next to Probe Card - see
@@ -4462,6 +4470,15 @@ class MainLayout(ttk.Frame):
         Blank preference (a recipe saved before this existed, or one that
         was never assigned one) is left alone entirely - nothing to
         autoload, and nothing to warn about.
+
+        The dropdown update used to happen only at the end, after an
+        actual switch - so a recipe whose saved map ALREADY matched
+        (e.g. a folder's default recipe on a fresh open, where Wafer
+        Builder's own autoload already picked the same default map) hit
+        the `wanted == active` no-op and returned before ever touching
+        _exec_wafer_map_var, leaving the dropdown blank even though the
+        right map genuinely was loaded - looked exactly like the feature
+        did nothing at all.
         """
         gen = getattr(self, "recipe_gen", None)
         if gen is None or not hasattr(gen, "_load_named_map"):
@@ -4469,6 +4486,8 @@ class MainLayout(ttk.Frame):
         wanted = self.recipe_panel.get_wafer_map()
         if not wanted:
             return
+        if hasattr(self, "_exec_wafer_map_var"):
+            self._exec_wafer_map_var.set(wanted)
         active = gen.map_name_var.get().strip()
         if wanted == active:
             return
@@ -4486,8 +4505,6 @@ class MainLayout(ttk.Frame):
             return
         self._exec_log(f"[RUN] Switched to '{wanted}' — this recipe's own "
                        f"wafer map (was '{active or '(none)'}').")
-        if hasattr(self, "_exec_wafer_map_var"):
-            self._exec_wafer_map_var.set(wanted)
 
     def _exec_loaded_recipe_name(self) -> str:
         """The recipe the Run tab currently has loaded, if any."""
