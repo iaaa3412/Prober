@@ -1655,11 +1655,13 @@ class RecipeGenPanel(ttk.Frame):
         self._sync_views(folder)
 
     def _export_diemap_csv(self):
-        """A standalone CSV of the Die Map as it looks right now - die ID
-        and status/color per die, row/col in both the flat die grid and the
-        shot/slot form - to the user's Downloads folder. Independent of
-        Save Wafer Map: this is just a snapshot to look at or hand off, not
-        something the Run tab or anything else in the app reads back."""
+        """A standalone CSV of the Die Map as it looks right now, shaped
+        like the wafer itself - one cell per die, arranged by row/col,
+        holding nothing but that die's ID (blank if it has none). No
+        header, no status/shot/slot columns - a plain grid meant to be
+        opened and looked at, not read back by this app or the Run tab.
+        Written to the user's Downloads folder, independent of Save Wafer
+        Map."""
         self._close_die_editor(commit=True)
         dies = self._die_positions()
         if not dies:
@@ -1667,6 +1669,14 @@ class RecipeGenPanel(ttk.Frame):
                                  "Shot and Shot Map first.")
             return
         shot_rows, shot_cols = self._shot_dims()
+        grid = {}
+        max_row = max_col = 0
+        for d in dies:
+            row = d["shot_r"] * shot_rows + d["slot_r"]
+            col = d["shot_c"] * shot_cols + d["slot_c"]
+            grid[(row, col)] = d["die_id"]
+            max_row = max(max_row, row)
+            max_col = max(max_col, col)
         downloads = os.path.join(os.path.expanduser("~"), "Downloads")
         try:
             os.makedirs(downloads, exist_ok=True)
@@ -1677,21 +1687,12 @@ class RecipeGenPanel(ttk.Frame):
             self.map_name_var.get().strip() or "wafer_builder_die_map")
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         path = os.path.join(downloads, f"{name}_die_map_{ts}.csv")
-        fields = ("row", "col", "shot_r", "shot_c", "slot_r", "slot_c",
-                  "die_id", "status", "color")
         try:
             with open(path, "w", newline="", encoding="utf-8") as f:
-                wr = csv.DictWriter(f, fieldnames=fields)
-                wr.writeheader()
-                for d in dies:
-                    wr.writerow({
-                        "row": d["shot_r"] * shot_rows + d["slot_r"],
-                        "col": d["shot_c"] * shot_cols + d["slot_c"],
-                        "shot_r": d["shot_r"], "shot_c": d["shot_c"],
-                        "slot_r": d["slot_r"], "slot_c": d["slot_c"],
-                        "die_id": d["die_id"], "status": d["status"],
-                        "color": self._die_color(d),
-                    })
+                wr = csv.writer(f)
+                for row in range(max_row + 1):
+                    wr.writerow([grid.get((row, col), "")
+                                for col in range(max_col + 1)])
         except OSError as exc:
             messagebox.showerror("Export Failed", str(exc))
             return
