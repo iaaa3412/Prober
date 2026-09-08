@@ -466,26 +466,17 @@ class NanoZPanel(ttk.Frame):
                                             foreground="#6b7280")
         self._recipe_active_lbl.pack(side="left", padx=(12, 0))
 
-        # Import Wafer Plan used to live on the (now-removed) Wafer Map
-        # tab - moved back here since Compute Recipe needs self._wafer_plan
-        # and this is otherwise the only place left to set it. _import_
-        # wafer_plan itself is unchanged.
+        # No manual Import Wafer Plan (.xlsx) / Refresh From Wafer Builder
+        # buttons here anymore - Compute Recipe now refreshes
+        # self._wafer_plan itself (Electroglas: straight from the Wafer
+        # Builder tab; Accretech: whatever was auto-loaded for this ATA
+        # folder in on_ata_folder_loaded) rather than requiring a manual
+        # step first. This status line is purely informational now.
         plan_row = ttk.Frame(tab)
         plan_row.grid(row=2, column=0, sticky="ew", padx=8, pady=(0, 4))
-        ttk.Button(plan_row, text="📥 Import Wafer Plan (.xlsx)...",
-                  command=self._import_wafer_plan).pack(side="left")
-        if self._system == "electroglas":
-            # Electroglas has no internal/native wafer map to overlay a
-            # plan onto (unlike Accretech - see this method's own history
-            # above) - the Wafer Builder map IS the wafer data here,
-            # taken directly rather than requiring an .xlsx at all. xlsx
-            # import above still works too if that's ever preferred.
-            ttk.Button(plan_row, text="↻ Refresh From Wafer Builder",
-                      command=self._eg_refresh_wafer_plan_from_wafer_builder).pack(
-                      side="left", padx=(6, 0))
         self._recipe_plan_status_lbl = ttk.Label(plan_row, text="No wafer plan imported yet.",
                                                  foreground="#6b7280")
-        self._recipe_plan_status_lbl.pack(side="left", padx=(10, 0))
+        self._recipe_plan_status_lbl.pack(side="left", padx=(0, 0))
 
         # -- touchdown list -----------------------------------------------
         # Same shape as the normal (non-NanoZ) Recipe tab's own "Touchdowns"
@@ -989,12 +980,24 @@ class NanoZPanel(ttk.Frame):
         self._rename_shot(self._recipe_tree.index(row_iid))
 
     def _compute_recipe(self):
+        # Self-sufficient: refresh the plan itself rather than requiring a
+        # separate manual step first (the old Import Wafer Plan/Refresh
+        # From Wafer Builder buttons, removed). Electroglas can always
+        # rebuild it straight from the Wafer Builder tab; Accretech has
+        # no such live source, so this only ever has what
+        # on_ata_folder_loaded already auto-loaded for this folder (a
+        # previously-imported .xlsx saved into it).
+        if self._system == "electroglas":
+            self._eg_refresh_wafer_plan_from_wafer_builder(silent=True)
         if not self._wafer_plan:
             messagebox.showerror(
                 "No Wafer Plan",
                 "Compute Recipe needs a wafer plan to tell product dies apart from "
-                "reference/alignment dies and off-wafer positions — import one first: "
-                "Recipe tab -> Import Wafer Plan (.xlsx).")
+                "reference/alignment dies and off-wafer positions, and none is "
+                "available for this ATA folder."
+                + ("" if self._system == "electroglas" else
+                   " Import one on the Wafer Builder tab, or place a wafer plan "
+                   f".xlsx in this folder ({nzb.WAFER_PLAN_XLSX_FILENAME})."))
             return
         # Left to right, then top to bottom across the wafer map - i.e. row
         # order first (top to bottom), columns within a row left to right -
@@ -1145,67 +1148,6 @@ class NanoZPanel(ttk.Frame):
         self._nz_refresh_td()
         if self._current_recipe_name:
             self._persist_recipe()
-
-    def _import_wafer_plan(self):
-        folder = self._nanoz_ata_folder
-        if not folder:
-            messagebox.showerror("No ATA Folder",
-                                 "Load an ATA folder from the toolbar first — the imported "
-                                 "wafer plan is copied into that folder so it doesn't depend "
-                                 "on wherever the source .xlsx happens to be.")
-            return
-        path = filedialog.askopenfilename(
-            title="Import Wafer Plan",
-            filetypes=[("Excel workbook", "*.xlsx"), ("All files", "*.*")])
-        if not path:
-            return
-        probe_height = self._probe_height()  # main thread - see _autoload_wafer_plan's own note
-        threading.Thread(target=self._import_wafer_plan_thread,
-                         args=(folder, path, probe_height), daemon=True).start()
-
-    def _import_wafer_plan_thread(self, folder: str, path: str, probe_height: int):
-        # Copies the picked .xlsx into the ATA folder at a fixed name first,
-        # then parses/uses THAT copy - the source the user picked (e.g.
-        # references/nautilusprobeplan.xlsx) is only ever a template/example,
-        # the folder's own copy is the one Compute Recipe (product/reference
-        # classification) and future folder reloads actually work from.
-        # ☑ Select Plan (Run tab) no longer reads this at all - it tiles
-        # straight off the live wafer map's own real die positions, see
-        # nzb.tile_windows_covering_wafer. Does NOT touch self._shots/build
-        # a recipe - Compute Recipe (Run tab) is what turns a selection
-        # into a recipe.
-        try:
-            dest = nzb.import_wafer_plan_into_folder(folder, path)
-            plan = nzb.load_wafer_plan(dest, probe_height=probe_height)
-        except Exception as e:
-            self.after(0, lambda e=e: messagebox.showerror("Import Failed", str(e)))
-            return
-        stats = nzb.wafer_plan_stats(plan)
-
-        def _finish():
-            self._wafer_plan = plan
-            self._wafer_plan_path = dest
-            # _redraw_nanoz_wafer_map() (the removed Wafer Map tab's own
-            # matplotlib redraw) is NOT called here anymore - its canvas/
-            # axes are never created now that tab isn't built, so calling
-            # it would raise. The Recipe tab's own status label is the
-            # replacement.
-            status = (f"{os.path.basename(dest)} — {len(plan.dies)} die(s), "
-                      f"{len(plan.touchdowns)} touchdown(s), probe head "
-                      f"{plan.probe_height} — {stats['product']} product, "
-                      f"{stats['reference']} reference, {stats['off_wafer']} off-wafer")
-            lbl = getattr(self, "_recipe_plan_status_lbl", None)
-            if lbl is not None:
-                lbl.config(text=status, foreground="black")
-            msg = (f"Wafer plan imported into this ATA folder ({nzb.WAFER_PLAN_XLSX_FILENAME}) "
-                  f"— {len(plan.dies)} die(s) on Die Map, "
-                  f"{len(plan.touchdowns)} touchdown(s), probe head {plan.probe_height} "
-                  f"dies tall. Physical positions across all touchdowns: "
-                  f"{stats['product']} product, "
-                  f"{stats['reference']} reference, {stats['off_wafer']} off-wafer.")
-            self._log_main(msg)
-            self.refresh_eg_anchor_choices()
-        self.after(0, _finish)
 
     def _eg_refresh_wafer_plan_from_wafer_builder(self, silent: bool = False):
         """Electroglas only - builds self._wafer_plan directly from the
