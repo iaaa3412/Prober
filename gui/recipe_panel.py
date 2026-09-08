@@ -1508,6 +1508,15 @@ class RecipePanel(ttk.Frame):
                    command=self._site_remove).pack(side="left", padx=(16, 0))
         ttk.Button(bar, text="Clear all",
                    command=self._sites_clear).pack(side="left", padx=(6, 0))
+        # Same swap-and-reselect pattern as the Step editor's own ▲/▼
+        # (_step_move) - touchdown order matters here too (it's the order
+        # a run with no Minor Moves/.PMA route actually visits them in),
+        # and until now the only way to change it was Remove + re-add at
+        # the end.
+        ttk.Button(bar, text="▲", width=3,
+                   command=lambda: self._site_move(-1)).pack(side="left", padx=(10, 2))
+        ttk.Button(bar, text="▼", width=3,
+                   command=lambda: self._site_move(+1)).pack(side="left", padx=2)
 
         # Basic map-only builders: fill the table below and nothing else -
         # no map highlighting, no auto-save. ➡ Push to map / 💾 Save (both
@@ -1568,11 +1577,26 @@ class RecipePanel(ttk.Frame):
         """The Run tab that owns the wafer map, or None if not built yet."""
         return getattr(self.controller, "ui", None)
 
-    def _refresh_sites(self):
+    def _site_move(self, delta: int):
+        sel = self._site_tree.selection()
+        if not sel:
+            return
+        idx = self._site_tree.index(sel[0])
+        new = idx + delta
+        if 0 <= idx < len(self._sites) and 0 <= new < len(self._sites):
+            self._sites[idx], self._sites[new] = self._sites[new], self._sites[idx]
+            self._store_form()
+            self._refresh_sites(select=new)
+
+    def _refresh_sites(self, select: int = -1):
         self._site_tree.delete(*self._site_tree.get_children())
         for i, s in enumerate(self._sites, 1):
             self._site_tree.insert("", "end", values=(
                 i, s.get("die_id", "") or "—", s.get("row", ""), s.get("col", "")))
+        kids = self._site_tree.get_children()
+        if 0 <= select < len(kids):
+            self._site_tree.selection_set(kids[select])
+            self._site_tree.see(kids[select])
         n = len(self._sites)
         if not n:
             self._sites_var.set(
