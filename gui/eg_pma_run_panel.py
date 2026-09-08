@@ -976,12 +976,31 @@ class EgPmaRunPanel(ttk.Frame):
         MODE's units (_table_position) - only means anything along the path
         the recipe actually walks, so it is filled for the run's rows and
         left blank for positions the recipe never visits.
+
+        A no-op when nothing that feeds the render actually changed since
+        last time. Loading an ATA folder rebuilds this once already (via
+        adopt_from_wafer_builder's own _adopt -> _fill_table), then
+        _exec_autoload_default_recipe calls it again right after picking
+        that folder's default recipe - same touchdowns, same run order,
+        same everything, so the second call used to redo every Treeview
+        insert (up to 8125 of them on NautATA) for a table that already
+        looked exactly right. Every OTHER caller of _fill_table (recipe
+        switch, Set anchor, motion mode change) still rebuilds for real
+        whenever the signature actually differs.
         """
-        self._tree.delete(*self._tree.get_children())
         um_mode = self._motion_var.get() == MOTION_UM
+        run_order = self._display_run_order()
+        anchored = (self._anchored and self._index is not None
+                   and 0 <= self._index < len(self._touchdowns))
+        signature = (id(self._touchdowns), len(self._touchdowns),
+                    tuple(run_order), um_mode, anchored, self._index)
+        if signature == getattr(self, "_fill_table_signature", None):
+            return
+        self._fill_table_signature = signature
+
+        self._tree.delete(*self._tree.get_children())
         self._tree.heading("grid", text="µm x,y" if um_mode else "grid x,y")
         self._tree.heading("step", text="MM (µm)" if um_mode else "MD")
-        run_order = self._display_run_order()
         in_run = set(run_order)
         # The first run-order row's step is the delta from wherever the
         # chuck is actually anchored (Set Initial, or a re-anchor after a
@@ -993,8 +1012,6 @@ class EgPmaRunPanel(ttk.Frame):
         # showing deltas that look actionable but are missing the one hop
         # that actually matters (the unknown first move from the real,
         # un-anchored position).
-        anchored = (self._anchored and self._index is not None
-                   and 0 <= self._index < len(self._touchdowns))
         prev = self._table_position(self._touchdowns[self._index]) if anchored else None
         # Every row's iid is its index, so an index appearing twice would
         # raise Tk's "Item N already exists" - and because THIS loop runs
