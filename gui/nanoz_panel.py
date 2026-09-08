@@ -457,7 +457,7 @@ class NanoZPanel(ttk.Frame):
             side="left", padx=2)
         ttk.Button(name_row, text="✎ Rename", command=self._rename_named_recipe).pack(
             side="left", padx=2)
-        ttk.Button(name_row, text="🗑 Delete", command=self._delete_named_recipe).pack(
+        ttk.Button(name_row, text="Delete", command=self._delete_named_recipe).pack(
             side="left", padx=2)
         ttk.Separator(name_row, orient="vertical").pack(side="left", fill="y", padx=6)
         ttk.Button(name_row, text="💾 Save", command=self._save_named_recipe).pack(
@@ -500,7 +500,7 @@ class NanoZPanel(ttk.Frame):
                   command=self._nz_td_from_die_ids).pack(side="left", padx=(6, 0))
         ttk.Button(td_bar, text="➡ Push to map",
                   command=self._nz_td_to_map).pack(side="left", padx=(6, 0))
-        ttk.Button(td_bar, text="✕ Remove selected",
+        ttk.Button(td_bar, text="Remove selected",
                   command=self._nz_td_remove).pack(side="left", padx=(16, 0))
         ttk.Button(td_bar, text="🗑 Clear all",
                   command=self._nz_td_clear).pack(side="left", padx=(6, 0))
@@ -536,15 +536,9 @@ class NanoZPanel(ttk.Frame):
 
         bar = ttk.Frame(tab)
         bar.grid(row=4, column=0, sticky="ew", padx=8, pady=(0, 4))
-        self._btn_recipe_add = ttk.Button(bar, text="＋ Add Shot", command=self._add_shot)
-        self._btn_recipe_add.pack(side="left", padx=(0, 4))
-        self._btn_recipe_dup = ttk.Button(bar, text="⎘ Duplicate", command=self._duplicate_shot)
-        self._btn_recipe_dup.pack(side="left", padx=4)
-        self._btn_recipe_remove = ttk.Button(bar, text="\U0001f5d1 Remove", command=self._remove_shots)
-        self._btn_recipe_remove.pack(side="left", padx=4)
         self._btn_recipe_up = ttk.Button(bar, text="▲", width=3,
                                          command=lambda: self._move_shot(-1))
-        self._btn_recipe_up.pack(side="left", padx=(10, 2))
+        self._btn_recipe_up.pack(side="left", padx=(0, 2))
         self._btn_recipe_down = ttk.Button(bar, text="▼", width=3,
                                            command=lambda: self._move_shot(1))
         self._btn_recipe_down.pack(side="left", padx=2)
@@ -860,41 +854,6 @@ class NanoZPanel(ttk.Frame):
             self._current_recipe_name = None
         self._refresh_recipe_name_cb()
         self._log_main(f"Recipe '{name}' deleted.")
-
-    def _add_shot(self):
-        self._shots.append({"label": "", "excluded_boards": set()})
-        self._redraw_recipe_tree()
-        self._persist_recipe()
-        children = self._recipe_tree.get_children()
-        if children:
-            self._recipe_tree.selection_set(children[-1])
-            self._recipe_tree.see(children[-1])
-
-    def _duplicate_shot(self):
-        idx = self._selected_shot_index()
-        if idx is None:
-            self._log_main("Duplicate Shot: select a shot first.")
-            return
-        src = self._shots[idx]
-        clone = dict(src)
-        clone["label"] = (src["label"] + " (copy)") if src["label"] else ""
-        clone["excluded_boards"] = set(src["excluded_boards"])
-        self._shots.insert(idx + 1, clone)
-        self._redraw_recipe_tree()
-        self._persist_recipe()
-        children = self._recipe_tree.get_children()
-        self._recipe_tree.selection_set(children[idx + 1])
-        self._recipe_tree.see(children[idx + 1])
-
-    def _remove_shots(self):
-        idxs = self._selected_shot_indices()
-        if not idxs:
-            self._log_main("Remove Shot: select at least one shot first.")
-            return
-        for i in reversed(idxs):
-            del self._shots[i]
-        self._redraw_recipe_tree()
-        self._persist_recipe()
 
     def _move_shot(self, delta: int):
         idx = self._selected_shot_index()
@@ -3382,7 +3341,6 @@ class NanoZPanel(ttk.Frame):
                         "_btn_manual_next_die", "_btn_manual_xy", "_btn_manual_unload",
                         "_btn_measure",
                         "_btn_test_active", "_btn_pause_active",
-                        "_btn_recipe_add", "_btn_recipe_dup", "_btn_recipe_remove",
                         "_btn_recipe_up", "_btn_recipe_down",
                         "_btn_recipe_enable_all", "_btn_recipe_disable_all")
 
