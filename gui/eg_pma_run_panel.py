@@ -217,18 +217,24 @@ class EgPmaRunPanel(ttk.Frame):
         # stops this pane's run) - see instrument_panel._tab_execution2.
         btns = ttk.Frame(lf)
         btns.pack(fill="x", pady=(6, 0))
-        # Two buttons, two jobs, kept apart deliberately. Sync asks the
-        # PROBER where it is (?P) and changes nothing on screen but the
-        # position; Reload Map re-reads the published Wafer Builder map and
-        # rebuilds the Die list from it. Folding the map reload into Sync
-        # made a position check silently redraw the wafer, which is a much
-        # bigger action than the button appeared to offer.
+        # Sync asks the PROBER where it is (?P) and changes nothing on
+        # screen but the position.
         #
-        # Reload Map is a manual re-check, not a required step - the same
-        # rebuild already happens by itself on every map load, see
-        # instrument_panel._exec_seed_die_list_from_map.
+        # Reload Map (re-read whatever's currently published in
+        # ata_wafer_map_builder.csv, regardless of which named map that
+        # was) used to sit here too - removed. Every recipe now points at
+        # one specific saved map (Recipe tab's own Wafer Map: dropdown,
+        # enforced by instrument_panel._exec_wafer_map_matches_recipe
+        # before anything runs/measures/moves), so a button that could
+        # silently pull in whatever the published file happens to hold
+        # right now - possibly a DIFFERENT map than the one the loaded
+        # recipe is assigned to, republished by another machine on the
+        # shared network folder - worked against that guarantee rather
+        # than for it. Picking the recipe's own map (or a different one,
+        # deliberately, from the Run tab's own Wafer Map: dropdown) is
+        # the only way to change what's active now.
         #
-        # Neither is the old "Sync Run map", which ran the opposite
+        # Also not the old "Sync Run map", which ran the opposite
         # direction: rebuilding the Wafer Builder map FROM the recipe's
         # touchdowns. The map is the source of truth for die IDs and
         # positions now, so nothing may overwrite it from a .PMA.
@@ -237,8 +243,6 @@ class EgPmaRunPanel(ttk.Frame):
         # (a .PMA only ever seeds the Wafer Builder tab now, see
         # pma_process_panel.load_all).
         ttk.Button(btns, text="↻ Sync", command=self._sync_position).pack(side="left")
-        ttk.Button(btns, text="Reload Map", command=self._reload_map).pack(
-            side="left", padx=(6, 0))
 
         mode = ttk.Frame(lf)
         mode.pack(fill="x", pady=(6, 0))
@@ -2072,27 +2076,6 @@ class EgPmaRunPanel(ttk.Frame):
         ox, oy = self._origin_offset
         grid = (real[0] - ox, real[1] - oy)
         return self._grid_index_map().get(grid), grid
-
-    def _reload_map(self):
-        """Re-read the published Wafer Builder map and rebuild from it.
-
-        Deliberately separate from Sync. Sync is a question put to the
-        prober; this redraws the wafer and rebuilds the Die list
-        (instrument_panel._exec_seed_die_list_from_map runs off the map
-        load), which is a far larger thing to do than checking a position -
-        large enough that it has to be its own press rather than a side
-        effect of one.
-        """
-        redraw = getattr(self._main_layout, "_exec_draw_wafer_map", None)
-        if redraw is None:
-            messagebox.showinfo("Reload Map",
-                                "The Run tab's wafer map is not available.")
-            return
-        try:
-            redraw(quiet_if_missing=True)
-        except Exception as e:
-            self._log(f"[RUN] Could not reload the wafer map — "
-                      f"{type(e).__name__}: {e}")
 
     def _sync_position(self):
         drv = self._prober()
