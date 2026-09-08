@@ -155,7 +155,9 @@ class NanoZPanel(ttk.Frame):
         self._wafer_plan_path: str | None = None
         self._nzmap_dies_by_rc: dict[tuple[int, int], dict] = {}
         self._nzmap_accr_dies_by_rc: dict[tuple[int, int], dict] = {}
-        self._nzmap_source_var = tk.StringVar(value="probe_plan")
+        # Default source is the live Run tab map, not a separate import -
+        # see _draw_run_map_nzmap's own docstring for why.
+        self._nzmap_source_var = tk.StringVar(value="run_tab")
         self._show_nzmap_labels_var = tk.BooleanVar(value=True)
         self._nzmap_label_artists: list = []
         self._nzmap_view_debounce_id = None
@@ -1293,6 +1295,15 @@ class NanoZPanel(ttk.Frame):
         src_row = ttk.Frame(tab)
         src_row.grid(row=1, column=0, sticky="w", padx=8, pady=(0, 4))
         ttk.Label(src_row, text="View:").pack(side="left", padx=(0, 4))
+        # Default and first in the row: the exact same map/die IDs this
+        # system's own Run tab shows right now, read straight off that
+        # tab's live WaferMapPanel (main_layout._exec_wafer_map) rather
+        # than a separate import/reconstruction - see
+        # _draw_run_map_nzmap's own docstring for why the others could
+        # show no die IDs at all even with a real map loaded on the Run
+        # tab.
+        ttk.Radiobutton(src_row, text="Run Tab", variable=self._nzmap_source_var,
+                        value="run_tab", command=self._redraw_nanoz_wafer_map).pack(side="left")
         ttk.Radiobutton(src_row, text="Probe Plan (.xlsx)", variable=self._nzmap_source_var,
                         value="probe_plan", command=self._redraw_nanoz_wafer_map).pack(side="left")
         ttk.Button(src_row, text="📥 Import Wafer Plan (.xlsx)…",
@@ -1355,7 +1366,9 @@ class NanoZPanel(ttk.Frame):
         self._nzmap_dies_by_rc = {}
         self._nzmap_accr_dies_by_rc = {}
         source = self._nzmap_source_var.get()
-        if source == "accretech":
+        if source == "run_tab":
+            self._draw_run_map_nzmap()
+        elif source == "accretech":
             self._draw_accretech_nzmap()
         elif source == "csv":
             self._draw_csv_nzmap()
@@ -1441,6 +1454,62 @@ class NanoZPanel(ttk.Frame):
             out.append({"row": round(d["y"] / dpy), "col": round(d["x"] / dpx),
                         "serial": d["die_id"], "status": "wafer_builder"})
         return out
+
+    def _draw_run_map_nzmap(self):
+        """The exact same wafer map this system's own Run tab is showing
+        right now - same dies, same die IDs, no separate copy to drift
+        out of sync.
+
+        main_layout._exec_wafer_map is not a NanoZ-owned object - it's
+        the identical WaferMapPanel instance Accretech's or Electroglas's
+        own Run tab canvas is drawn from (main_layout IS that system's
+        MainLayout - see nanoz_mode.py._build_holder, which hands this
+        panel controller._by_system[system]["ui"] itself, not a copy).
+        Reading .dies (row, col -> canvas item) and .die_ids (row, col ->
+        label) straight from it means "what NanoZ shows" can never
+        disagree with "what the Run tab shows" - the two other sources
+        that looked similar (Accretech: this tab's OWN separate
+        WaferMapPanel, self.wafer_map, loaded independently and never
+        given die IDs at all, only row/col; Wafer Builder: recipe_gen's
+        in-memory Die Map, which can differ from the map actually
+        published/active if that tab has a different project open) were
+        exactly the kind of second copy this avoids.
+        """
+        wm = getattr(self._main_layout, "_exec_wafer_map", None)
+        rcs = sorted(wm.dies.keys()) if wm is not None else []
+        if not rcs:
+            self._draw_empty_nzmap(
+                "No wafer map loaded on the Run tab yet.")
+            return
+        die_ids = wm.die_ids or {}
+        # "status" matches the shape _on_nzmap_click reads for every
+        # non-"accretech" source (d['status']) - "run_tab" here, same as
+        # "wafer_builder"/"reference"/etc. the other sources use.
+        self._nzmap_dies_by_rc = {
+            rc: {"row": rc[0], "col": rc[1], "serial": die_ids.get(rc, ""),
+                "status": "run_tab"}
+            for rc in rcs}
+        self._nzmap_ax.clear()
+        self._nzmap_ax.set_aspect("equal")
+        patches = [Rectangle((c - 0.5, -r - 0.5), 1, 1) for r, c in rcs]
+        coll = PatchCollection(patches, edgecolor="#1e293b", linewidths=0.4)
+        coll.set_facecolor("#7aaec8")
+        self._nzmap_ax.add_collection(coll)
+        cols = [c for _r, c in rcs]
+        rows = [r for r, _c in rcs]
+        self._nzmap_ax.set_xlim(min(cols) - 1, max(cols) + 1)
+        self._nzmap_ax.set_ylim(-(max(rows) + 1), -(min(rows) - 1))
+        n_ided = sum(1 for rc in rcs if die_ids.get(rc))
+        self._nzmap_ax.set_title(
+            f"Run Tab — {len(rcs)} die(s), {n_ided} with an ID — "
+            "click a die to see it", fontsize=9)
+        self._nzmap_current_labels = [
+            {"x": c, "y": -r, "label": die_ids.get((r, c), "") or f"R{r}C{c}",
+             "color": "black"} for r, c in rcs
+        ]
+        self._connect_nzmap_view_callbacks()
+        self._update_visible_nzmap_labels()
+        self._nzmap_canvas.draw_idle()
 
     def _draw_wafer_builder_nzmap(self):
         dies = self._wafer_builder_dies()
