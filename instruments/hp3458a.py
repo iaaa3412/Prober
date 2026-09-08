@@ -190,11 +190,31 @@ class HP3458A(GPIBInstrument):
         """
         self.write(f"ACAL {mode}")
 
+    def _arm_eoi(self):
+        """Re-assert END ALWAYS - see __init__ for why it is needed.
+
+        RESET and PRESET both put the 3458A back to not asserting EOI on
+        its responses, and every read then sits waiting for a terminator
+        that never arrives until it times out. __init__ sends this once, at
+        connect, so a reset ANY time after that silently broke every later
+        reading - the instrument answers nothing and looks dead, which is
+        exactly what "the DMM stopped responding" looks like from the Run
+        tab. Sent after the reset, not before, because the reset is what
+        clears it.
+        """
+        try:
+            self.write("END ALWAYS")
+        except Exception as e:
+            print(f"[DMM_EG] END ALWAYS after reset failed, "
+                  f"reads may time out: {e}")
+
     def reset(self):
         self.write("RESET")
+        self._arm_eoi()
 
     def preset(self, mode: str = "NORM"):
         self.write(f"PRESET {mode}")
+        self._arm_eoi()
 
     # -- configuration ------------------------------------------------------
 
