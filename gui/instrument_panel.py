@@ -2706,7 +2706,7 @@ class MainLayout(ttk.Frame):
             # resize, not the initial split, so the real ratio is set once
             # via sashpos after the window is first drawn - see the
             # after_idle call below map_lf's own body.add.
-            body.add(self.eg_pma_run, weight=25)
+            body.add(self.eg_pma_run, weight=20)
 
         left_col = ttk.Frame(body)
         body.add(left_col, weight=20 if self._system == "electroglas" else 1)
@@ -2903,7 +2903,7 @@ class MainLayout(ttk.Frame):
         self._exec_local_btn.grid(row=0, column=1, sticky="ew", padx=(1, 0))
 
         map_lf = ttk.LabelFrame(body, text="Wafer Map")
-        body.add(map_lf, weight=55 if self._system == "electroglas" else 2)
+        body.add(map_lf, weight=60 if self._system == "electroglas" else 2)
         map_lf.rowconfigure(1, weight=1)
         map_lf.columnconfigure(0, weight=1)
 
@@ -2923,8 +2923,11 @@ class MainLayout(ttk.Frame):
                 w = body.winfo_width()
                 if w <= 1:
                     return
-                body.sashpos(0, int(w * 0.25))
-                body.sashpos(1, int(w * 0.45))
+                # 20 : 20 : 60 - Run column (eg_pma_run) ~20%, left_col
+                # (Chuck Position + Pass/Fail, split 50/50 by pos_row's own
+                # columnconfigure - ~10% each) ~20%, Wafer Map the rest.
+                body.sashpos(0, int(w * 0.20))
+                body.sashpos(1, int(w * 0.40))
             def _set_initial_sashes(_event=None):
                 if body.winfo_width() <= 1:
                     return
