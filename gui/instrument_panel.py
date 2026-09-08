@@ -2614,23 +2614,35 @@ class MainLayout(ttk.Frame):
         self._exec_card_cb.bind("<<ComboboxSelected>>",
                                  lambda _e: self._exec_on_card_picked())
 
+        # Wafer Map: a direct pick-and-load, same list the Recipe tab's own
+        # Wafer Map: dropdown offers (recipe_gen.list_map_names()) but this
+        # one acts immediately on selection rather than just recording a
+        # preference - see _exec_on_wafer_map_picked/
+        # _exec_load_and_publish_wafer_map (which also reapplies the
+        # Overlay alignment saved as part of the picked map, Accretech
+        # only - _sync_views alone does not touch it).
+        tk.Label(ctrl, text="Wafer Map:", bg="#f1f5f9").pack(side="left", padx=(10, 2), pady=6)
+        self._exec_wafer_map_var = tk.StringVar(value="")
+        self._exec_wafer_map_cb = ttk.Combobox(
+            ctrl, textvariable=self._exec_wafer_map_var, width=14, state="readonly",
+            postcommand=lambda: self._exec_wafer_map_cb.config(
+                values=(self.recipe_gen.list_map_names()
+                       if hasattr(self, "recipe_gen") else [])))
+        self._exec_wafer_map_cb.pack(side="left", pady=6)
+        self._exec_wafer_map_cb.bind(
+            "<<ComboboxSelected>>", lambda _e: self._exec_on_wafer_map_picked())
+
         ttk.Separator(ctrl, orient="vertical").pack(side="left", fill="y", padx=10, pady=4)
 
-        self._exec_full_btn = ttk.Button(
-            ctrl, text="▶  Full Die", command=self._exec_start_full_die)
-        self._exec_full_btn.pack(side="left", padx=4, pady=5)
         # Kept but not packed on either system - Test Selected replaces it as
         # the sole "test some dies" entry point, but _exec_abort/
         # _exec_finish_run/_exec_start_test_die still toggle its state
         # alongside _exec_full_btn regardless of which system this is, so
-        # the attribute stays around either way.
+        # the attribute stays around either way. _exec_full_btn/
+        # _exec_test_selected_btn themselves are built below Recipe Steps
+        # now, not here - see the Recipe Steps LabelFrame further down.
         self._exec_test_btn = ttk.Button(
             ctrl, text="▶  Test Die", command=self._exec_start_test_die)
-        self._exec_test_selected_btn = ttk.Button(
-            ctrl, text="▶  Test Selected", command=self._exec_start_test_selected)
-        self._exec_test_selected_btn.pack(side="left", padx=2, pady=5)
-
-        ttk.Separator(ctrl, orient="vertical").pack(side="left", fill="y", padx=10, pady=4)
 
         # The real, full-story entry point - recipe steps, the recipe's own
         # saved touchdown list, Minor Moves (Accretech) and all - unlike
@@ -2662,15 +2674,8 @@ class MainLayout(ttk.Frame):
             # is now a real stop - see _exec_abort.
             ("⏸  Pause",       self._exec_pause, "_exec_pause_btn"),
             ("⏹  Stop Run",       self._exec_abort, "_exec_stop_btn"),
-            # Same action as the Instruments tab's "Release All To Local",
-            # repeated here because this is where an operator is standing
-            # when they find the prober's own keys dead: connecting over
-            # GPIB puts it in REMOTE and locks the panel out, and nothing
-            # gives it back until this is pressed or the app exits.
-            # Momentary, not a mode - the next command the GUI sends
-            # re-asserts remote, exactly like any other instrument.
-            ("↩  Release To Local", self._release_all_to_local,
-             "_exec_local_btn"),
+            # Release To Local itself moved below Recipe Steps (see that
+            # LabelFrame further down) - _exec_local_btn is built there now.
         ]:
             btn = ttk.Button(ctrl, text=label, command=cmd)
             btn.pack(side="left", padx=3, pady=5)
@@ -2755,14 +2760,13 @@ class MainLayout(ttk.Frame):
         # 3x2 grid: Measure/First Die, Z Up/Z Down, Back/Next, then (Accretech
         # only) Move to Selected and ↻ Refresh XY. Reset Counts moved to the
         # Pass/Fail section, next to what it resets - not here anymore.
-        self._exec_measure_btn = ttk.Button(
-            pos_lf, text="Measure", command=self._exec_touchdown_measure)
-        self._exec_measure_btn.grid(
-                   row=4, column=0, sticky="ew", padx=(0, 1), pady=1)
+        # Measure itself moved below Recipe Steps (see that LabelFrame
+        # further down) - _exec_measure_btn is built there now; First Die
+        # widened to fill the row it used to share with it.
         self._exec_first_die_btn = ttk.Button(
             pos_lf, text="◀ First Die", command=self._exec_manual_go_to_start)
         self._exec_first_die_btn.grid(
-                   row=4, column=1, sticky="ew", padx=(1, 0), pady=1)
+                   row=4, column=0, columnspan=2, sticky="ew", pady=1)
         self._exec_zup_btn = ttk.Button(
             pos_lf, text="↑ Z Up", command=self._exec_manual_z_up)
         self._exec_zup_btn.grid(
@@ -2864,6 +2868,39 @@ class MainLayout(ttk.Frame):
                             command=self._exec_steps_tree.yview)
         ssb.grid(row=1, column=1, sticky="ns")
         self._exec_steps_tree.configure(yscrollcommand=ssb.set)
+
+        # Full Die/Test Selected/Measure/Release To Local, two per row,
+        # right under the steps they'd actually run - these four used to
+        # be split across the top control bar and the Chuck Position box,
+        # nowhere near each other or the recipe they act on.
+        exec_btn_row1 = ttk.Frame(steps_lf)
+        exec_btn_row1.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(4, 1))
+        exec_btn_row1.columnconfigure(0, weight=1)
+        exec_btn_row1.columnconfigure(1, weight=1)
+        self._exec_full_btn = ttk.Button(
+            exec_btn_row1, text="▶  Full Die", command=self._exec_start_full_die)
+        self._exec_full_btn.grid(row=0, column=0, sticky="ew", padx=(0, 1))
+        self._exec_test_selected_btn = ttk.Button(
+            exec_btn_row1, text="▶  Test Selected", command=self._exec_start_test_selected)
+        self._exec_test_selected_btn.grid(row=0, column=1, sticky="ew", padx=(1, 0))
+
+        exec_btn_row2 = ttk.Frame(steps_lf)
+        exec_btn_row2.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(1, 0))
+        exec_btn_row2.columnconfigure(0, weight=1)
+        exec_btn_row2.columnconfigure(1, weight=1)
+        self._exec_measure_btn = ttk.Button(
+            exec_btn_row2, text="Measure", command=self._exec_touchdown_measure)
+        self._exec_measure_btn.grid(row=0, column=0, sticky="ew", padx=(0, 1))
+        # Same action as the Instruments tab's "Release All To Local",
+        # repeated here because this is where an operator is standing
+        # when they find the prober's own keys dead: connecting over
+        # GPIB puts it in REMOTE and locks the panel out, and nothing
+        # gives it back until this is pressed or the app exits.
+        # Momentary, not a mode - the next command the GUI sends
+        # re-asserts remote, exactly like any other instrument.
+        self._exec_local_btn = ttk.Button(
+            exec_btn_row2, text="↩  Release To Local", command=self._release_all_to_local)
+        self._exec_local_btn.grid(row=0, column=1, sticky="ew", padx=(1, 0))
 
         map_lf = ttk.LabelFrame(body, text="Wafer Map")
         body.add(map_lf, weight=55 if self._system == "electroglas" else 2)
@@ -4359,6 +4396,58 @@ class MainLayout(ttk.Frame):
             self._exec_log(f"[RUN] Could not apply the recipe's align die — "
                            f"{type(e).__name__}: {e}")
 
+    def _exec_load_and_publish_wafer_map(self, name: str) -> bool:
+        """Load a saved Wafer Builder map by name and make it the active
+        one everywhere that matters, not just on the Wafer Builder tab's
+        own Die Map view.
+
+        _load_named_map only updates that tab's own Shot/Shot Map/Die Map
+        state (same as picking it from that tab's own Map: dropdown by
+        hand) - _sync_views is what actually publishes that onto the Run
+        tab, the same publish Save Wafer Map/LOAD ALL already do. Unlike a
+        raw .PMA import (deliberately left unpublished until the operator
+        reviews and saves it - see pma_process_panel.load_all), a NAMED
+        map is a previously-saved, already-reviewed artifact, so there is
+        nothing here worth holding back for a manual Save Wafer Map press.
+
+        Accretech only: _sync_views does NOT touch the Overlay alignment -
+        that offset is saved as part of the map's own JSON (restored into
+        self._exec_overlay_row_offset/_col_offset/_offset_confirmed by
+        _load_named_map's own _state_from_dict call) but nothing redraws
+        it from there automatically. _exec_reapply_overlay is what does,
+        same call load_ata_folder itself makes right after drawing a
+        folder's Accretech map - skipping it here would leave the newly
+        loaded map's overlay saved-but-invisible until the next folder
+        reload happened to trigger it.
+
+        Shared by the Run tab's own Wafer Map: dropdown
+        (_exec_on_wafer_map_picked) and _exec_autoload_recipe_wafer_map,
+        so the two can never disagree about what "switch to this map"
+        actually does.
+        """
+        gen = getattr(self, "recipe_gen", None)
+        if gen is None or not hasattr(gen, "_load_named_map"):
+            return False
+        try:
+            gen._load_named_map(name)
+            gen._sync_views(self._ata_folder)
+        except Exception as e:
+            self._exec_log(f"[RUN] Could not load wafer map '{name}' — "
+                           f"{type(e).__name__}: {e}")
+            return False
+        self._exec_reapply_overlay()
+        return True
+
+    def _exec_on_wafer_map_picked(self):
+        """Run tab's own Wafer Map: dropdown, next to Probe Card - a
+        direct pick-and-load, unlike the Recipe tab's own Wafer Map:
+        field (which only records a preference, applied automatically by
+        _exec_autoload_recipe_wafer_map whenever that recipe loads)."""
+        name = self._exec_wafer_map_var.get().strip()
+        if not name:
+            return
+        self._exec_load_and_publish_wafer_map(name)
+
     def _exec_autoload_recipe_wafer_map(self):
         """Switch to the loaded recipe's own saved wafer map, if it names
         one and it isn't already the active map.
@@ -4370,18 +4459,6 @@ class MainLayout(ttk.Frame):
         Blank preference (a recipe saved before this existed, or one that
         was never assigned one) is left alone entirely - nothing to
         autoload, and nothing to warn about.
-
-        _load_named_map only updates the Wafer Builder tab's own Shot/
-        Shot Map/Die Map state (same as picking it from that tab's own
-        Map: dropdown by hand) - _sync_views is what actually publishes
-        that onto the Run tab, the same publish Save Wafer Map/LOAD ALL
-        already do. Unlike a raw .PMA import (deliberately left
-        unpublished until the operator reviews and saves it - see
-        pma_process_panel.load_all), a NAMED map a recipe already points
-        to is a previously-saved, already-reviewed artifact, so there is
-        nothing here worth holding back for a manual Save Wafer Map
-        press - the whole point of this is that the correct map becomes
-        active without that extra step.
         """
         gen = getattr(self, "recipe_gen", None)
         if gen is None or not hasattr(gen, "_load_named_map"):
@@ -4393,7 +4470,7 @@ class MainLayout(ttk.Frame):
         if wanted == active:
             return
         # _load_named_map pops an error dialog for a name it can't find -
-        # right for a deliberate pick from the Map: dropdown, wrong for an
+        # right for a deliberate pick from a Map: dropdown, wrong for an
         # automatic check that runs every time this recipe loads (a
         # renamed/deleted map would otherwise interrupt with the same
         # popup on every folder open). Checked quietly first instead.
@@ -4402,15 +4479,12 @@ class MainLayout(ttk.Frame):
                            "which no longer exists — pick a new one from "
                            "its Wafer Map: dropdown.")
             return
-        try:
-            gen._load_named_map(wanted)
-            gen._sync_views(self._ata_folder)
-        except Exception as e:
-            self._exec_log(f"[RUN] Could not autoload this recipe's wafer "
-                           f"map '{wanted}' — {type(e).__name__}: {e}")
+        if not self._exec_load_and_publish_wafer_map(wanted):
             return
         self._exec_log(f"[RUN] Switched to '{wanted}' — this recipe's own "
                        f"wafer map (was '{active or '(none)'}').")
+        if hasattr(self, "_exec_wafer_map_var"):
+            self._exec_wafer_map_var.set(wanted)
 
     def _exec_loaded_recipe_name(self) -> str:
         """The recipe the Run tab currently has loaded, if any."""
