@@ -13,7 +13,7 @@ DIE_PIN_KIND = "DIEPIN"
 
 CARD_CSV_FIELDS = (["kind", "recipe", "pin", "pad", "net", "seq", "bench",
                     "minor_moves", "shortcut", "fast_current_settle",
-                    "manual_mode", "align_die",
+                    "manual_mode", "align_die", "wafer_map",
                     "shot_origin_x", "shot_origin_y"]
                    + list(STEP_FIELDS))
 

@@ -2303,6 +2303,8 @@ class MainLayout(ttk.Frame):
             get_ata_folder=lambda: self._ata_folder,
             get_die_pins=lambda: (self.pin_wiring.get_die_pins()
                                   if hasattr(self, "pin_wiring") else {}),
+            get_wafer_map_names=lambda: (self.recipe_gen.list_map_names()
+                                         if hasattr(self, "recipe_gen") else []),
             on_save=self._exec_load_recipe_by_name)
         self.recipe_panel.grid(row=0, column=0, sticky="nsew")
 
@@ -4357,6 +4359,59 @@ class MainLayout(ttk.Frame):
             self._exec_log(f"[RUN] Could not apply the recipe's align die — "
                            f"{type(e).__name__}: {e}")
 
+    def _exec_autoload_recipe_wafer_map(self):
+        """Switch to the loaded recipe's own saved wafer map, if it names
+        one and it isn't already the active map.
+
+        recipe_panel.get_wafer_map() is the recipe's preference (set from
+        its own Wafer Map: dropdown, next to Probe Card - see
+        RecipePanel._on_wafer_map_pick); recipe_gen.map_name_var is
+        whatever the Wafer Builder tab actually has loaded right now.
+        Blank preference (a recipe saved before this existed, or one that
+        was never assigned one) is left alone entirely - nothing to
+        autoload, and nothing to warn about.
+
+        _load_named_map only updates the Wafer Builder tab's own Shot/
+        Shot Map/Die Map state (same as picking it from that tab's own
+        Map: dropdown by hand) - _sync_views is what actually publishes
+        that onto the Run tab, the same publish Save Wafer Map/LOAD ALL
+        already do. Unlike a raw .PMA import (deliberately left
+        unpublished until the operator reviews and saves it - see
+        pma_process_panel.load_all), a NAMED map a recipe already points
+        to is a previously-saved, already-reviewed artifact, so there is
+        nothing here worth holding back for a manual Save Wafer Map
+        press - the whole point of this is that the correct map becomes
+        active without that extra step.
+        """
+        gen = getattr(self, "recipe_gen", None)
+        if gen is None or not hasattr(gen, "_load_named_map"):
+            return
+        wanted = self.recipe_panel.get_wafer_map()
+        if not wanted:
+            return
+        active = gen.map_name_var.get().strip()
+        if wanted == active:
+            return
+        # _load_named_map pops an error dialog for a name it can't find -
+        # right for a deliberate pick from the Map: dropdown, wrong for an
+        # automatic check that runs every time this recipe loads (a
+        # renamed/deleted map would otherwise interrupt with the same
+        # popup on every folder open). Checked quietly first instead.
+        if wanted not in gen.list_map_names():
+            self._exec_log(f"[RUN] This recipe wants wafer map '{wanted}', "
+                           "which no longer exists — pick a new one from "
+                           "its Wafer Map: dropdown.")
+            return
+        try:
+            gen._load_named_map(wanted)
+            gen._sync_views(self._ata_folder)
+        except Exception as e:
+            self._exec_log(f"[RUN] Could not autoload this recipe's wafer "
+                           f"map '{wanted}' — {type(e).__name__}: {e}")
+            return
+        self._exec_log(f"[RUN] Switched to '{wanted}' — this recipe's own "
+                       f"wafer map (was '{active or '(none)'}').")
+
     def _exec_loaded_recipe_name(self) -> str:
         """The recipe the Run tab currently has loaded, if any."""
         if not getattr(self, "_exec_steps", None):
@@ -5248,6 +5303,10 @@ class MainLayout(ttk.Frame):
             self._exec_log(f"[RUN] Recipe '{name}' not found — reload the ATA folder.")
             return
         self._exec_steps = self.recipe_panel.get_steps()
+        # Before site resolution/map highlighting below, which both read
+        # whatever map is CURRENTLY active - switching it after would
+        # leave them working off the map this recipe just replaced.
+        self._exec_autoload_recipe_wafer_map()
 
         self._exec_steps_tree.delete(*self._exec_steps_tree.get_children())
         for i, s in enumerate(self._exec_steps, 1):

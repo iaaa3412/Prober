@@ -1195,6 +1195,17 @@ class RecipeGenPanel(ttk.Frame):
             os.makedirs(d, exist_ok=True)
         return d
 
+    def list_map_names(self) -> list:
+        """Every saved map name for the current ATA folder - same listing
+        _refresh_map_picker uses for the Map: dropdown, exposed for
+        callers outside this tab (RecipePanel's own Wafer Map: dropdown,
+        via instrument_panel's get_wafer_map_names injection)."""
+        d = self._maps_dir()
+        if not d or not os.path.isdir(d):
+            return []
+        return sorted(os.path.splitext(f)[0] for f in os.listdir(d)
+                     if f.endswith(".json"))
+
     def _refresh_map_picker(self):
         d = self._maps_dir()
         names = []

@@ -863,6 +863,11 @@ def recipes_to_rows(recipes: dict) -> list:
                      # on the run itself. See RecipePanel._on_align_die_pick
                      # and instrument_panel._exec_preselect_align_die.
                      "align_die": rec.get("align_die") or "",
+                     # Wafer Map: which of this ATA folder's saved Wafer
+                     # Builder maps this recipe goes with - see
+                     # RecipePanel._on_wafer_map_pick and
+                     # instrument_panel._exec_autoload_recipe_wafer_map.
+                     "wafer_map": rec.get("wafer_map") or "",
                      "shot_origin_x": "" if origin is None else str(origin[0]),
                      "shot_origin_y": "" if origin is None else str(origin[1])})
         for i, step in enumerate(rec.get("steps", []), 1):
@@ -899,6 +904,7 @@ def rows_to_recipes(rows: list) -> dict:
                                   "fast_current_settle": False,
                                   "manual_mode": False,
                                   "align_die": "",
+                                  "wafer_map": "",
                                   "shot_origin": None})
         if kind == "RECIPE":
             bench = (row.get("bench") or "").strip()
@@ -910,6 +916,7 @@ def rows_to_recipes(rows: list) -> dict:
                 row.get("fast_current_settle") or "").strip() == "1"
             recipes[name]["manual_mode"] = (row.get("manual_mode") or "").strip() == "1"
             recipes[name]["align_die"] = (row.get("align_die") or "").strip()
+            recipes[name]["wafer_map"] = (row.get("wafer_map") or "").strip()
             ox = (row.get("shot_origin_x") or "").strip()
             oy = (row.get("shot_origin_y") or "").strip()
             if ox and oy:
@@ -954,7 +961,7 @@ class RecipePanel(ttk.Frame):
     def __init__(self, parent, controller, get_pins=None, get_wiring=None,
                  get_active_card=None, save_recipes=None, system: str = "accretech",
                  switch_card=None, get_card_names=None, get_ata_folder=None,
-                 get_die_pins=None, on_save=None):
+                 get_die_pins=None, on_save=None, get_wafer_map_names=None):
         super().__init__(parent)
         self.controller = controller
         self._get_pins = get_pins or (lambda: [])
@@ -966,6 +973,10 @@ class RecipePanel(ttk.Frame):
         self._switch_card_cb = switch_card or (lambda _name: None)
         self._get_card_names = get_card_names or (lambda: [])
         self._get_ata_folder = get_ata_folder or (lambda: None)
+        # Names of the ATA folder's saved Wafer Builder maps, for the
+        # Wafer Map: dropdown - see _on_wafer_map_pick/get_wafer_map and
+        # instrument_panel._exec_autoload_recipe_wafer_map.
+        self._get_wafer_map_names = get_wafer_map_names or (lambda: [])
         # Save-also-loads-into-Run-tab redundancy for the ⟳-less Recipe
         # dropdown on the Run tab - see _save() below.
         self._on_save = on_save or (lambda _name: None)
@@ -1266,6 +1277,26 @@ class RecipePanel(ttk.Frame):
         self._card_picker.pack(side="left", padx=(0, 8), pady=4)
         self._card_picker.bind("<<ComboboxSelected>>",
                                lambda _e: self._on_card_picker_selected())
+
+        # Wafer Map: which of this ATA folder's saved Wafer Builder maps
+        # THIS recipe goes with - saved with the recipe, same spirit as
+        # Align die below. Loading the recipe (any entry point - the Run
+        # tab's own dropdown, autoload on folder open, picking it here)
+        # checks this against whichever map is currently active and
+        # switches to the right one if they disagree - see
+        # instrument_panel._exec_autoload_recipe_wafer_map. Both systems
+        # get this (unlike Align die): Wafer Builder maps are shared
+        # infrastructure, not an Electroglas-only concept.
+        tk.Label(bar, text="Wafer Map:", bg="#e2e8f0",
+                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 2), pady=4)
+        self._wafer_map_var = tk.StringVar(value="")
+        self._wafer_map_cb = ttk.Combobox(
+            bar, textvariable=self._wafer_map_var, state="readonly", width=16,
+            postcommand=lambda: self._wafer_map_cb.config(
+                values=self._get_wafer_map_names()))
+        self._wafer_map_cb.pack(side="left", padx=(0, 8), pady=4)
+        self._wafer_map_cb.bind("<<ComboboxSelected>>",
+                                lambda _e: self._on_wafer_map_pick())
 
         self._file_lbl = tk.Label(bar, text="No probe card selected",
                                   bg="#e2e8f0", fg="#6b7280",
@@ -1679,6 +1710,24 @@ class RecipePanel(ttk.Frame):
         instrument_panel._exec_preselect_align_die."""
         rec = self._recipes.get(self._current) or {}
         return (rec.get("align_die") or "").strip()
+
+    def _on_wafer_map_pick(self, _event=None):
+        rec = self._recipes.get(self._current)
+        if rec is None:
+            return
+        value = (self._wafer_map_var.get() or "").strip()
+        if value == (rec.get("wafer_map") or ""):
+            return
+        rec["wafer_map"] = value
+        card = self._get_active_card()
+        if card:
+            self._save_recipes(card, self._recipes)
+
+    def get_wafer_map(self) -> str:
+        """The loaded recipe's saved wafer map name, or "" - read by
+        instrument_panel._exec_autoload_recipe_wafer_map."""
+        rec = self._recipes.get(self._current) or {}
+        return (rec.get("wafer_map") or "").strip()
 
     def _sites_pull_shots_eg(self, ui, wm):
         """Pull Shots, Electroglas: die #1 of every shot on the published map.
@@ -3459,6 +3508,7 @@ class RecipePanel(ttk.Frame):
         if getattr(self, "_align_die_var", None) is not None:
             self._align_die_var.set(rec.get("align_die") or "")
             self._fill_align_die_choices()
+        self._wafer_map_var.set(rec.get("wafer_map") or "")
         if self._shot_origin_btn is not None:
             self._shot_origin_btn.config(
                 state="normal" if self._minor_moves_var.get() else "disabled")
@@ -3499,6 +3549,7 @@ class RecipePanel(ttk.Frame):
             self._manual_mode_var.set(False)
             if getattr(self, "_align_die_var", None) is not None:
                 self._align_die_var.set("")
+            self._wafer_map_var.set("")
             if self._shot_origin_btn is not None:
                 self._shot_origin_btn.config(state="disabled")
             self._shot_origin_status_var.set("")
