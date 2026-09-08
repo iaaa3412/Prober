@@ -1641,8 +1641,6 @@ class NanoZPanel(ttk.Frame):
         self._run_recipe_name_cb.pack(side="left", pady=6)
         self._run_recipe_name_cb.bind(
             "<<ComboboxSelected>>", lambda _e: self._load_named_recipe())
-        ttk.Button(ctrl, text="📂 Load", command=lambda: self._load_named_recipe()).pack(
-            side="left", padx=4, pady=5)
         self._run_recipe_active_lbl = tk.Label(ctrl, text="(no recipe saved yet)",
                                                bg="#f1f5f9", fg="#6b7280")
         self._run_recipe_active_lbl.pack(side="left", padx=(4, 10))
