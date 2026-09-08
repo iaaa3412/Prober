@@ -471,12 +471,9 @@ class NanoZPanel(ttk.Frame):
         # self._wafer_plan itself (Electroglas: straight from the Wafer
         # Builder tab; Accretech: whatever was auto-loaded for this ATA
         # folder in on_ata_folder_loaded) rather than requiring a manual
-        # step first. This status line is purely informational now.
-        plan_row = ttk.Frame(tab)
-        plan_row.grid(row=2, column=0, sticky="ew", padx=8, pady=(0, 4))
-        self._recipe_plan_status_lbl = ttk.Label(plan_row, text="No wafer plan imported yet.",
-                                                 foreground="#6b7280")
-        self._recipe_plan_status_lbl.pack(side="left", padx=(0, 0))
+        # step first. The status label that used to live here is gone too -
+        # every other reference to it (_recipe_plan_status_lbl) is already
+        # guarded with getattr(..., None), so this is safe to drop.
 
         # -- touchdown list -----------------------------------------------
         # Same shape as the normal (non-NanoZ) Recipe tab's own "Touchdowns"
