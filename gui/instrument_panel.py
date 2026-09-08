@@ -2051,6 +2051,7 @@ class MainLayout(ttk.Frame):
         # dropdown later worked fine because by then the index was already
         # built, which made this look intermittent.
         self._exec_autoload_default_recipe(folder_path)
+        self._exec_sync_wafer_map_on_folder_load()
 
         # NanoZ is no longer a tab nested in this MainLayout (see
         # gui/nanoz_mode.py) - forward the load to whichever NanoZPanel
@@ -5334,6 +5335,41 @@ class MainLayout(ttk.Frame):
         self._exec_recipe_var.set(name)
         self._exec_load_recipe()
         self._exec_log(f"[RUN] Auto-loaded default recipe '{name}' (probe card '{card}').")
+
+    def _exec_sync_wafer_map_on_folder_load(self):
+        """Keep the Run tab's own Wafer Map: dropdown honest after an ATA
+        folder switch, and make sure SOMETHING is actually active.
+
+        _exec_autoload_recipe_wafer_map (called from _exec_load_recipe)
+        already keeps the dropdown in sync whenever a default recipe
+        exists and gets auto-loaded - but _exec_autoload_default_recipe
+        returns immediately, before ever touching the Run tab, when this
+        folder has no default recipe marked at all. That left both the
+        dropdown AND the actual active map exactly whatever
+        recipe_gen.autoload_map_for_folder's own fallback chain happened
+        to land on (its saved default marker, else a map literally named
+        "Autoload", else the single map if there is only one) - which is
+        blank whenever a folder has more than one saved map and no
+        marker naming either. This is the backstop: reflect whatever
+        ended up active in the dropdown either way, and if nothing did,
+        just load the first saved map rather than leaving the Run tab
+        with no wafer map at all.
+        """
+        gen = getattr(self, "recipe_gen", None)
+        if gen is None or not hasattr(gen, "list_map_names"):
+            return
+        active = gen.map_name_var.get().strip()
+        if not active:
+            names = gen.list_map_names()
+            if not names:
+                return
+            first = names[0]
+            if self._exec_load_and_publish_wafer_map(first):
+                self._exec_log(f"[RUN] No default wafer map for this folder — "
+                               f"loaded '{first}' (the first saved map).")
+                active = first
+        if hasattr(self, "_exec_wafer_map_var"):
+            self._exec_wafer_map_var.set(active)
 
     def _exec_apply_recipe_sites(self, name: str):
         """Select the recipe's touchdowns on the map, if it defines any.
