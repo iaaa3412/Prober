@@ -84,6 +84,13 @@ class NanozModeLayout(ttk.Frame):
             self._holders[self._current_system].grid_remove()
         holder.grid(row=0, column=0, sticky="nsew")
         self._current_system = system
+        # The Wafer Map tab only redraws when told to (on_ata_folder_
+        # loaded, or construction) - re-check it every time NanoZ mode is
+        # (re)shown too, so switching Accretech/Electroglas while already
+        # in NanoZ mode can't leave the OTHER system's map on screen.
+        redraw = getattr(holder.nanoz_panel, "_redraw_nanoz_wafer_map", None)
+        if redraw is not None:
+            redraw()
 
     def _build_holder(self, system):
         holder = ttk.Frame(self._body)

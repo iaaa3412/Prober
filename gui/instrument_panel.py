@@ -279,28 +279,6 @@ class MainLayout(ttk.Frame):
         self._tab_gpib_trace(debug_nb)
         self._tab_nanoz_switch(debug_nb)
 
-    def load_nautata_folder(self):
-        """Loads NAUTATA into the shared ATA folder, exactly as if it had
-        been picked from the toolbar's ATA Folder dropdown - NanoZ doesn't
-        track its own independent folder. Used to run automatically when
-        the (removed) NanoZ tab was clicked; now called by
-        AtomicaDashboard.cmd_set_gui_mode when switching INTO NanoZ mode,
-        since that is the equivalent "about to look at NanoZ" moment now
-        that NanoZ is a whole separate window mode rather than a tab."""
-        if self._ata_folder and os.path.basename(self._ata_folder).lower() == "nautata":
-            return
-        working_dir = self.working_dir_var.get()
-        if not working_dir or not os.path.isdir(working_dir):
-            return
-        match = next((n for n in os.listdir(working_dir)
-                     if n.lower() == "nautata"
-                     and os.path.isdir(os.path.join(working_dir, n))), None)
-        if not match:
-            self.controller.log(
-                f"[SYSTEM] NanoZ mode: no NAUTATA folder found under '{working_dir}'.")
-            return
-        self.controller._do_load_ata_folder(os.path.join(working_dir, match))
-
     _ACCRETECH_INSTRUMENTS = [
         ("UF200R Prober", "prober"),
         ("Switch Matrix (Keithley 707B)", "switch_matrix"),

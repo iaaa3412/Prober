@@ -3905,6 +3905,17 @@ class NanoZPanel(ttk.Frame):
             if lbl is not None:
                 lbl.config(text="No wafer plan imported yet.", foreground="#6b7280")
 
+        # The Wafer Map tab (_draw_run_map_nzmap) had nothing that ever
+        # re-triggered it after its one draw at construction time - it
+        # used to be refreshed by picking a different View: radio, but
+        # those are gone now that this tab only ever shows the Run tab's
+        # own map. Without this, switching ATA folders (or entering
+        # NanoZ mode with cmd_set_gui_mode's forced Nautilus reload now
+        # removed) left whatever was drawn for the PREVIOUS folder on
+        # screen - stale dies, not the "no wafer map" message a genuinely
+        # empty folder should show.
+        self._redraw_nanoz_wafer_map()
+
     def _refresh_console_boards(self):
         ports = sorted(self._boards.keys())
         labels = [self._board_label(p) for p in ports]
