@@ -2163,6 +2163,9 @@ class EgPmaRunPanel(ttk.Frame):
     # -- running ------------------------------------------------------------
 
     def _guard(self) -> bool:
+        matches = getattr(self._main_layout, "_exec_wafer_map_matches_recipe", None)
+        if matches is not None and not matches():
+            return False
         if not self._anchored or self._index is None:
             messagebox.showwarning("Run", "Set where the chuck is first.")
             return False
@@ -2379,6 +2382,9 @@ class EgPmaRunPanel(ttk.Frame):
     # checkbox's own docstring.
 
     def _run_minor_moves(self):
+        matches = getattr(self._main_layout, "_exec_wafer_map_matches_recipe", None)
+        if matches is not None and not matches():
+            return
         if self._running:
             self._log("[RUN] Already running")
             return

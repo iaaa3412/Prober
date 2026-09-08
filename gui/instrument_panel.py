@@ -3604,8 +3604,42 @@ class MainLayout(ttk.Frame):
             self.after(0, p.read_state)
 
 
+    def _exec_wafer_map_matches_recipe(self) -> bool:
+        """False (and logged) if the loaded recipe names a wafer map that
+        isn't the one actually active right now.
+
+        Every run/measure/move entry point on both systems is gated on
+        this - Full Die/Test Die/Test Selected/Run/Minor Moves (via
+        _exec_can_start), Measure (_exec_touchdown_measure), and
+        Electroglas's own Run/Next/Back/Move to Selected/Minor Moves (via
+        EgPmaRunPanel._guard/_run_minor_moves) - because a mismatched map
+        means every position and die ID any of them would compute is
+        wrong: LaMP's own die pitch lives on the map, so probing against
+        the wrong one doesn't just mislabel results, it can physically
+        move the chuck to the wrong die entirely.
+
+        A recipe with no saved wafer map preference (RecipePanel.
+        get_wafer_map() returns "") has nothing to check against, so this
+        is always True for it - same as _exec_autoload_recipe_wafer_map's
+        own "blank preference means no opinion" rule.
+        """
+        wanted = self.recipe_panel.get_wafer_map()
+        if not wanted:
+            return True
+        gen = getattr(self, "recipe_gen", None)
+        active = gen.map_name_var.get().strip() if gen is not None else ""
+        if wanted == active:
+            return True
+        self._exec_log(
+            f"[RUN] Blocked — this recipe wants wafer map '{wanted}', but "
+            f"'{active or '(none)'}' is active. Pick '{wanted}' from the "
+            "Wafer Map: dropdown first.")
+        return False
+
     def _exec_can_start(self) -> bool:
         ok = True
+        if not self._exec_wafer_map_matches_recipe():
+            ok = False
         if self._exec_lot_thread and self._exec_lot_thread.is_alive():
             self._exec_log("[RUN] Cannot start — the previous run is still finishing")
             ok = False
@@ -5468,6 +5502,8 @@ class MainLayout(ttk.Frame):
             return
         if not self._exec_steps:
             self._exec_log("[MEASURE] No recipe loaded")
+            return
+        if not self._exec_wafer_map_matches_recipe():
             return
         # _exec_run_steps_once refuses to run at all while this is True
         # (see its own abort check) - every REAL run resets it at start,
