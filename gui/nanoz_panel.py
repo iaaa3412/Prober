@@ -153,11 +153,9 @@ class NanoZPanel(ttk.Frame):
         self._current_recipe_name: str | None = None
         self._wafer_plan: "nzb.WaferPlan | None" = None
         self._wafer_plan_path: str | None = None
+        # The Wafer Map tab always shows exactly what this system's own
+        # Run tab shows - see _draw_run_map_nzmap.
         self._nzmap_dies_by_rc: dict[tuple[int, int], dict] = {}
-        self._nzmap_accr_dies_by_rc: dict[tuple[int, int], dict] = {}
-        # Default source is the live Run tab map, not a separate import -
-        # see _draw_run_map_nzmap's own docstring for why.
-        self._nzmap_source_var = tk.StringVar(value="run_tab")
         self._show_nzmap_labels_var = tk.BooleanVar(value=True)
         self._nzmap_label_artists: list = []
         self._nzmap_view_debounce_id = None
@@ -1187,7 +1185,6 @@ class NanoZPanel(ttk.Frame):
         def _finish():
             self._wafer_plan = plan
             self._wafer_plan_path = dest
-            self._nzmap_source_var.set("probe_plan")
             # _redraw_nanoz_wafer_map() (the removed Wafer Map tab's own
             # matplotlib redraw) is NOT called here anymore - its canvas/
             # axes are never created now that tab isn't built, so calling
@@ -1212,9 +1209,8 @@ class NanoZPanel(ttk.Frame):
 
     def _eg_refresh_wafer_plan_from_wafer_builder(self, silent: bool = False):
         """Electroglas only - builds self._wafer_plan directly from the
-        Wafer Builder tab's Die Map (main_layout.recipe_gen), the same
-        data _wafer_builder_dies() below already reads for the (removed)
-        Wafer Map tab, instead of requiring an .xlsx import. Touchdown
+        Wafer Builder tab's Die Map (main_layout.recipe_gen) instead of
+        requiring an .xlsx import. Touchdown
         windows are computed by grouping each column's dies into
         probe-height-tall chunks top-down - the touchdown's reference
         point is always the TOP die of the column, per the physical probe
@@ -1294,32 +1290,15 @@ class NanoZPanel(ttk.Frame):
 
         src_row = ttk.Frame(tab)
         src_row.grid(row=1, column=0, sticky="w", padx=8, pady=(0, 4))
-        ttk.Label(src_row, text="View:").pack(side="left", padx=(0, 4))
-        # Default and first in the row: the exact same map/die IDs this
-        # system's own Run tab shows right now, read straight off that
-        # tab's live WaferMapPanel (main_layout._exec_wafer_map) rather
-        # than a separate import/reconstruction - see
-        # _draw_run_map_nzmap's own docstring for why the others could
-        # show no die IDs at all even with a real map loaded on the Run
-        # tab.
-        ttk.Radiobutton(src_row, text="Run Tab", variable=self._nzmap_source_var,
-                        value="run_tab", command=self._redraw_nanoz_wafer_map).pack(side="left")
-        ttk.Radiobutton(src_row, text="Probe Plan (.xlsx)", variable=self._nzmap_source_var,
-                        value="probe_plan", command=self._redraw_nanoz_wafer_map).pack(side="left")
-        ttk.Button(src_row, text="📥 Import Wafer Plan (.xlsx)…",
-                  command=self._import_wafer_plan).pack(side="left", padx=(4, 0))
-        ttk.Radiobutton(src_row, text="Accretech", variable=self._nzmap_source_var,
-                        value="accretech", command=self._redraw_nanoz_wafer_map).pack(side="left")
-        ttk.Radiobutton(src_row, text="CSV", variable=self._nzmap_source_var,
-                        value="csv", command=self._redraw_nanoz_wafer_map).pack(side="left")
-        ttk.Radiobutton(src_row, text="Wafer Builder", variable=self._nzmap_source_var,
-                        value="wafer_builder",
-                        command=self._redraw_nanoz_wafer_map).pack(side="left")
-        ttk.Button(src_row, text="📥  Load CSV Wafer Map…",
-                  command=self._nzmap_load_csv_dialog).pack(side="left", padx=(6, 0))
-        self._nzmap_csv_path_var = tk.StringVar(value="No CSV loaded.")
-        ttk.Label(src_row, textvariable=self._nzmap_csv_path_var,
-                 foreground="#6b7280", font=("Segoe UI", 8)).pack(side="left", padx=(6, 0))
+        # No source picker - this always shows exactly what this system's
+        # own Run tab shows right now, read straight off that tab's live
+        # WaferMapPanel (main_layout._exec_wafer_map) rather than a
+        # separate import/reconstruction - see _draw_run_map_nzmap's own
+        # docstring. There used to be four switchable sources here
+        # (Probe Plan .xlsx, Accretech, CSV, Wafer Builder), none of
+        # which was guaranteed to be "whatever the Run tab shows," and
+        # most of which never carried real die IDs at all.
+        ttk.Label(src_row, text="View: Run Tab").pack(side="left", padx=(0, 4))
         ttk.Checkbutton(src_row, text="🏷 Die Labels", variable=self._show_nzmap_labels_var,
                        command=self._update_visible_nzmap_labels).pack(side="left", padx=(12, 0))
 
@@ -1364,96 +1343,7 @@ class NanoZPanel(ttk.Frame):
         if not _MPL:
             return
         self._nzmap_dies_by_rc = {}
-        self._nzmap_accr_dies_by_rc = {}
-        source = self._nzmap_source_var.get()
-        if source == "run_tab":
-            self._draw_run_map_nzmap()
-        elif source == "accretech":
-            self._draw_accretech_nzmap()
-        elif source == "csv":
-            self._draw_csv_nzmap()
-        elif source == "wafer_builder":
-            self._draw_wafer_builder_nzmap()
-        else:
-            self._draw_probe_plan_nzmap()
-
-    def _nzmap_pma_wafer(self):
-        # CSV wafer-map data is NOT owned by this tab - it's the same
-        # PmaWaferPanel instance (and the same ata_wafer_map_csv_import.csv
-        # persisted file) the main "Wafer Map" tab uses, so a CSV loaded
-        # from either tab, and the Overlay dialogs on either Run tab, are
-        # always looking at the identical data - never two independent
-        # copies that could drift apart.
-        return getattr(self._main_layout, "pma_wafer", None)
-
-    def _nzmap_load_csv_dialog(self):
-        pma_wafer = self._nzmap_pma_wafer()
-        if pma_wafer is None:
-            self._log_main("CSV wafer map isn't available.")
-            return
-        path = filedialog.askopenfilename(
-            title="Load CSV Wafer Map",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
-        if not path:
-            return
-        pma_wafer.load_csv_path(path)
-        self._log_main("NanoZ Wafer Map")
-        self._nzmap_source_var.set("csv")
-        self._redraw_nanoz_wafer_map()
-
-    def _draw_csv_nzmap(self):
-        pma_wafer = self._nzmap_pma_wafer()
-        data = pma_wafer._csv_shot_data if pma_wafer else None
-        if not data or not data.get("shots"):
-            self._nzmap_csv_path_var.set("No CSV loaded.")
-            self._draw_empty_nzmap(
-                "No CSV wafer map loaded yet — 📥 Load CSV Wafer Map… above, or load one "
-                "on the main Wafer Map tab (they're the same data).")
-            return
-        self._nzmap_csv_path_var.set(f"{data['path']}  ({len(data['shots'])} die(s))")
-        dies = [{"row": s["row"], "col": s["col"], "serial": "/".join(s["dies"]), "status": "csv"}
-               for s in data["shots"] if s.get("dies")]
-        self._nzmap_dies_by_rc = {(d["row"], d["col"]): d for d in dies}
-        self._nzmap_ax.clear()
-        self._nzmap_ax.set_aspect("equal")
-        patches = [Rectangle((d["col"] - 0.5, -d["row"] - 0.5), 1, 1) for d in dies]
-        coll = PatchCollection(patches, edgecolor="#1e293b", linewidths=0.4)
-        coll.set_facecolor("#7aaec8")
-        self._nzmap_ax.add_collection(coll)
-        max_col = max((d["col"] for d in dies), default=1)
-        max_row = max((d["row"] for d in dies), default=1)
-        self._nzmap_ax.set_xlim(0, max_col + 1)
-        self._nzmap_ax.set_ylim(-(max_row + 1), 0)
-        self._nzmap_ax.set_title(f"CSV — {len(dies)} die(s) — click a die to see its ID", fontsize=9)
-        self._nzmap_current_labels = [
-            {"x": d["col"], "y": -d["row"], "label": d["serial"], "color": "black"} for d in dies
-        ]
-        self._connect_nzmap_view_callbacks()
-        self._update_visible_nzmap_labels()
-        self._nzmap_canvas.draw_idle()
-
-    def _wafer_builder_dies(self) -> list:
-        """The Wafer Builder tab's Die Map, at die-pitch resolution - the
-        same data instrument_panel._exec_wafer_builder_grid overlays onto
-        the Run tab's map, reused here so NanoZ shows whatever die IDs were
-        actually set there instead of a separate CSV/plan import.
-        """
-        gen = getattr(self._main_layout, "recipe_gen", None)
-        if gen is None:
-            return []
-        try:
-            dpx, dpy = gen._die_pitch()
-        except Exception:
-            return []
-        if not dpx or not dpy:
-            return []
-        out = []
-        for d in gen._die_positions():
-            if d["status"] != "normal" or not d["die_id"]:
-                continue
-            out.append({"row": round(d["y"] / dpy), "col": round(d["x"] / dpx),
-                        "serial": d["die_id"], "status": "wafer_builder"})
-        return out
+        self._draw_run_map_nzmap()
 
     def _draw_run_map_nzmap(self):
         """The exact same wafer map this system's own Run tab is showing
@@ -1506,88 +1396,6 @@ class NanoZPanel(ttk.Frame):
         self._nzmap_current_labels = [
             {"x": c, "y": -r, "label": die_ids.get((r, c), "") or f"R{r}C{c}",
              "color": "black"} for r, c in rcs
-        ]
-        self._connect_nzmap_view_callbacks()
-        self._update_visible_nzmap_labels()
-        self._nzmap_canvas.draw_idle()
-
-    def _draw_wafer_builder_nzmap(self):
-        dies = self._wafer_builder_dies()
-        if not dies:
-            self._draw_empty_nzmap(
-                "No Wafer Builder die map yet — set die IDs on the Wafer "
-                "Builder tab's Die Map (Set Die ID mode).")
-            return
-        self._nzmap_dies_by_rc = {(d["row"], d["col"]): d for d in dies}
-        self._nzmap_ax.clear()
-        self._nzmap_ax.set_aspect("equal")
-        patches = [Rectangle((d["col"] - 0.5, -d["row"] - 0.5), 1, 1) for d in dies]
-        coll = PatchCollection(patches, edgecolor="#1e293b", linewidths=0.4)
-        coll.set_facecolor("#7aaec8")
-        self._nzmap_ax.add_collection(coll)
-        max_col = max((d["col"] for d in dies), default=1)
-        max_row = max((d["row"] for d in dies), default=1)
-        self._nzmap_ax.set_xlim(0, max_col + 1)
-        self._nzmap_ax.set_ylim(-(max_row + 1), 0)
-        self._nzmap_ax.set_title(
-            f"Wafer Builder — {len(dies)} die(s) — click a die to see its ID", fontsize=9)
-        self._nzmap_current_labels = [
-            {"x": d["col"], "y": -d["row"], "label": d["serial"], "color": "black"} for d in dies
-        ]
-        self._connect_nzmap_view_callbacks()
-        self._update_visible_nzmap_labels()
-        self._nzmap_canvas.draw_idle()
-
-    def _draw_probe_plan_nzmap(self):
-        plan = self._wafer_plan
-        if plan is None:
-            self._draw_empty_nzmap()
-            return
-        dies = nzb.wafer_plan_die_grid(plan)
-        self._nzmap_dies_by_rc = {(d["row"], d["col"]): d for d in dies}
-        self._nzmap_ax.clear()
-        self._nzmap_ax.set_aspect("equal")
-        patches = [Rectangle((d["col"] - 0.5, -d["row"] - 0.5), 1, 1) for d in dies]
-        colors = ["#8b0000" if d["status"] == "reference" else "#7aaec8" for d in dies]
-        coll = PatchCollection(patches, edgecolor="#1e293b", linewidths=0.4)
-        coll.set_facecolor(colors)
-        self._nzmap_ax.add_collection(coll)
-        max_col = max((d["col"] for d in dies), default=1)
-        max_row = max((d["row"] for d in dies), default=1)
-        self._nzmap_ax.set_xlim(0, max_col + 1)
-        self._nzmap_ax.set_ylim(-(max_row + 1), 0)
-        self._nzmap_ax.set_title(f"Probe Plan — {len(dies)} on-wafer die(s) — "
-                                 "click a die to see its serial", fontsize=9)
-        self._nzmap_current_labels = [
-            {"x": d["col"], "y": -d["row"],
-             "label": d["serial"], "color": "white" if d["status"] == "reference" else "black"}
-            for d in dies
-        ]
-        self._connect_nzmap_view_callbacks()
-        self._update_visible_nzmap_labels()
-        self._nzmap_canvas.draw_idle()
-
-    def _draw_accretech_nzmap(self):
-        rcs = sorted(self.wafer_map.dies.keys())
-        if not rcs:
-            self._draw_empty_nzmap(
-                "No Accretech wafer map yet — extract or auto-load one on the Run tab.")
-            return
-        self._nzmap_accr_dies_by_rc = {rc: {"row": rc[0], "col": rc[1]} for rc in rcs}
-        self._nzmap_ax.clear()
-        self._nzmap_ax.set_aspect("equal")
-        patches = [Rectangle((c - 0.5, -r - 0.5), 1, 1) for r, c in rcs]
-        coll = PatchCollection(patches, edgecolor="#1e293b", linewidths=0.4)
-        coll.set_facecolor("#7aaec8")
-        self._nzmap_ax.add_collection(coll)
-        cols = [c for _r, c in rcs]
-        rows = [r for r, _c in rcs]
-        self._nzmap_ax.set_xlim(min(cols) - 1, max(cols) + 1)
-        self._nzmap_ax.set_ylim(-(max(rows) + 1), -(min(rows) - 1))
-        self._nzmap_ax.set_title(f"Accretech — {len(rcs)} die(s) — click a die to see "
-                                 "its row/col", fontsize=9)
-        self._nzmap_current_labels = [
-            {"x": c, "y": -r, "label": f"R{r}C{c}", "color": "black"} for r, c in rcs
         ]
         self._connect_nzmap_view_callbacks()
         self._update_visible_nzmap_labels()
@@ -1852,12 +1660,6 @@ class NanoZPanel(ttk.Frame):
         if event.xdata is None or event.ydata is None:
             return
         rc = (round(-event.ydata), round(event.xdata))
-        if self._nzmap_source_var.get() == "accretech":
-            d = self._nzmap_accr_dies_by_rc.get(rc)
-            if d is None:
-                return
-            self._nzmap_die_var.set(f"Row {d['row']}, Col {d['col']}")
-            return
         d = self._nzmap_dies_by_rc.get(rc)
         if d is None:
             return
