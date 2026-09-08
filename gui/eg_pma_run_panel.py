@@ -533,7 +533,7 @@ class EgPmaRunPanel(ttk.Frame):
                     for a, b in zip(touchdowns, self._touchdowns)))
         if same:
             if not quiet:
-                self._log(f"[PMA] Die list already matches the Wafer Builder "
+                self._log(f"[RUN] Die list already matches the Wafer Builder "
                           f"map ({len(touchdowns)} dies) - nothing to rebuild.")
             return True
 
@@ -544,7 +544,7 @@ class EgPmaRunPanel(ttk.Frame):
         self._adopt("(Wafer Builder map — no .PMA)",
                     {"DieSizeX": dx, "DieSizeY": dy}, touchdowns)
         self._log(
-            f"[PMA] Built {len(touchdowns)} die(s) directly from the Wafer "
+            f"[RUN] Built {len(touchdowns)} die(s) directly from the Wafer "
             f"Builder map ({shot_rows}x{shot_cols} shot, die pitch "
             f"{dx:.0f} x {dy:.0f} um) - no .PMA file used.")
         return True
@@ -604,7 +604,7 @@ class EgPmaRunPanel(ttk.Frame):
         self._fill_anchor_choices()
         self._fill_table()
         self._anchor_state_var.set("not set — pick where the chuck is, then Set")
-        self._log(f"[PMA] Loaded {os.path.basename(path)}: {len(touchdowns)} touchdowns, "
+        self._log(f"[RUN] Loaded {os.path.basename(path)}: {len(touchdowns)} touchdowns, "
                   f"die {self._die_um[0]:.0f} x {self._die_um[1]:.0f} um")
 
     def forget_recipe(self):
@@ -666,7 +666,7 @@ class EgPmaRunPanel(ttk.Frame):
             self._update_move_button()
         except Exception:
             pass
-        self._log("[PMA] Run tab cleared — the ATA folder changed, so the "
+        self._log("[RUN] Run tab cleared — the ATA folder changed, so the "
                   "previous wafer's touchdowns no longer apply.")
 
     def _fill_info(self):
@@ -774,7 +774,7 @@ class EgPmaRunPanel(ttk.Frame):
             self._shot_corner_warned = True
             detail = ", ".join(f"{d}->{c}" for c, d in corners)
             self._log(
-                f"[PMA] ⚠ shot '{t.get('device_id')}' does not sit on the Wafer "
+                f"[RUN] ⚠ shot '{t.get('device_id')}' does not sit on the Wafer "
                 f"Builder map as one block ({detail}). The recipe groups those "
                 "dies into one touchdown but the published map spaces them "
                 "differently, so this shot's position is a best guess. Republish "
@@ -812,7 +812,7 @@ class EgPmaRunPanel(ttk.Frame):
         if (ox, oy) != (0, 0) and not getattr(self, "_grid_fallback_warned", False):
             self._grid_fallback_warned = True
             self._log(
-                f"[PMA] '{t.get('device_id')}' (and possibly others) is not on the "
+                f"[RUN] '{t.get('device_id')}' (and possibly others) is not on the "
                 f"Wafer Builder map; placing it from the .xls, shifted by "
                 f"({ox:+d},{oy:+d}) into the map's frame. Republish the map to "
                 "include those dies rather than relying on this.")
@@ -1138,7 +1138,7 @@ class EgPmaRunPanel(ttk.Frame):
                 return
             try:
                 drv.set_die_size(dx, dy)
-                self._log(f"[PMA] >> SP1X{dx:.0f}Y{dy:.0f}  "
+                self._log(f"[RUN] >> SP1X{dx:.0f}Y{dy:.0f}  "
                           "(die size sent to prober)")
             except Exception as e:
                 messagebox.showerror(
@@ -1223,7 +1223,7 @@ class EgPmaRunPanel(ttk.Frame):
                 wmap.canvas.update_idletasks()
         except Exception:
             pass
-        self._log(f"[PMA] Anchored at #{t['seq']} {t['device_id']} grid ({qx},{qy})"
+        self._log(f"[RUN] Anchored at #{t['seq']} {t['device_id']} grid ({qx},{qy})"
                   f"{offset_note}")
 
     def _mark_current(self):
@@ -1590,7 +1590,7 @@ class EgPmaRunPanel(ttk.Frame):
             # to be named by a single square.
             self._anchor_rc.setdefault(d["seq"], rc)
         if missing:
-            self._log(f"[PMA] {missing} of {len(dies)} recipe dies are not on "
+            self._log(f"[RUN] {missing} of {len(dies)} recipe dies are not on "
                       "the Wafer Builder map — the .PMA and the published map "
                       "look like they are for different wafers, or the map has "
                       "not been (re)published since this recipe loaded.")
@@ -1909,7 +1909,7 @@ class EgPmaRunPanel(ttk.Frame):
                 var.set(max(0, var.get() - 1))
             (add_pass if now == "PASS" else add_fail)()
         except Exception as e:
-            self._log(f"[PMA] Could not update pass/fail counts — "
+            self._log(f"[MEASURE] Could not update pass/fail counts — "
                       f"{type(e).__name__}: {e}")
 
     def reset_results(self):
@@ -1988,7 +1988,7 @@ class EgPmaRunPanel(ttk.Frame):
                 wafer.mark_current_shot(touchdown["x"], touchdown["y"],
                                         f"#{touchdown['seq']}  {label}")
         except Exception as e:
-            self._log(f"[PMA] wafer map marker skipped — {type(e).__name__}: {e}")
+            self._log(f"[RUN] wafer map marker skipped — {type(e).__name__}: {e}")
 
     def _push_xy_display(self, xy):
         """Mirror ?P into the Run tab's own Chuck Position readout.
@@ -2068,13 +2068,13 @@ class EgPmaRunPanel(ttk.Frame):
         try:
             redraw(quiet_if_missing=True)
         except Exception as e:
-            self._log(f"[PMA] Could not reload the wafer map — "
+            self._log(f"[RUN] Could not reload the wafer map — "
                       f"{type(e).__name__}: {e}")
 
     def _sync_position(self):
         drv = self._prober()
         if not drv:
-            self._log("[PMA] Prober not connected")
+            self._log("[RUN] Prober not connected")
             return
 
         def _work():
@@ -2085,7 +2085,7 @@ class EgPmaRunPanel(ttk.Frame):
                 # (a GPIB timeout, an unparseable status) died silently and
                 # the button looked like it had simply done nothing at all.
                 self._ui(lambda: self._log(
-                    f"[PMA] Sync ?P failed - {type(e).__name__}: {e}"))
+                    f"[RUN] Sync ?P failed - {type(e).__name__}: {e}"))
 
         threading.Thread(target=_work, daemon=True).start()
 
@@ -2134,7 +2134,7 @@ class EgPmaRunPanel(ttk.Frame):
                 self._fill_table()
             self._status_var.set(f"?P={pos}  {status}")
             self._push_xy_display(real)
-            self._log(f"[PMA] ?P={pos}  {status}{note}")
+            self._log(f"[RUN] ?P={pos}  {status}{note}")
         self._ui(_apply)
 
     # -- running ------------------------------------------------------------
@@ -2144,10 +2144,10 @@ class EgPmaRunPanel(ttk.Frame):
             messagebox.showwarning("Run", "Set where the chuck is first.")
             return False
         if not self._prober():
-            self._log("[PMA] Prober not connected")
+            self._log("[RUN] Prober not connected")
             return False
         if self._running:
-            self._log("[PMA] Already running")
+            self._log("[RUN] Already running")
             return False
         return True
 
@@ -2235,7 +2235,7 @@ class EgPmaRunPanel(ttk.Frame):
             seqs = ", ".join(f"#{s}" for s in uniq[:8])
             more = f" (+{len(uniq) - 8} more)" if len(uniq) > 8 else ""
             self._log(
-                f"[PMA] {len(dropped)} entr(ies) in the run order resolved to a "
+                f"[RUN] {len(dropped)} entr(ies) in the run order resolved to a "
                 f"grid position already taken, at {len(uniq)} position(s): "
                 f"{seqs}{more}. This is the ambiguous-shot-corner case "
                 "_builder_grid_xy warns about — those dies will NOT be probed.")
@@ -2293,7 +2293,7 @@ class EgPmaRunPanel(ttk.Frame):
             return
         enabled = self._enabled_indices()
         if not enabled:
-            self._log("[PMA] Run: this recipe has no touchdowns to probe.")
+            self._log("[RUN] Run: this recipe has no touchdowns to probe.")
             return
         total = len(self._touchdowns)
         subset = (f"\n\nThe loaded recipe restricts this run to {len(enabled)} "
@@ -2358,32 +2358,32 @@ class EgPmaRunPanel(ttk.Frame):
 
     def _run_minor_moves(self):
         if self._running:
-            self._log("[PMA] Already running")
+            self._log("[RUN] Already running")
             return
         drv = self._prober()
         if drv is None:
-            self._log("[PMA] Prober not connected")
+            self._log("[RUN] Prober not connected")
             return
         rp = self._main_layout.recipe_panel
         origin = rp.get_shot_origin()
         if origin is None:
-            self._log("[PMA] Minor Moves: no shot origin set for this recipe "
+            self._log("[RUN] Minor Moves: no shot origin set for this recipe "
                       "— press Set Shot Origin on the Recipe tab (with the "
                       "chuck on shot R0C0's die R0C0), then Run again.")
             return
         gen = getattr(self._main_layout, "recipe_gen", None)
         if gen is None:
-            self._log("[PMA] Minor Moves: the Wafer Builder tab is not available.")
+            self._log("[RUN] Minor Moves: the Wafer Builder tab is not available.")
             return
         shot_rows, shot_cols = gen._shot_dims()
         shot_cells = dict(gen._shot_cells)
         shots = sorted({(d["row"], d["col"]) for d in gen.shots_as_die_list()})
         if not shots:
-            self._log("[PMA] Minor Moves: no shots on the Wafer Builder map.")
+            self._log("[RUN] Minor Moves: no shots on the Wafer Builder map.")
             return
         steps = self._main_layout.recipe_panel.get_steps()
         if not steps:
-            self._log("[PMA] Minor Moves: the loaded recipe has no steps.")
+            self._log("[RUN] Minor Moves: the loaded recipe has no steps.")
             return
         if not messagebox.askokcancel(
                 "Run (Minor Moves)",
@@ -2398,7 +2398,7 @@ class EgPmaRunPanel(ttk.Frame):
             pass
         self._abort = False
         self._set_run_state("RUNNING (Minor Moves)", "#2563eb")
-        self._log(f"[PMA] Run (Minor Moves) — {len(shots)} shot(s).")
+        self._log(f"[RUN] Run (Minor Moves) — {len(shots)} shot(s).")
         threading.Thread(
             target=self._minor_move_thread,
             args=(shots, origin, shot_rows, shot_cols, shot_cells),
@@ -2428,7 +2428,7 @@ class EgPmaRunPanel(ttk.Frame):
         die1_rc = shot_die_rc(shot_cells, shot_rows, shot_cols, 1)
         if die1_rc is None:
             self._ui(lambda: self._log(
-                "[PMA] Minor Moves: this shot has no die #1 - treating "
+                "[RUN] Minor Moves: this shot has no die #1 - treating "
                 "grid cell (0,0) as the reference instead."))
             die1_rc = (0, 0)
         r1, c1 = die1_rc
@@ -2447,7 +2447,7 @@ class EgPmaRunPanel(ttk.Frame):
             label = f"shot R{shot_row}C{shot_col} die #{die_num} (X{die_x} Y{die_y})"
             self._ui(lambda lab=label: self._status_var.set(f"moving to {lab}"))
             drv.z_down()
-            self._ui(lambda lab=label: self._log(f"[PMA] >> goto_die X={die_x} Y={die_y}"))
+            self._ui(lambda lab=label: self._log(f"[RUN] >> goto_die X={die_x} Y={die_y}"))
             drv.goto_die(die_x, die_y)
             drv.z_up()
 
@@ -2456,7 +2456,7 @@ class EgPmaRunPanel(ttk.Frame):
                 if self._abort:
                     break
                 self._ui(lambda sr=shot_row, sc=shot_col: self._log(
-                    f"[PMA] Shot R{sr}C{sc}: landing on die #1"))
+                    f"[RUN] Shot R{sr}C{sc}: landing on die #1"))
                 try:
                     goto_shot_die(shot_row, shot_col, 1)
                 except _Stop:
@@ -2472,7 +2472,7 @@ class EgPmaRunPanel(ttk.Frame):
                     f"[RESULTS] {'PASS' if p else 'FAIL'}  shot R{sr}C{sc}"))
         except Exception as e:
             error_msg = str(e)
-            self._ui(lambda: self._log(f"[PMA] ERROR: {e}"))
+            self._ui(lambda: self._log(f"[RUN] ERROR: {e}"))
         finally:
             layout._exec_move_fn = None
             self._running = False
@@ -2542,15 +2542,15 @@ class EgPmaRunPanel(ttk.Frame):
                 opener()
             except Exception as e:
                 self._ui(lambda: self._log(
-                    f"[PMA] Could not open the switch channels — "
+                    f"[RUN] Could not open the switch channels — "
                     f"{type(e).__name__}: {e}"))
         if drv is not None:
             try:
                 drv.z_down()
-                self._ui(lambda: self._log("[PMA] Chuck separated (Z down)."))
+                self._ui(lambda: self._log("[RUN] Chuck separated (Z down)."))
             except Exception as e:
                 self._ui(lambda: self._log(
-                    f"[PMA] Could not separate the chuck — "
+                    f"[RUN] Could not separate the chuck — "
                     f"{type(e).__name__}: {e}  Check Z before moving."))
 
     def _publish_total_dies(self) -> int:
@@ -2580,7 +2580,7 @@ class EgPmaRunPanel(ttk.Frame):
             self._main_layout._exec_total_dies = total
             self._main_layout._exec_push_stats()
         except Exception as e:
-            self._log(f"[PMA] Could not publish the die total — "
+            self._log(f"[RUN] Could not publish the die total — "
                       f"{type(e).__name__}: {e}")
         return total
 
@@ -2618,7 +2618,7 @@ class EgPmaRunPanel(ttk.Frame):
                     done += 1
             except Exception as e:
                 err = f"{type(e).__name__}: {str(e).splitlines()[0][:80]}"
-                self._ui(lambda: self._log(f"[PMA] run aborted — {err}"))
+                self._ui(lambda: self._log(f"[RUN] run aborted — {err}"))
             finally:
                 # Always make the bench safe on the way out, however the loop
                 # ended. The prober handles Z around its own moves, but
@@ -2676,7 +2676,7 @@ class EgPmaRunPanel(ttk.Frame):
             status = (drv.get_prober_status() or "").upper()
         except Exception as e:
             self._ui(lambda: self._log(
-                f"[PMA] Could not read the Z state ({type(e).__name__}: {e}) — "
+                f"[RUN] Could not read the Z state ({type(e).__name__}: {e}) — "
                 "stopping rather than measuring blind."))
             return False
         if "ZU" in status:
@@ -2688,7 +2688,7 @@ class EgPmaRunPanel(ttk.Frame):
             return True
         except Exception as e:
             self._ui(lambda: self._log(
-                f"[PMA] Chuck is not in contact ({status or 'no status'}) and ZU "
+                f"[RUN] Chuck is not in contact ({status or 'no status'}) and ZU "
                 f"failed — {e}  Run stopped; nothing was measured."))
             return False
 
@@ -2703,7 +2703,7 @@ class EgPmaRunPanel(ttk.Frame):
         run_steps = getattr(layout, "_exec_run_steps_once", None)
         if run_steps is None:
             self._ui(lambda: self._log(
-                "[PMA] No measurement engine on this layout — run stopped."))
+                "[MEASURE] No measurement engine on this layout — run stopped."))
             return False
         if not self._ensure_contact(drv):
             return False
@@ -2729,7 +2729,7 @@ class EgPmaRunPanel(ttk.Frame):
             ok = bool(run_steps())
         except Exception as e:
             self._ui(lambda: self._log(
-                f"[PMA] Measurement error at #{seq} {dev} — "
+                f"[MEASURE] Measurement error at #{seq} {dev} — "
                 f"{type(e).__name__}: {e}"))
             return False
         # Per-die verdicts when the recipe produced them, so each die's own
@@ -2754,12 +2754,12 @@ class EgPmaRunPanel(ttk.Frame):
                     # probed, and its result belongs in the map colours and
                     # the tally like any other.
                     self.mark_die_result(seq, quad, passed)
-                    self._log(f"[PMA] #{seq} {quad} {die or '(unnamed)'}: "
+                    self._log(f"[MEASURE] #{seq} {quad} {die or '(unnamed)'}: "
                               f"{'PASS' if passed else 'FAIL'}")
             self._ui(_mark)
         else:
             self._ui(lambda: (self.mark_result(seq, ok),
-                              self._log(f"[PMA] #{seq} {dev}: "
+                              self._log(f"[MEASURE] #{seq} {dev}: "
                                         f"{'PASS' if ok else 'FAIL'}")))
         return True
 
@@ -2812,7 +2812,7 @@ class EgPmaRunPanel(ttk.Frame):
             nxt = self._next_enabled_index(self._index)
         if nxt is None:
             self._ui(lambda: self._log(
-                "[PMA] No further touchdowns in this recipe's list."))
+                "[RUN] No further touchdowns in this recipe's list."))
             return False
         # Skipped touchdowns are still MOVED THROUGH by _move_to_index, which
         # steps die by die - this only decides where to stop and probe.
@@ -2857,7 +2857,7 @@ class EgPmaRunPanel(ttk.Frame):
         real = self._read_position(drv)
         if real is None:
             self._ui(lambda: self._log(
-                f"[PMA] STOPPED at #{nxt['seq']}: could not read ?P to verify "
+                f"[RUN] STOPPED at #{nxt['seq']}: could not read ?P to verify "
                 "the chuck's real position before moving, even after a "
                 "recover() - re-anchor once the link is back rather than "
                 "assuming."))
@@ -2891,7 +2891,7 @@ class EgPmaRunPanel(ttk.Frame):
                 where = (f"grid ({grid[0]},{grid[1]}), which no touchdown in "
                          "this recipe covers")
             self._ui(lambda r=real, w=where, c=expected, s=nxt['seq']: self._log(
-                f"[PMA] Re-located before moving to #{s}: chuck is really at "
+                f"[RUN] Re-located before moving to #{s}: chuck is really at "
                 f"X{r[0]}Y{r[1]} — {w} — not X{c[0]}Y{c[1]} as assumed. "
                 "Stepping from where it actually is; no re-anchor needed."))
             self._ui(self._fill_table)
@@ -2909,7 +2909,7 @@ class EgPmaRunPanel(ttk.Frame):
                 # touchdowns (_move_um), so it has no way to express "from
                 # this arbitrary die". MD can - it works in grid counts.
                 self._ui(lambda: self._log(
-                    "[PMA] STOPPED: in µm (MM) mode the step is the recipe's "
+                    "[RUN] STOPPED: in µm (MM) mode the step is the recipe's "
                     "own micron delta between two touchdowns, and the chuck is "
                     "not on one. Switch to die steps (MD), or re-anchor."))
                 return False
@@ -2935,7 +2935,7 @@ class EgPmaRunPanel(ttk.Frame):
             except Exception as e:
                 msg = f"{type(e).__name__}: {str(e).splitlines()[0][:70]}"
                 self._ui(lambda: self._log(
-                    f"[PMA] #{nxt['seq']} MD {hop_x:+d},{hop_y:+d} FAILED — {msg}"))
+                    f"[RUN] #{nxt['seq']} MD {hop_x:+d},{hop_y:+d} FAILED — {msg}"))
                 return False
 
         after = self._read_position(drv)
@@ -2944,14 +2944,14 @@ class EgPmaRunPanel(ttk.Frame):
         # and continuing would probe the wrong dies.
         if before is None or after is None:
             self._ui(lambda: self._log(
-                f"[PMA] STOPPED at #{nxt['seq']}: could not read ?P to confirm the "
+                f"[RUN] STOPPED at #{nxt['seq']}: could not read ?P to confirm the "
                 "move, even after a recover(). The move itself may well have "
                 "landed — re-anchor once the link is back rather than assuming."))
             return False
         got = (after[0] - before[0], after[1] - before[1])
         if got != (dx, dy):
             self._ui(lambda: self._log(
-                f"[PMA] STOPPED at #{nxt['seq']}: commanded ({dx:+d},{dy:+d}) "
+                f"[RUN] STOPPED at #{nxt['seq']}: commanded ({dx:+d},{dy:+d}) "
                 f"but ?P moved ({got[0]:+d},{got[1]:+d}) — "
                 f"{before} -> {after}. Map and machine have diverged."))
             return False
@@ -2959,7 +2959,7 @@ class EgPmaRunPanel(ttk.Frame):
         self._index = target
         self._ui(lambda: (self._mark_current(), self._refresh_position()))
         self._ui(lambda: self._log(
-            f"[PMA] #{nxt['seq']} MD {dx:+d},{dy:+d} -> grid ({nx},{ny})  "
+            f"[RUN] #{nxt['seq']} MD {dx:+d},{dy:+d} -> grid ({nx},{ny})  "
             f"{nxt['device_id']}"))
         return True
 
@@ -3013,7 +3013,7 @@ class EgPmaRunPanel(ttk.Frame):
             except Exception as e:
                 msg = f"{type(e).__name__}: {str(e).splitlines()[0][:70]}"
                 self._ui(lambda: self._log(
-                    f"[PMA] #{nxt['seq']} MM {hop_x:+d},{hop_y:+d} um FAILED — {msg}"))
+                    f"[RUN] #{nxt['seq']} MM {hop_x:+d},{hop_y:+d} um FAILED — {msg}"))
                 return False
 
         after = self._read_position(drv)
@@ -3034,7 +3034,7 @@ class EgPmaRunPanel(ttk.Frame):
         self._index = target
         self._ui(lambda: (self._mark_current(), self._refresh_position()))
         self._ui(lambda: self._log(
-            f"[PMA] #{nxt['seq']} MM {dx_um:+d},{dy_um:+d} um -> grid "
+            f"[RUN] #{nxt['seq']} MM {dx_um:+d},{dy_um:+d} um -> grid "
             f"({grid_xy[0]},{grid_xy[1]})  {nxt['device_id']}{note}"))
         return True
 
@@ -3202,7 +3202,7 @@ class EgPmaRunPanel(ttk.Frame):
                 ok = self._move_to_index(drv, cap, target)
             except Exception as e:
                 err = f"{type(e).__name__}: {str(e).splitlines()[0][:80]}"
-                self._ui(lambda: self._log(f"[PMA] move failed — {err}"))
+                self._ui(lambda: self._log(f"[RUN] move failed — {err}"))
                 ok = False
             finally:
                 self._running = False
@@ -3214,7 +3214,7 @@ class EgPmaRunPanel(ttk.Frame):
         if not self._guard():
             return
         if self._index <= 0:
-            self._log("[PMA] Already at the first touchdown")
+            self._log("[RUN] Already at the first touchdown")
             return
         target = self._index - 1
         drv = self._prober()
@@ -3227,7 +3227,7 @@ class EgPmaRunPanel(ttk.Frame):
                 self._move_to_index(drv, cap, target)
             except Exception as e:
                 err = f"{type(e).__name__}: {str(e).splitlines()[0][:80]}"
-                self._ui(lambda: self._log(f"[PMA] back failed — {err}"))
+                self._ui(lambda: self._log(f"[RUN] back failed — {err}"))
             finally:
                 self._running = False
             self._ui(lambda: self._status_var.set("idle"))
