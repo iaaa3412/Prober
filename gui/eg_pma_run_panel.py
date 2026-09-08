@@ -243,16 +243,22 @@ class EgPmaRunPanel(ttk.Frame):
         mode = ttk.Frame(lf)
         mode.pack(fill="x", pady=(6, 0))
         ttk.Label(mode, text="Move by:").pack(side="left")
-        self._motion_var = tk.StringVar(value=MOTION_DIE)
+        # MM is the default. It moves in the recipe's own micron
+        # coordinates, so no die-size assumption sits between the map and
+        # the chuck - which is how the original LaMP exe drove this prober.
+        #
+        # The caveat that used to be printed on the button itself: an MM
+        # count is NOT one micron. A 7042 command travelled 17605 um, a
+        # scale of 2.5, and the driver converts through MM_UNIT_UM, whose
+        # value is still unconfirmed between 0.1 mil (2.54) and 2.5 um -
+        # about 1.6% apart, ~113 um over a 7042 um step. See
+        # electroglas_2001x. It lives here rather than in the label.
+        self._motion_var = tk.StringVar(value=MOTION_UM)
         ttk.Radiobutton(mode, text="die steps (MD)", value=MOTION_DIE,
                         variable=self._motion_var,
                         command=self._on_motion_mode).pack(side="left", padx=(6, 0))
-        # MM is a fine positional move, but its count is NOT one micron - a
-        # 7042 command travelled 17605 um, a scale of 2.5. The driver now
-        # converts microns to MM counts via MM_UNIT_UM, whose value is still
-        # unconfirmed between 0.1 mil and 2.5 um; see electroglas_2001x.
         self._um_radio = ttk.Radiobutton(
-            mode, text="microns (MM) — scale UNCONFIRMED",
+            mode, text="microns (MM)",
             value=MOTION_UM, variable=self._motion_var,
             command=self._on_motion_mode)
         self._um_radio.pack(side="left", padx=(8, 0))
@@ -2313,9 +2319,6 @@ class EgPmaRunPanel(ttk.Frame):
             self._log("[RUN] Run: this recipe has no touchdowns to probe.")
             return
         total = len(self._touchdowns)
-        subset = (f"\n\nThe loaded recipe restricts this run to {len(enabled)} "
-                  f"of the PMA's {total} touchdown(s); the rest are skipped."
-                  if len(enabled) != total else "")
 
         # Position in RUN order, not index order - the run follows the .PMA's
         # route over a wafer-wide position list, so "ahead" is not "> index".
@@ -2336,22 +2339,24 @@ class EgPmaRunPanel(ttk.Frame):
         if restart:
             remaining = len(enabled)
             first = enabled[0]
-            move_note = ("" if self._index == first else
-                         "\n\nThe chuck is not on the first touchdown of "
-                         "this run - it will move back there before "
-                         "probing starts.")
+            if self._index != first:
+                self._log("[RUN] The chuck is not on the first touchdown of "
+                          "this run — it will move back there before probing "
+                          "starts.")
         else:
             remaining = len(ahead)
-            move_note = ""
-        prompt = f"Probe {remaining} Dies?{move_note}{subset}"
+        if len(enabled) != total:
+            self._log(f"[RUN] The loaded recipe restricts this run to "
+                      f"{len(enabled)} of the {total} dies on the map; the "
+                      "rest are skipped.")
 
-        if not messagebox.askokcancel(
-                "Run", f"{prompt}\n\n"
-                       "THIS MEASURES. The wafer contacts the probe card and "
-                       "the recipe runs on all four dies of each shot.\n\n"
-                       "Z is verified against ?S before each measurement — if "
-                       "the chuck is not in contact the run stops rather than "
-                       "measuring open air. The chuck is separated at the end."):
+        # Just the question. The dialog used to carry the two notes above
+        # plus a paragraph of standing behaviour ("THIS MEASURES...", how Z
+        # is verified, that the chuck is separated at the end) - none of it
+        # specific to THIS press, and all of it read past after the first
+        # few runs. The notes go to the log, where they stay readable
+        # afterwards instead of vanishing with the dialog.
+        if not messagebox.askokcancel("Run", f"Probe {remaining} Dies?"):
             return
         if restart:
             self._needs_restart = True  # consumed by _move_next's first hop
@@ -2402,11 +2407,10 @@ class EgPmaRunPanel(ttk.Frame):
         if not steps:
             self._log("[RUN] Minor Moves: the loaded recipe has no steps.")
             return
+        # Same as the main Run dialog: just the question. The standing
+        # behaviour that used to be appended is not specific to this press.
         if not messagebox.askokcancel(
-                "Run (Minor Moves)",
-                f"Probe {len(shots)} shot(s), visiting only the die(s) the "
-                "recipe references in each?\n\nTHIS MEASURES. Z is verified "
-                "before each measurement; the chuck is separated at the end."):
+                "Run (Minor Moves)", f"Probe {len(shots)} Shots?"):
             return
         self._running = True
         try:
@@ -3199,10 +3203,18 @@ class EgPmaRunPanel(ttk.Frame):
         cur = self._touchdowns[self._index]
         cx, cy = self._grid_xy(cur)
         nx, ny = self._grid_xy(t)
+        # Describe the move in the mode that will actually be sent. This
+        # said "MD ... die steps" unconditionally, which was true only
+        # while MD was the default - in µm mode the move goes through
+        # _move_um and the dialog was describing a command it would not
+        # send.
+        if self._motion_var.get() == MOTION_UM:
+            step = (f"MM {t['x'] - cur['x']:+.0f},{t['y'] - cur['y']:+.0f} µm")
+        else:
+            step = f"MD {nx - cx:+d},{ny - cy:+d} die steps"
         if not messagebox.askokcancel(
                 "Move", f"Move from #{cur['seq']} to #{t['seq']}?\n\n"
-                        f"MD {nx - cx:+d},{ny - cy:+d} die steps\n"
-                        f"{t['device_id']}"):
+                        f"{step}\n{t['device_id']}"):
             return
         drv = self._prober()
         cap = getattr(drv, "max_die_step", 5)
