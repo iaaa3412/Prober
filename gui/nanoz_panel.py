@@ -798,6 +798,11 @@ class NanoZPanel(ttk.Frame):
         self._refresh_recipe_name_cb()
         self._log_main(f"Recipe '{name}' loaded — {len(self._shots)} shot(s), "
                        f"{len(self._touchdowns)} touchdown(s).")
+        # Highlight the recipe's touchdowns on the Run tab's map, same as
+        # the normal Accretech/Electroglas Recipe tab does on load - reuses
+        # the same "Push to map" logic the manual button already does.
+        if self._touchdowns:
+            self._nz_td_to_map()
         self._autoload_wafer_plan_for_recipe(folder, name)
 
     def _autoload_wafer_plan_for_recipe(self, folder: str, name: str):
