@@ -496,7 +496,7 @@ class NanoZPanel(ttk.Frame):
         td_bar.grid(row=0, column=0, sticky="ew", pady=(4, 4))
         ttk.Button(td_bar, text="⬅ Take from map selection",
                   command=self._nz_td_from_map).pack(side="left")
-        ttk.Button(td_bar, text="🏷 Take die IDs",
+        ttk.Button(td_bar, text="Take die IDs",
                   command=self._nz_td_from_die_ids).pack(side="left", padx=(6, 0))
         ttk.Button(td_bar, text="➡ Push to map",
                   command=self._nz_td_to_map).pack(side="left", padx=(6, 0))
