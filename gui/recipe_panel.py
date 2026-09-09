@@ -1864,7 +1864,7 @@ class RecipePanel(ttk.Frame):
             self._nplc_ent.config(state="normal")
             self._settle_delay_ent.config(state="normal")
             self._abs_chk.config(state="normal")
-            if instrument == "SMU" and self._system == "accretech":
+            if instrument == "SMU" and self._system == "accretech" and t != "current":
                 self._avg_delay_ent.config(state="disabled")
                 self._ed_vars["avg_delay"].set("0")
             else:
