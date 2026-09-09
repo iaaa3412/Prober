@@ -1,22 +1,4 @@
-"""Setup tab (Electroglas) - add/edit prober benches and their instrument
-fitment, without hand-editing GUI System/eg_probers.yaml.
-
-WHAT THIS DOES NOT TOUCH. Each instrument entry in that file can carry
-notes/scanned/id_queries/write_probe from real bench characterization work
-(see the module docstring in instruments/eg_profiles.py). This panel only
-edits name/address/timeout_ms/fitted - those other fields are read in and
-written back exactly as they were, on purpose, never shown here.
-
-SYNCING WITH SWITCH SETTINGS. Switch Debug (switchbox_test_panel.py) and the
-Instruments tab both read eg_profiles.instruments()/fitted_keys() live, not a
-cached copy - so a Setup edit to the ACTIVE bench already shows up there the
-next time either tab draws. What does NOT happen automatically is pushing an
-edited bench's addresses into instruments.yaml (the file the actual drivers
-open) - that only happens for the bench that is currently ACTIVE, via
-eg_profiles.apply_to_instruments_yaml(), which this panel calls after any
-edit to the active bench so a live driver's address stays correct without a
-separate bench-reselect step.
-"""
+"""Setup tab (Electroglas)."""
 
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
@@ -55,7 +37,6 @@ class EgSetupPanel(ttk.Frame):
         except Exception:
             pass
 
-    # -- bench bar ------------------------------------------------------
 
     def _build_bench_bar(self):
         bar = ttk.Frame(self, padding=6)
@@ -110,7 +91,6 @@ class EgSetupPanel(ttk.Frame):
         self._bench_var.set(name.strip())
         self._refresh_benches()
 
-    # -- instrument table -------------------------------------------------
 
     def _build_table(self):
         frame = ttk.Frame(self, padding=(6, 0, 6, 6))
@@ -235,9 +215,6 @@ class EgSetupPanel(ttk.Frame):
 
     def _after_edit(self, bench: str):
         self._refresh_table()
-        # Only the ACTIVE bench's addresses feed the real drivers - editing
-        # a bench that is not currently selected in the toolbar just saves
-        # to the YAML for next time it IS selected.
         if bench == eg_profiles.active_name():
             try:
                 eg_profiles.apply_to_instruments_yaml(bench)
@@ -255,9 +232,6 @@ class EgSetupPanel(ttk.Frame):
 
 
 class _InstrumentDialog(tk.Toplevel):
-    """Add/edit form for one instrument slot - name, GPIB address, timeout,
-    fitted. key_choices offers a dropdown (Add); fixed_key shows plain text
-    (Edit, since the slot itself cannot change)."""
 
     def __init__(self, parent, title: str, key_choices, fixed_key: str = None,
                 initial: tuple = None):

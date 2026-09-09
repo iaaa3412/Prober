@@ -3,11 +3,6 @@ from tkinter import ttk
 
 import switch_topology as topo
 
-# Fallback colors for a row when there are more rows than this palette -
-# cycles rather than erroring, since switch_topology allows up to 26 rows
-# (ROW_LETTERS_POOL). Chosen to keep the same instrument-family grouping the
-# old hardcoded _ROW_MAP had (blue=SMU A, orange=SMU B, green=DMM,
-# magenta=WGEN) for the common 8-row layout, without hardcoding row COUNT.
 _PALETTE = ["#60a5fa", "#93c5fd", "#fb923c", "#fdba74",
            "#86efac", "#22c55e", "#e879f9", "#f0abfc"]
 _UNUSED_COLOR = "#9ca3af"
@@ -76,12 +71,6 @@ class ProbeRoutingPanel(ttk.Frame):
 
         self._state: dict = {}
         self._dot_ids: dict = {}
-        # (row_letter, label, color) for the bench currently being shown -
-        # rebuilt from switch_topology on every refresh_topology() call
-        # instead of a fixed module constant, since probe08 and probe08new
-        # are wired with a different number of live rows (probe08new's 2400
-        # has no row C/D, and no wave gen fitted, so both are marked
-        # "(unused)" there - see instruments/accretech_profiles.py).
         self._row_map: list = []
         self._canvas_h = _HDR_H + 8
 
@@ -112,11 +101,6 @@ class ProbeRoutingPanel(ttk.Frame):
             return "probe08"
 
     def refresh_topology(self):
-        """Re-read the active bench's row wiring and redraw the matrix -
-        called on build, whenever Switch Settings saves/resets, and
-        whenever the active Accretech bench changes (see
-        AtomicaDashboard.refresh_probe_routing_panels), so this view never
-        shows another bench's (or a stale) row layout."""
         bench = self._active_bench()
         roles = topo.row_roles(bench)
         letters = sorted(roles.keys())

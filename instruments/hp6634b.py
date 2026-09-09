@@ -6,8 +6,6 @@ class Agilent6634B(GPIBInstrument):
         super().__init__('power_supply_eg')
 
     def get_id(self) -> str:
-        # HP-era supply: it answers "ID?" with "HP6634B", not "*IDN?"
-        # (confirmed in references/electroglasgpib.csv).
         return self.query("ID?") or ""
 
     def set_voltage(self, volts):

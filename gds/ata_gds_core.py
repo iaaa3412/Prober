@@ -138,8 +138,6 @@ def _cell_dict(lib: Any) -> Dict[str, Any]:
     return {cell.name: cell for cell in getattr(lib, "cells", [])}
 
 
-
-
 def _normalize_name(value: Any) -> str:
     return str(value or "").strip().lower()
 
@@ -240,8 +238,6 @@ def _name_matches(candidate: str, wanted_names: Sequence[str]) -> Tuple[bool, st
         elif candidate_norm == wanted_norm or wanted_norm in candidate_norm:
             return True, wanted
     return False, ""
-
-
 
 
 def default_alignment_mark_names() -> str:
@@ -1218,16 +1214,6 @@ def _json_safe(value: Any) -> Any:
     return str(value)
 
 
-# Subfolder (under the ATA folder root) that everything the GDS parser
-# writes and nothing else reads lands in - keeps the raw cell/layer/polygon
-# dump and the parser's own run summary/test plan out of the ATA folder's
-# top level, where Pad Layout/Alignment/Wafer Map/etc. list real files.
-# ata_pad_layout.csv, alignment_marks.csv, ata_metadata.csv and
-# ata_wafer_map_gds.csv stay at the root on purpose - those ARE read
-# directly off the root by other tabs (load_pad_layout, load_alignment_marks,
-# WaferMapPanel.load_from_ata for the GDS source), so moving them would mean
-# teaching every one of those readers a second lookup location for no
-# benefit; they just happen to also be produced by this exporter.
 GDS_SUBFOLDER = "gds"
 
 
@@ -1257,8 +1243,6 @@ def export_ata_files(
         with open(files["layout_metadata_json"], "w", encoding="utf-8") as f:
             json.dump(_json_safe(data.get("layout_metadata_raw", {})), f, indent=2)
 
-    # Read directly off the ATA folder root by other tabs - see GDS_SUBFOLDER's
-    # comment above for why these are the exception.
     root_export_map = {
         "ata_pad_layout": "ata_pad_layout.csv",
         "alignment_marks": "alignment_marks.csv",
@@ -1269,7 +1253,6 @@ def export_ata_files(
         files[key] = os.path.join(output_dir, filename)
         write_csv(files[key], data.get(key, []))
 
-    # GDS-parser-only raw dump - nothing outside this module reads these back.
     gds_export_map = {
         "cells": "cells.csv",
         "layers": "layers.csv",

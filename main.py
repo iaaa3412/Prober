@@ -1,9 +1,5 @@
-"""Launch the Atomica Tester GUI.
+"""Launch the Atomica Tester GUI."""
 
-Entry point: `python main.py` from the repository root. The application itself
-lives in gui/app.py, which stays runnable directly (`python gui/app.py`) - this
-only spares anyone the guess about which file starts it.
-"""
 import os
 import runpy
 import sys

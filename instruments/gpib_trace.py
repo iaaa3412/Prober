@@ -1,27 +1,4 @@
-"""Command-level tracer for OUR OWN app's instrument traffic - every write/
-query/read/serial-poll this process makes, over GPIB or USB (pyvisa treats
-both as a MessageBasedResource, so this covers a USB-connected DMM the same
-way it covers a GPIB one, no extra code needed), timestamped and handed to
-whoever is listening (see add_listener) - the Debug tab's GPIB Trace panel
-uses this to show a live log and also write it to a file.
-
-This can only see traffic THIS Python process generates. It cannot see
-LabVIEW's own commands - GPIB only allows one active controller session per
-address, so a separate pyvisa session generally can't also open an address
-LabVIEW already has open, and there is no software-only way to snoop another
-process's driver calls. For that, use NI I/O Trace (ships with NI-VISA/488.2 -
-Start Menu -> "NI I/O Trace", or NI MAX's Tools menu): it hooks the driver DLL
-itself, so it logs every VISA call from ANY process using that driver -
-LabVIEW included - with no code changes and no bus contention. Run this
-module's trace on our app and NI I/O Trace on LabVIEW, on the same recipe/
-measurement, to diff the two command sequences directly.
-
-The patch is installed once (idempotent) and process-global (pyvisa's
-MessageBasedResource class, not a per-instance patch) since instrument
-objects are constructed all over this codebase, often before any UI exists
-to turn tracing on - installing early and gating on `enabled` means Start/
-Stop in the GUI is just a flag flip, not a re-patch.
-"""
+"""Command-level tracer for OUR OWN app's instrument traffic."""
 
 import datetime
 import threading
@@ -39,11 +16,6 @@ class _Tracer:
         self._listeners = []
 
     def add_listener(self, fn):
-        """fn(line: str) called for every TX/RX/STB event while enabled -
-        the GUI panel uses this to append to its live view. Called on
-        whatever thread made the instrument call (often a background
-        measurement thread), so the listener must hop to the main thread
-        itself before touching any Tk widget."""
         self._listeners.append(fn)
 
     def remove_listener(self, fn):
@@ -135,8 +107,6 @@ class _Tracer:
 
 _tracer = _Tracer()
 
-# Module-level convenience wrappers - the GUI panel (and any throwaway
-# script) just calls these instead of touching _tracer directly.
 start = _tracer.start
 stop = _tracer.stop
 add_listener = _tracer.add_listener

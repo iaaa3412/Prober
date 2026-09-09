@@ -31,18 +31,12 @@ def _bind_zoom_only(canvas, on_zoom=None):
                 min(bb[0] - pad, -20000), min(bb[1] - pad, -20000),
                 max(bb[2] + pad,  20000), max(bb[3] + pad,  20000),
             ))
-        # Zooming scales existing items in place - there is no redraw - so
-        # anything that depends on how big a die is ON SCREEN (die-ID labels)
-        # has to be told, or it would never re-evaluate.
         if on_zoom:
             on_zoom()
 
     canvas.bind("<MouseWheel>", lambda e: _zoom(e.x, e.y, 1.15 if e.delta > 0 else 1 / 1.15))
     canvas.bind("<Button-4>",   lambda e: _zoom(e.x, e.y, 1.15))
     canvas.bind("<Button-5>",   lambda e: _zoom(e.x, e.y, 1 / 1.15))
-    # Bound here rather than only in _pz_bind so the click-to-select maps -
-    # which deliberately leave the left button to picking dies and so had no
-    # way to pan at all - get the same middle-drag gesture as everything else.
     bind_middle_pan_tk(canvas, on_zoom)
 
 
@@ -67,12 +61,6 @@ ATA_KEY_FILES = {
     "reference_pad_layout.csv": ("Hand-drawn pad layout sketch (Probe Card -> Custom; not used by recipes/wiring)", "shared"),
     "ata_alignment_marks.csv":  ("Alignment marks", "shared"),
     "alignment_marks.csv":      ("Alignment marks (alt)", "shared"),
-    # ata_devices.csv, ata_die_markers.csv, ata_test_structures.csv,
-    # ata_sites.csv, ata_validation_report.csv and the GDS parser's own
-    # run_summary/layout_metadata/ata_test_plan all moved into the ATA
-    # folder's gds/ subfolder (ata_gds_core.py's GDS_SUBFOLDER) - nothing
-    # outside the GDS parser itself ever read them at the root, so they are
-    # no longer listed here as root-level "key" files.
     "ata_export_formats.json":  ("Results tab SQL/CSV export format definitions", "accretech"),
     "ata_export_formats_electroglas.json": ("Results tab SQL/CSV export format definitions", "electroglas"),
 }
@@ -80,18 +68,6 @@ ATA_KEY_FILES = {
 WAFER_MAP_SOURCES = {
     "GDS":       "ata_wafer_map_gds.csv",
     "Accretech": "ata_wafer_map_accretech.csv",
-    # "Electroglas" (ata_wafer_map_electroglas.csv) retired 2026-08-21 -
-    # predates Wafer Builder entirely (2026-07-20 vs. 2026-08-12) and
-    # nothing sets this as the active source anymore; Wafer Builder IS
-    # the wafer for Electroglas now, published straight to the file
-    # below by _sync_views. The file itself may still exist in an old
-    # ATA folder from a pre-Wafer-Builder LOAD ALL/Sync Run Map - it's
-    # just never selected or written to again.
-    # The single "published/active" map Wafer Builder writes (Shot x Shot
-    # Map x Die Map), shared by both systems - distinct from Accretech's own
-    # hardware-extracted map and from GDS. Many named map definitions can
-    # exist per ATA folder (see RecipeGenPanel's Map Name / Save Map /
-    # dropdown); this file is always whichever one was last published.
     "Wafer Builder": "ata_wafer_map_builder.csv",
 }
 
@@ -101,9 +77,6 @@ class WaferMapPanel(ttk.LabelFrame):
     _STATUS_COLORS = {
         "UNTESTED":     "#7aaec8",
         "CURRENT":      "#dbeafe",
-        # Orange "you are here" for the Electroglas PMA run. A separate
-        # status rather than recolouring CURRENT, because the Accretech
-        # flow uses CURRENT and its appearance should not change.
         "PROBING":      "#f59e0b",
         "CONTACT":      "#ede9fe",
         "TESTING":      "#dbeafe",
@@ -114,37 +87,18 @@ class WaferMapPanel(ttk.LabelFrame):
     }
 
     def __init__(self, parent, show_title: bool = True, show_axis_grid: bool = False):
-        # show_title=False for callers that already wrap this in their own
-        # titled LabelFrame (e.g. the Run tab's map_lf "Wafer Map") - two
-        # nested "Wafer Map" titles said the same thing twice.
         self._show_title = show_title
-        # show_axis_grid: row/col tick labels along the left/bottom edges -
-        # off by default so every other WaferMapPanel (Results tab, other
-        # systems' panels) keeps its current look; a caller opts in
-        # explicitly rather than this changing everywhere at once.
         self._show_axis_grid = show_axis_grid
         super().__init__(parent, text="Wafer Map" if show_title else "")
         self.canvas = tk.Canvas(self, bg="white")
         self.canvas.pack(fill="both", expand=True, padx=5, pady=5)
         self.dies = {}
-        self.die_ids = {}  # (row, col) -> real die-ID/label from the loaded map file, if any
-        # (row, col) -> last status set via update_die - reapplied by
-        # _draw_from_die_list/draw_map after any full rebuild (e.g. the
-        # pan/zoom double-click reset, or an ATA folder reload) so a run's
-        # PASS/FAIL/CURRENT colouring survives a redraw instead of every
-        # die silently reverting to its untested fill.
+        self.die_ids = {}
         self._die_status = {}
         self._last_dies = None
         self.last_draw_debug = None
-        self.on_redraw = None  # optional callback() run after any full redraw
-        self.on_zoom = None    # optional callback() run after any zoom
-        # Optional callback() a caller sets to take over the double-click
-        # "reset view" gesture entirely instead of letting _reset_view draw
-        # again on THIS SAME canvas - see _reset_view's own comment for why
-        # a second draw on a long-lived canvas is unsafe for a real (Run/
-        # Results tab) map. Left None for every other WaferMapPanel use
-        # (small editor/preview canvases that have never shown this bug)
-        # so their behaviour is unchanged.
+        self.on_redraw = None
+        self.on_zoom = None
         self.on_reset_request = None
         self.canvas.create_text(150, 100, text="Waiting for Wafer Map...", fill="gray")
         _pz_bind(self.canvas, self._reset_view, self._fire_zoom)
@@ -193,13 +147,6 @@ class WaferMapPanel(ttk.LabelFrame):
         self._press_xy = (e.x, e.y)
 
     def set_click_handler(self, fn):
-        """Call fn(row, col) when a die is clicked, changing no colours.
-
-        Separate from picking on purpose: picking owns the fill of every square
-        (_recolor_picks repaints them all), so a consumer that maintains its own
-        status colours - the Electroglas run does - cannot use it without having
-        its colours wiped. Pass None to detach.
-        """
         self._click_handler = fn
 
     def _on_pick_release(self, e):
@@ -232,16 +179,6 @@ class WaferMapPanel(ttk.LabelFrame):
             self._on_pick_change(self.get_picked())
 
     def _reset_view(self):
-        # Redrawing a second time on THIS canvas (_draw_from_die_list called
-        # again on the same long-lived Canvas widget) is the exact scenario
-        # that produced every "dies packed with no gaps" report - the first
-        # draw on a canvas is always correct, every later one on that same
-        # canvas is not, for a Tk-geometry reason that was never pinned
-        # down (see instrument_panel.py's _new_results_wafer_map). A real
-        # Run/Results tab map registers on_reset_request to route double-
-        # click-reset through a fresh-widget rebuild instead of drawing
-        # again here; anything that hasn't (editor/preview canvases, which
-        # have never shown this bug) keeps the old direct-redraw behaviour.
         if self.on_reset_request is not None:
             try:
                 self.on_reset_request()
@@ -254,21 +191,6 @@ class WaferMapPanel(ttk.LabelFrame):
             self.draw_map()
 
     def _center_view(self):
-        """Recentre the canvas's actual scrolled view on whatever was just
-        drawn. A full redraw (double-click reset, a new folder/die list
-        loaded) draws items centred at (W/2, H/2) in absolute canvas
-        coordinates, which only LOOKS centred on screen if the canvas's
-        current scroll position happens to already be showing that area -
-        after any panning (middle-drag) or scroll-wheel zoom (which
-        re-centres on the cursor, not the wafer, and tightens scrollregion
-        around wherever the view was at the time), it usually is not, so
-        the freshly-drawn wafer ends up off to one side instead of
-        centred. Recomputes scrollregion the same way _zoom()/_bind_zoom_
-        only's _zoom() already do (bbox + 500px padding, floored/ceiled to
-        the +/-20000 default), then explicitly moves the view so that
-        bounding box's centre lines up with the viewport's centre -
-        doesn't rely on whatever Tk's own default/leftover view position
-        happens to be."""
         bbox = self.canvas.bbox("all")
         if not bbox:
             return
@@ -296,11 +218,6 @@ class WaferMapPanel(ttk.LabelFrame):
                 pass
 
     def die_box_px(self):
-        """(width, height) of a die as currently drawn, in canvas pixels.
-
-        Reflects the live zoom, because canvas.scale has already been applied
-        to the rectangles. Callers use it to decide whether a label would fit.
-        """
         for item in self.dies.values():
             c = self.canvas.coords(item)
             if len(c) >= 4:
@@ -308,8 +225,6 @@ class WaferMapPanel(ttk.LabelFrame):
         return 0.0, 0.0
 
     def zoom(self, factor: float):
-        """Zoom around the canvas's own center — for a Zoom In/Out button,
-        as opposed to _bind_zoom_only's scroll-at-cursor binding."""
         w = self.canvas.winfo_width() or 1
         h = self.canvas.winfo_height() or 1
         cx, cy = self.canvas.canvasx(w / 2), self.canvas.canvasy(h / 2)
@@ -330,13 +245,6 @@ class WaferMapPanel(ttk.LabelFrame):
         self.zoom(1 / 1.25)
 
     def _hit_die(self, cx, cy):
-        """Which (row, col) die's rectangle contains this canvas-space point.
-
-        Checks each die's own bounding box directly instead of
-        canvas.find_closest(), which returns whichever item is topmost at
-        that point - wrong once something else (e.g. an overlay die-ID
-        label) is drawn on top of a die rectangle.
-        """
         for rc, item in self.dies.items():
             coords = self.canvas.coords(item)
             if len(coords) < 4:
@@ -387,21 +295,9 @@ class WaferMapPanel(ttk.LabelFrame):
         self._run_on_redraw()
 
     def clear_status(self):
-        """Drop every remembered PASS/FAIL/CURRENT/... status - call when
-        genuinely new data is being loaded (a different ATA folder), so a
-        previous wafer's colouring doesn't bleed into this one's dies at
-        the same (row, col). A plain view redraw (double-click reset,
-        zoom) should NOT call this - that's the whole point of
-        _die_status persisting across those."""
         self._die_status.clear()
 
     def reset_all_statuses(self):
-        """Same idea as clear_status, but for "the operator pressed Reset
-        Counts" rather than a new folder loading - also repaints every
-        already-drawn die rect back to UNTESTED right now, since nothing
-        else is about to trigger a redraw the way loading a new map does.
-        Without this, clearing the pass/fail counters left every square
-        still showing its last PASS/FAIL colour."""
         self._die_status.clear()
         untested = self._STATUS_COLORS["UNTESTED"]
         for item in self.dies.values():
@@ -417,12 +313,6 @@ class WaferMapPanel(ttk.LabelFrame):
         if not os.path.exists(map_file):
             self.canvas.delete("all")
             self.dies.clear()
-            # _last_dies is what other views mirror from (see
-            # instrument_panel._sync_results_wafer_map) rather than reading
-            # this panel's own canvas/self.dies - leaving it holding the
-            # PREVIOUS folder's dies here made the Results tab keep showing
-            # the old wafer even though this panel's own canvas correctly
-            # went blank.
             self._last_dies = []
             self.canvas.create_text(
                 150, 80, text=f"{filename} not found\nin selected folder.",
@@ -450,10 +340,6 @@ class WaferMapPanel(ttk.LabelFrame):
         return len(self.dies)
 
     def load_die_list(self, dies: list, label: str = "dies") -> int:
-        """Draw from an in-memory list rather than a CSV file - used by
-        Minor Moves, where a square represents a Wafer Builder SHOT (see
-        RecipeGenPanel.shots_as_die_list()) rather than a die read from
-        ata_wafer_map_*.csv. Same row shape _parse_die_list() produces."""
         self.clear_status()
         self._last_dies = dies
         self._draw_from_die_list(dies)
@@ -468,9 +354,6 @@ class WaferMapPanel(ttk.LabelFrame):
         x_key   = next((k for k in ("x_um", "x_mm", "x", "die_x", "center_x", "origin_x") if k in sample), None)
         y_key   = next((k for k in ("y_um", "y_mm", "y", "die_y", "center_y", "origin_y") if k in sample), None)
         en_key  = next((k for k in ("enabled", "active", "include", "in_spec", "test_enabled") if k in sample), None)
-        # Whatever real die-ID/label column this map file carries (e.g.
-        # Electroglas's own "device_id") - kept per die so overlay/export can
-        # show the map's actual ID instead of a synthesized row/col label.
         id_key  = next((k for k in ("device_id", "die_id", "label", "die_label",
                                     "serial", "die_serial", "id") if k in sample), None)
 
@@ -498,12 +381,6 @@ class WaferMapPanel(ttk.LabelFrame):
                     pass
             if x_um is None and row is None:
                 continue
-            # quad_pos/seq are carried straight through when the source map
-            # has them (ata_wafer_map_builder.csv does) rather than dropped:
-            # quad_pos names which slot of its touchdown a die sits in, so
-            # across the whole map it is the only record of the shot's real
-            # rows x cols. Consumers that need the shot shape read it off
-            # _last_dies - see EgPmaRunPanel._builder_shot_layout.
             try:
                 seq = int(float(r["seq"])) if r.get("seq") else None
             except ValueError:
@@ -523,12 +400,6 @@ class WaferMapPanel(ttk.LabelFrame):
                 d["col"] = x_to_col[round(d["x_um"])]
 
         if dies and dies[0]["x_um"] is None:
-            # No real micron data in this map file (the Accretech source is
-            # just row/col die-step indices) - synthesize position from the
-            # index, scaled by pitch so the die boxes _draw_from_die_list
-            # computes from THIS spacing come out the real rectangular
-            # shape (Wafer Builder's die_pitch_x/die_pitch_y) instead of a
-            # flat 1-unit square that has nothing to do with the real die.
             px, py = pitch
             for d in dies:
                 d["x_um"] = float(d["col"]) * px
@@ -552,16 +423,6 @@ class WaferMapPanel(ttk.LabelFrame):
         self.update_idletasks()
         W = self.canvas.winfo_width()
         H = self.canvas.winfo_height()
-        # A widget just (re)gridded into an already-mapped parent (a rebuild
-        # after a view reset, see rebuild_wafer_map_panel) can report its
-        # OWN small pre-layout size here even after update_idletasks() - the
-        # geometry manager hasn't finished the negotiation pass yet. On a
-        # dense wafer that shrinks pitch*scale enough to make every die
-        # sub-pixel, which looks exactly like the historical "packed with
-        # no gaps" corruption, but is really just 1000s of dies drawn into
-        # a canvas a fraction of its real size. size_hint (the caller's own
-        # last KNOWN-GOOD measurement, e.g. from the widget being replaced)
-        # is trusted over a just-measured value that looks smaller than it.
         if size_hint and size_hint[0] > 50 and size_hint[1] > 50:
             if W < size_hint[0] or H < size_hint[1]:
                 W, H = size_hint
@@ -621,36 +482,9 @@ class WaferMapPanel(ttk.LabelFrame):
         if self._show_axis_grid:
             self._draw_axis_gridlines(dies, to_cx, to_cy, W, H, ccx, ccy, cr)
 
-        # The lower bound used to be a flat 2px, with no upper limit tying
-        # it back to the actual on-screen spacing between die centers
-        # (pitch * scale) - on a wafer dense enough that spacing comes out
-        # BELOW 2px (Cenfire's ~14600 dies: measured 1.74px), that floor
-        # forced boxes wider than the gap between them, baking in a
-        # fraction-of-a-pixel overlap. Invisible at the tiny fit-to-window
-        # scale it was drawn at, but canvas.scale() (zoom in/out) magnifies
-        # every coordinate by the same factor, including that overlap, so
-        # it became obvious - dies "packed with no gaps" - the moment the
-        # operator zoomed in to actually look at one. Including pitch*scale
-        # itself in the min() makes exceeding the real available space
-        # structurally impossible, whatever the floor/cap are.
-        # A plain outer max(1.0, ...) floor undid the guarantee above the
-        # moment pitch*scale itself dropped below 1px (a dense wafer
-        # zoomed out far enough) - caught via a real Cenfire-Maddy-Cenfire
-        # log: pitch*scale=0.827 came out as dw=1.0, 0.173px of overlap,
-        # the exact bug this formula exists to rule out. Clamping the
-        # floor itself to pitch*scale fixes it: the box can shrink below
-        # 1px on a dense-enough map, but can never exceed the real gap
-        # between die centers.
         dw = max(min(1.0, pitch_x * scale), min(pitch_x * scale * 0.85, 26, pitch_x * scale))
         dh = max(min(1.0, pitch_y * scale), min(pitch_y * scale * 0.85, 26, pitch_y * scale))
         ol = "#4a7090" if dw > 5 else ""
-        # Self-check for the exact class of bug that produced the
-        # "packed together, no gaps" reports: a die box must never be
-        # wider than the real on-screen spacing between die centers. A
-        # tiny epsilon (float rounding, not a real violation) is allowed;
-        # anything past that means whatever touched this formula next
-        # reintroduced an overlap - flagged here instead of waiting for
-        # another round of screenshots to notice it.
         overlap_w = dw - pitch_x * scale
         overlap_h = dh - pitch_y * scale
         warning = None
@@ -658,10 +492,6 @@ class WaferMapPanel(ttk.LabelFrame):
             warning = (f"die box ({dw:.3f}x{dh:.3f}) exceeds on-screen pitch "
                       f"({pitch_x * scale:.3f}x{pitch_y * scale:.3f}) by "
                       f"({overlap_w:.3f}, {overlap_h:.3f})px - dies will overlap")
-        # Diagnostic snapshot of this draw's own numbers - read by
-        # instrument_panel.py's redraw hooks and logged, so a report of
-        # "still bad" from a real session comes with the actual computed
-        # W/H/pitch/scale/dw instead of having to be reproduced blind.
         self.last_draw_debug = {
             "n_dies": len(dies), "W": W, "H": H,
             "pitch_x": pitch_x, "pitch_y": pitch_y, "scale": scale,
@@ -684,14 +514,6 @@ class WaferMapPanel(ttk.LabelFrame):
         self._run_on_redraw()
 
     def _axis_tick_values(self, dies):
-        """(row -> y_um, col -> x_um) for a readable set of tick positions.
-
-        Ticks land on real, existing row/col values (not evenly-spaced
-        round numbers) since the pitch between them is not necessarily
-        uniform once a shot-grid or wafer-builder map is in play - picking
-        an existing value from the data means every tick has a real x_um/
-        y_um to place it at, no interpolation needed.
-        """
         y_um_by_row = {}
         x_um_by_col = {}
         for d in dies:
@@ -709,9 +531,6 @@ class WaferMapPanel(ttk.LabelFrame):
                 {c: x_um_by_col[c] for c in _pick(x_um_by_col)})
 
     def _draw_axis_gridlines(self, dies, to_cx, to_cy, W, H, ccx, ccy, cr):
-        """Faint dashed lines across the wafer circle at each tick's
-        position - drawn before the dies so the squares sit on top and the
-        lines only show through the gaps between them, not over them."""
         row_ticks, col_ticks = self._axis_tick_values(dies)
         self._axis_row_ticks, self._axis_col_ticks = row_ticks, col_ticks
         for row, y_um in row_ticks.items():
@@ -728,22 +547,14 @@ class WaferMapPanel(ttk.LabelFrame):
                                         fill="#e3e3e3", dash=(2, 3))
 
     def _draw_axis_ticks(self, dies, to_cx, to_cy, W, H, ccx, ccy, cr):
-        """Row/col tick labels hugging the wafer circle's own left/bottom
-        edge (ccx - cr / ccy + cr), not the canvas edge (x=0 / y=H) - the
-        canvas is usually bigger than the wafer once fitted (the 28px
-        margin plus whatever's left over on the non-limiting axis), so
-        pinning ticks to the canvas edge could put them a long way from
-        the wafer they're labelling. Shows the real ACCR-style row/col
-        address at that position - e.g. for lining up an on-screen die
-        with a coordinate read off the real prober."""
         row_ticks = getattr(self, "_axis_row_ticks", None)
         col_ticks = getattr(self, "_axis_col_ticks", None)
         if row_ticks is None or col_ticks is None:
             row_ticks, col_ticks = self._axis_tick_values(dies)
 
         tick_font = ("TkDefaultFont", 8)
-        axis_x = ccx - cr - 4   # just left of the wafer's own left edge
-        axis_y = ccy + cr + 4   # just below the wafer's own bottom edge
+        axis_x = ccx - cr - 4
+        axis_y = ccy + cr + 4
         for row, y_um in row_ticks.items():
             cy = to_cy(y_um)
             self.canvas.create_line(axis_x - 6, cy, axis_x, cy, fill="#999")
@@ -776,31 +587,6 @@ def _safe_card_filename(name: str) -> str:
 
 
 def clone_bench_recipes(old_bench: str, new_bench: str) -> list:
-    """Walk every ATA project folder under the current working directory
-    and, in each probe card CSV, clone any RECIPE (with its STEP/SITE rows)
-    tagged for `old_bench` under a new name tagged for `new_bench` - so
-    Setup tab's "+ Add Prober" (which copies old_bench's instrument profile
-    to make new_bench) also comes with working copies of every recipe that
-    was written specifically for old_bench, without a manual per-project
-    CSV edit (this automates exactly the lampaccr_probe08new-style port
-    done by hand before this existed - see
-    references/HANDOFF_lampaccr_compliance_investigation.md history).
-
-    Recipes with NO bench tag already show on every bench (see
-    RecipePanel._visible_recipe_names) and are left alone - nothing to
-    clone. A file with no "bench" column at all (some older probe cards
-    predate bench-tagging) has nothing tagged for old_bench either, so it
-    is skipped the same way. Idempotent: a target name already present is
-    left as-is, not duplicated - safe to call again (e.g. Add Prober run
-    twice, or a project folder added after the fact).
-
-    Wafer Builder maps are not bench-scoped at all (wafer_builder_maps/
-    _default_<system>.txt is keyed by system, not bench) so there is
-    nothing to copy for those - every bench on a system already sees the
-    same maps.
-
-    Returns [(csv_path, cloned_recipe_name), ...] for logging.
-    """
     import workdir
     root = workdir.get_current_working_dir()
     cloned = []
@@ -822,17 +608,6 @@ def clone_bench_recipes(old_bench: str, new_bench: str) -> list:
 
 
 def retag_bench_recipes(old_bench: str, new_bench: str) -> list:
-    """Walk every ATA project folder under the current working directory
-    and, in each probe card CSV, retag any RECIPE row's own bench column
-    from old_bench to new_bench IN PLACE (same name, same STEP/SITE rows -
-    unlike clone_bench_recipes, which makes a second, differently-named
-    copy for a NEW bench). Called from
-    accretech_profiles.rename_profile - a renamed bench's recipes would
-    otherwise still be tagged for a name that no longer exists and
-    silently stop showing up (see RecipePanel._visible_recipe_names).
-
-    Recipes with no bench tag already show on every bench and are left
-    alone. Returns [(csv_path, recipe_name), ...] for logging."""
     import workdir
     root = workdir.get_current_working_dir()
     retagged = []
@@ -902,9 +677,6 @@ def _clone_bench_recipes_in_file(path: str, old_bench: str, new_bench: str) -> l
         recipe_i = header.index("recipe")
         bench_i = header.index("bench")
     except ValueError:
-        # No "bench" column at all - an older card, predating bench tags.
-        # Nothing on it could be tagged for old_bench, so there is nothing
-        # to clone (see this function's own docstring).
         return []
 
     def _get(row, i):
@@ -940,25 +712,6 @@ def _clone_bench_recipes_in_file(path: str, old_bench: str, new_bench: str) -> l
 
 
 def rebuild_wafer_map_panel(old_wm: "WaferMapPanel") -> "WaferMapPanel":
-    """Replace old_wm with a brand-new WaferMapPanel on a fresh Canvas, in
-    the same grid slot - the only known fix for the "packed with no gaps"
-    corruption a second _draw_from_die_list on the same long-lived canvas
-    produces (see instrument_panel.py's _new_results_wafer_map, which first
-    established this pattern for the Results tab). Generalized here so any
-    caller - Run tab map, Results tab map, any future one, any Accretech
-    project - can get the same protection, e.g. by wiring it into
-    on_reset_request, instead of the fix living only wherever the last bug
-    report happened to point.
-
-    Carries over everything a fresh redraw can't recompute on its own
-    (per-die PASS/FAIL/CURRENT status, the current pick selection, and the
-    caller's own callbacks) so this is safe to call mid-run, not just at
-    load time.
-    """
-    # Measured BEFORE the old widget is touched further - this is the last
-    # known-good, fully-settled size or a real Cenfire-density wafer (see
-    # _draw_from_die_list's own comment on size_hint), since old_wm was
-    # already on screen and correctly laid out before this rebuild started.
     old_w, old_h = old_wm.canvas.winfo_width(), old_wm.canvas.winfo_height()
     parent = old_wm.master
     new_wm = WaferMapPanel(parent, show_title=old_wm._show_title,
@@ -991,12 +744,6 @@ def rebuild_wafer_map_panel(old_wm: "WaferMapPanel") -> "WaferMapPanel":
 
 
 def recipe_file_path(cards_dir: str, base: str, system: str) -> str:
-    """Which file a card's recipes for `system` actually live in - Accretech
-    keeps RECIPE/STEP/SITE rows in the card's own <base>.csv; Electroglas
-    keeps them in a separate <base>.recipes.electroglas.csv side file. Same
-    row shape either way (rows_to_recipes/recipes_to_rows don't care which
-    file they came from), so copying a recipe between systems/cards is just
-    picking the right file on each end."""
     if system == "accretech":
         return os.path.join(cards_dir, f"{base}.csv")
     return os.path.join(cards_dir, f"{base}.recipes.{system}.csv")
@@ -1004,18 +751,6 @@ def recipe_file_path(cards_dir: str, base: str, system: str) -> str:
 
 def copy_recipe(src_path: str, src_name: str, dst_path: str, dst_name: str,
                 dst_bench: "str | None" = None) -> "str | None":
-    """Copy one recipe (RECIPE + its STEP/SITE rows) from `src_path` to
-    `dst_name` in `dst_path`, creating dst_path (with a bare CARD_CSV_FIELDS
-    header, no PIN rows) if it does not exist yet - a recipe can be copied
-    onto a brand new Electroglas side file this way even though the card's
-    own main CSV already exists separately. dst_bench, if given, overwrites
-    the RECIPE row's own bench tag (see RecipePanel._visible_recipe_names) -
-    leave it None to carry the source's tag over unchanged.
-
-    Returns an error string on failure (source not found, name collision),
-    or None on success. Same read/write pattern as clone_bench_recipes:
-    plain csv.reader/writer, no dependency on a live ProbeCardWiringFrame.
-    """
     try:
         with open(src_path, newline="", encoding="utf-8-sig") as f:
             src_rows = list(csv.reader(f))
@@ -1063,15 +798,6 @@ def copy_recipe(src_path: str, src_name: str, dst_path: str, dst_name: str,
 
     new_rows = []
     for r in to_copy:
-        # Re-index from the SOURCE file's column order into the
-        # DESTINATION file's - the two can differ (an older card predates
-        # minor_moves/shot_origin/mrange/die/route, see
-        # _clone_bench_recipes_in_file's own note), so a straight
-        # positional copy would silently shift fields on a schema
-        # mismatch. Read by source header name, write by destination
-        # header name; a field the destination has no column for is
-        # dropped (nowhere to put it), a field only the destination has
-        # is left blank.
         by_name = {src_header[i]: (r[i] if i < len(r) else "")
                   for i in range(len(src_header))}
         nr = [by_name.get(col, "") for col in dst_header]
@@ -1089,11 +815,6 @@ def copy_recipe(src_path: str, src_name: str, dst_path: str, dst_name: str,
 
 
 def copy_probe_card(src_dir: str, src_base: str, dst_dir: str, dst_base: str) -> "str | None":
-    """Copy a probe card's main CSV (pins + any Accretech RECIPE/STEP/SITE
-    rows baked into it) plus its Electroglas side files (.recipes.
-    electroglas.csv, .movelist.electroglas.csv), if present, under a new
-    base name/location. Returns an error string on failure, None on
-    success."""
     import shutil
     src_main = os.path.join(src_dir, f"{src_base}.csv")
     if not os.path.isfile(src_main):
@@ -1111,11 +832,6 @@ def copy_probe_card(src_dir: str, src_base: str, dst_dir: str, dst_base: str) ->
 
 
 def copy_wafer_map(src_dir: str, src_name: str, dst_dir: str, dst_name: str) -> "str | None":
-    """Copy one Wafer Builder map (wafer_builder_maps/<name>.json) to a new
-    name and/or a different ATA folder's wafer_builder_maps/. Plain file
-    copy - a saved map is self-contained JSON, nothing to merge or
-    reconcile against the destination. Returns an error string on failure,
-    None on success."""
     import shutil
     src_path = os.path.join(src_dir, f"{src_name}.json")
     if not os.path.isfile(src_path):
@@ -1129,9 +845,6 @@ def copy_wafer_map(src_dir: str, src_name: str, dst_dir: str, dst_name: str) -> 
 
 
 def delete_recipe(path: str, name: str) -> "str | None":
-    """Remove one recipe's RECIPE/STEP/SITE rows from `path` in place -
-    the delete-side mirror of copy_recipe. Returns an error string on
-    failure, None on success."""
     try:
         with open(path, newline="", encoding="utf-8-sig") as f:
             rows = list(csv.reader(f))
@@ -1160,9 +873,6 @@ def delete_recipe(path: str, name: str) -> "str | None":
 
 
 def delete_wafer_map(dir_path: str, name: str) -> "str | None":
-    """Delete one Wafer Builder map (wafer_builder_maps/<name>.json) - the
-    delete-side mirror of copy_wafer_map. Returns an error string on
-    failure, None on success."""
     path = os.path.join(dir_path, f"{name}.json")
     if not os.path.isfile(path):
         return f"{path} does not exist."
@@ -1171,9 +881,6 @@ def delete_wafer_map(dir_path: str, name: str) -> "str | None":
 
 
 def delete_probe_card(dir_path: str, base: str) -> "str | None":
-    """Delete a probe card's main CSV plus its Electroglas side files -
-    the delete-side mirror of copy_probe_card. Returns an error string on
-    failure, None on success."""
     main = os.path.join(dir_path, f"{base}.csv")
     if not os.path.isfile(main):
         return f"{main} does not exist."
@@ -1195,16 +902,11 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         self._log = log_fn or (lambda _msg: None)
         self._on_card_change = on_card_change or (lambda _name: None)
         self._on_pins_change = on_pins_change or (lambda: None)
-        # Best-effort extra save fired at the end of Save All - lets the
-        # owning tab (Pad Layout's Custom sketch, currently) piggyback on
-        # the one save button instead of needing its own.
         self._on_save_all = on_save_all or (lambda: None)
 
         self._cards: dict = {}
         self._current: str = ""
         self._card_recipes: dict = {}
-        # card -> {slot: (hi pin, lo pin)}. Explicit, so nothing
-        # has to infer a die from how a pad happens to be named.
         self._card_die_pins: dict = {}
         self._card_move_lists: dict = {}
         self._card_src: dict = {}
@@ -1238,12 +940,6 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         self._pad_var = tk.StringVar()
         self._net_var = tk.StringVar()
         ttk.Label(ed, text="Pin").pack(side="left")
-        # Restricted to whatever pins/channels are actually wired on the
-        # active bench (see _valid_pins) - a free-typed pin here can't be
-        # closed on real hardware no matter what the recipe says, so it is
-        # not offered. postcommand re-derives the list on every dropdown
-        # open, so widening Switch Settings (Accretech) is picked up live
-        # with nothing to keep in sync by hand.
         self._pin_cb = ttk.Combobox(ed, textvariable=self._pin_var, width=6,
                                     postcommand=self._refresh_pin_choices)
         self._pin_cb.pack(side="left", padx=(1, 4))
@@ -1284,12 +980,6 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
                   command=self._set_default_card).pack(side="left", padx=(6, 1))
         ttk.Button(bar, text="Save All", command=self._save).pack(side="right", padx=1)
 
-    # ------------------------------------------------------------------
-    # DEFAULT CARD — probe cards live in one shared probe_cards\ folder per
-    # ATA folder, but Accretech and Electroglas need different cards active
-    # (different pin formats - see _valid_pins), so the marker is filed per
-    # system rather than one default for the whole folder.
-    # ------------------------------------------------------------------
     def _default_marker_path(self) -> Optional[str]:
         d = self._ata_probe_cards_dir or (
             os.path.join(self._get_folder() or "", "probe_cards")
@@ -1336,20 +1026,6 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         return list(self._cards.keys())
 
     def get_card_names_for_system(self) -> list:
-        """Card names whose pins are ALL valid for the active bench right
-        now - Probe cards are shared between Accretech and Electroglas (one
-        probe_cards\\ folder per ATA folder), so nothing stops a card wired
-        for one system's pin format from also being listed for the other.
-        This is what the Recipe tab's card picker filters through, so a
-        mismatched card can't be selected there and have pins picked for a
-        recipe that cannot actually close them on this bench. get_card_names
-        (the Probe Card tab's own list) is NOT filtered - you still need to
-        be able to open a mismatched card to fix or delete it.
-
-        A card with no pins yet (brand new) passes - there is nothing on it
-        to conflict with. When _valid_pins doesn't know a restricted list
-        for this bench (e.g. probe03), nothing is filtered either.
-        """
         valid = self._valid_pins()
         if not valid:
             return self.get_card_names()
@@ -1548,10 +1224,6 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
             self._pin_var.set(r["pin"])
             self._pad_var.set(r["pad"])
             self._net_var.set(r["net"])
-            # Tracked by index, not by re-matching the Pin text on Update -
-            # otherwise editing the Pin field itself (not just Pad/Net) for a
-            # selected row stopped matching its old pin and added a new row
-            # instead of changing the one that was selected.
             self._editor_row_idx = idx
 
     def _add(self):
@@ -1676,10 +1348,6 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         for row in rows:
             kind = (row.get("kind") or "PIN").upper()
             if kind == DIE_PIN_KIND:
-                # slot -> the two PINS that land on that die. Pins are the
-                # durable identifier: they are physically on the card and they
-                # are what reaches the relay, where a pad name like "BRU" is a
-                # per-project label that means nothing on the next card.
                 try:
                     slot = int(row.get("seq") or 0)
                 except ValueError:
@@ -1699,11 +1367,6 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
 
     def _write_card_file(self, path: str, pins: list, recipes: dict,
                          die_pins: dict = None):
-        # Never let an empty pin list erase a card's wiring. The side-recipe
-        # file legitimately carries no pins, but the main card file does - and
-        # rewriting it from a card whose pins were not in memory wiped
-        # LaMP_HP's 16 pad mappings, after which every recipe was generated
-        # with blank HI/LO and nothing said so.
         if not pins and os.path.isfile(path):
             try:
                 existing, _, _ = self._read_card_file(path)
@@ -1714,8 +1377,6 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
                           f"pins, so the {len(existing)} already on file were "
                           f"kept rather than erased.")
                 pins = existing
-        # Same reasoning as the pins above: a save that supplies no die-pin
-        # table must not erase the one on file.
         if die_pins is None and os.path.isfile(path):
             try:
                 _, _, existing_dp = self._read_card_file(path)
@@ -1875,16 +1536,9 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
 
 
     def get_die_pins(self, card: str = None) -> dict:
-        """{slot: (hi pin, lo pin)} for a card - the die-to-pin map.
-
-        Pins, not pad names. A pad label ("BRU") describes one project's
-        drawing; the pin is the physical contact that lands on the relay and
-        is still meaningful on the next card and the next product.
-        """
         return dict(self._card_die_pins.get(card or self._current, {}))
 
     def set_die_pins(self, card: str, mapping: dict) -> bool:
-        """Record slot -> (hi, lo) pins for a card and persist it."""
         if card not in self._cards:
             return False
         clean = {}
@@ -1914,18 +1568,6 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         return True
 
     def get_recipes(self) -> dict:
-        # 'sites' as well as 'steps' - the same omission save_recipes had. The
-        # touchdown list persisted to disk correctly and was read back into
-        # _card_recipes correctly, then dropped here on the way to the Recipe
-        # tab, so every recipe opened with a blank touchdown table. The Run tab
-        # looked right only by accident: with no sites, _probe_seqs() returns
-        # None and the run falls back to the .PMA's own list.
-        # {**rec, ...} - copy the WHOLE recipe, then normalise the fields
-        # that need a type or a default. Listing fields by hand here is
-        # what silently dropped 'sites', then 'shortcut', then
-        # 'fast_current_settle', then 'align_die', each time invisibly and
-        # each time found only after someone noticed their setting had
-        # reset. A field added anywhere now rides along on its own.
         return {name: {**rec,
                        "steps": [dict(s) for s in rec.get("steps", [])],
                        "sites": [dict(s) for s in rec.get("sites", [])],
@@ -1943,11 +1585,6 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
     def save_recipes(self, card: str, recipes: dict) -> bool:
         if card not in self._cards:
             return False
-        # Keep 'sites' as well as 'steps'. Rebuilding each recipe with only
-        # its steps discarded the touchdown list on every save, so a recipe
-        # that LOAD ALL had just given 15 touchdowns was written back with
-        # none - and the SITE rows recipes_to_rows would have emitted never
-        # existed to be written.
         self._card_recipes[card] = {
             name: {**rec,
                    "steps": [dict(s) for s in rec.get("steps", [])],
@@ -1955,16 +1592,6 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
                    "bench": rec.get("bench", ""),
                    "minor_moves": bool(rec.get("minor_moves")),
                    "shortcut": bool(rec.get("shortcut")),
-                   # Same "hand-picked field list silently drops anything
-                   # not on it" bug already found in RecipePanel.
-                   # load_recipes - this is the actual SAVE path, so
-                   # missing a field here is worse: it never even reaches
-                   # disk. fast_current_settle was being stripped out of
-                   # every save, so the checkbox looked checked for the
-                   # rest of THIS session (its own tk.BooleanVar was never
-                   # touched) but the written CSV never had it - any
-                   # reload (a restart, a different PC opening the same
-                   # ATA folder, ...) came back unchecked.
                    "fast_current_settle": bool(rec.get("fast_current_settle")),
                    "manual_mode": bool(rec.get("manual_mode")),
                    "shot_origin": rec.get("shot_origin")}
@@ -1995,13 +1622,6 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         return [dict(r) for r in self._rows]
 
     def rename_pad(self, old: str, new: str) -> int:
-        """Repoint every pin from pad `old` to pad `new`. Returns the count.
-
-        Pins reference their pad by name, so a pad renamed anywhere else has
-        to be renamed here too or those pins point at nothing - and a pin with
-        an unresolvable pad contributes no HI/LO to a recipe while still
-        looking like a wired pin in the table.
-        """
         old, new = (old or "").strip(), (new or "").strip()
         if not old or not new or old == new:
             return 0
@@ -2009,17 +1629,11 @@ class ProbeCardWiringFrame(ttk.LabelFrame):
         for r in hits:
             r["pad"] = new
         if hits:
-            # _refresh redraws the table AND fires on_pins_change, which is
-            # what makes the Recipe tab's pin dropdowns pick the new name up.
             self._refresh()
             self._save()
         return len(hits)
 
     def _valid_pins(self):
-        """Every real, wired pin/channel the active bench can actually
-        close, or None when no restricted list is known (leaves the field a
-        free-typed Entry rather than a dropdown, since a wrong restriction
-        would be worse than none - see hp_switchbox.wired_pin_labels)."""
         if self._system == "accretech":
             try:
                 import switch_topology
@@ -2088,8 +1702,6 @@ class PadLayoutPanel(ttk.LabelFrame):
         self._pin_tips = {}
         self._pins_by_pad = {}
         self._pin_drag_key = None
-        # Renaming a pad here has to repoint the probe card's pins, which
-        # live in a different panel; this is the one hook between them.
         self._rename_pad = rename_pad or (lambda _o, _n: 0)
 
     def _reset_view(self):
@@ -2486,18 +2098,6 @@ class PadLayoutPanel(ttk.LabelFrame):
                 self._notify_change()
 
     def _rename_pad_everywhere(self, old: str, new: str):
-        """Carry a pad rename into the probe card's PIN rows.
-
-        A pin references its pad BY NAME, so renaming the pad on the sketch
-        alone silently orphans every pin pointing at it - the pins keep the
-        old label, stop resolving, and the recipe's HI/LO go blank without
-        anything reporting an error. The two are one fact stored twice, so
-        they get renamed together.
-
-        The sketch's own pin keys are "PIN:PAD", so they are rebuilt too;
-        leaving them would reattach the pins to a pad that no longer exists
-        the next time the layout is read back.
-        """
         old, new = (old or "").strip(), (new or "").strip()
         if not old or not new or old == new:
             return
@@ -2505,8 +2105,6 @@ class PadLayoutPanel(ttk.LabelFrame):
             renamed = int(self._rename_pad(old, new) or 0)
         except Exception:
             renamed = 0
-        # The sketch's pin offsets are keyed "A13:TRU" - rekey them so the
-        # layout still finds its pins after a round trip through the file.
         offsets = getattr(self, "_pin_offsets", None)
         if isinstance(offsets, dict):
             for key in [k for k in offsets if k.endswith(f":{old}")]:

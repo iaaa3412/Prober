@@ -10,17 +10,6 @@ import workdir
 
 
 class _FakeResource:
-    """Stand-in for a pyvisa MessageBasedResource - swapped onto a REAL
-    driver object's own .inst for the life of one dry-run measurement (see
-    GpibTracePanel._log_commands_from_recipe), so every real command-
-    building/response-parsing code path in that driver's actual class runs
-    exactly as it would for a real measurement, but nothing it does ever
-    reaches the real bus. Never opens anything, never closes anything,
-    never talks to hardware - .write()/.query() just record the exact
-    string that would have gone out and hand back an always-parseable
-    placeholder reply, so a driver that reads its own response back (a
-    reading, a CLOS? check, SYST:ERR?) does not raise and stop the trace
-    partway through the recipe."""
 
     def __init__(self, label: str, log: list):
         self._label = label
@@ -60,11 +49,6 @@ class _FakeResource:
         pass
 
     def _fake_reply(self, message) -> str:
-        # Good enough for anything downstream that expects a reading, a
-        # boolean CLOS?-style 0/1 (reads as "not closed", harmless - this
-        # trace is never used to judge PASS/FAIL, only which commands were
-        # sent), or an error-queue check. Never used to fabricate a real
-        # measurement value anywhere else in the app.
         m = (str(message) or "").upper()
         if "ERR" in m:
             return '+0,"No error"'
@@ -72,12 +56,6 @@ class _FakeResource:
 
 
 class GpibTracePanel(ttk.Frame):
-    """Debug tab: live view of every GPIB/USB command THIS app sends (see
-    instruments/gpib_trace.py for why it can't see LabVIEW's own commands -
-    that needs NI I/O Trace, run alongside this). Start writes a timestamped
-    log file next to GUI System and mirrors every line here as it happens;
-    Stop just gates the tracer back off (the underlying pyvisa patch stays
-    installed for the life of the process - see gpib_trace.py)."""
 
     def __init__(self, parent, controller):
         super().__init__(parent)
@@ -188,10 +166,6 @@ class GpibTracePanel(ttk.Frame):
         self._status_var.set("Not tracing")
 
     def _on_line(self, line: str):
-        # Fires from whichever thread made the instrument call - often the
-        # background measurement run thread, never safe to touch a Tk
-        # widget from directly. Hop to the main loop, same pattern
-        # instrument_panel._exec_safe_after uses elsewhere.
         try:
             self.after(0, lambda l=line: self._append(l))
         except Exception:
@@ -221,20 +195,6 @@ class GpibTracePanel(ttk.Frame):
         except Exception as e:
             self.controller.log(f"[SETUP] Could not open folder: {e}")
 
-    # -- Log commands from recipe --------------------------------------------
-    #
-    # A dry run of ONE measurement iteration of whatever recipe is currently
-    # loaded on the active system's Recipe tab, through the SAME engine a
-    # real Measure press uses (MainLayout._exec_run_steps_once) - so every
-    # command it would send (config, turn-on, reset, the works, to every
-    # instrument the recipe touches including the switch matrix) is
-    # authentic, not a hand-reconstructed guess. The only thing faked is the
-    # TRANSPORT: each real driver object's own .inst (its live pyvisa/GPIB
-    # session) is swapped for a _FakeResource for the duration, so nothing
-    # this produces ever reaches the real bus, then swapped straight back -
-    # the real drivers' actual connections are completely untouched
-    # afterward. record_result is also stubbed out for the duration so no
-    # fabricated reading is written into the real Results tab/exports.
 
     def _log_commands_from_recipe(self):
         controller = self.controller
@@ -256,9 +216,6 @@ class GpibTracePanel(ttk.Frame):
         recipe_name = recipe_panel.get_active_recipe() or "(unsaved)"
 
         eg_run = getattr(main_layout, "eg_pma_run", None)
-        # Refuse rather than race a real run/measurement for the same
-        # driver objects' .inst - both engines' own "already running" flags,
-        # since Electroglas tracks its separately from the generic one.
         if getattr(main_layout, "_exec_running", False) or (
                 eg_run is not None and getattr(eg_run, "_running", False)):
             self._recipe_log_status_var.set(
@@ -267,7 +224,7 @@ class GpibTracePanel(ttk.Frame):
             return
 
         drivers = dict(controller.drivers)
-        swapped = []  # (driver_obj, real_inst) - restored no matter what
+        swapped = []
         command_log = []
         for role, drv in drivers.items():
             if drv is None or not hasattr(drv, "inst"):
@@ -303,9 +260,6 @@ class GpibTracePanel(ttk.Frame):
         except Exception as e:
             error = f"{type(e).__name__}: {e}"
         finally:
-            # Real connections back first, before anything else - this is
-            # the one part that actually matters for "don't touch normal
-            # operation".
             for drv, real_inst in swapped:
                 drv.inst = real_inst
             if real_record_result is not None:

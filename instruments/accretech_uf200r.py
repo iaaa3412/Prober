@@ -58,10 +58,6 @@ STB_DESCRIPTIONS = {
 
 class AccretechUF200R(GPIBInstrument):
     def __init__(self, config_key='prober'):
-        # Same reason Keithley2400 takes one: the default ('prober') keeps
-        # every existing caller unaffected - kept for consistency with the
-        # other Accretech drivers even though a bench only ever has one
-        # real prober in practice.
         super().__init__(config_key)
         self.z_is_up = None
         if self.inst:
@@ -89,14 +85,6 @@ class AccretechUF200R(GPIBInstrument):
         return self.query("Q") or ""
 
     def get_die_position(self) -> tuple:
-        """Current die coordinate as (x, y), parsed from Q ("YnnnXnnn").
-
-        Same regex instrument_panel.py's _parse_q_response uses for this
-        exact response - kept here too (rather than imported) so this
-        driver has no dependency on gui/, and so a caller (e.g. the Recipe
-        tab's minor-moves origin capture) does not have to know the wire
-        format at all.
-        """
         import re
         raw = (self.get_xy_position() or "").strip()
         m = re.search(r'Y\s*([+-]?\d+)\s*X\s*([+-]?\d+)', raw)
@@ -222,12 +210,6 @@ class AccretechUF200R(GPIBInstrument):
         self._wait_for_stb(target_stb=85)
         self.z_is_up = None
 
-    # A real cassette unload/load can take anywhere from ~30s to ~3 minutes
-    # (mechanical handling, alignment) - well past self.inst.timeout (30s,
-    # see __init__), which is what _wait_for_stb_any falls back to when no
-    # timeout_s is given. Both cassette operations default to a generous
-    # ceiling here so a slow-but-normal unload/load doesn't get mistaken
-    # for a hang.
     _CASSETTE_TIMEOUT_S = 240
 
     def unload_wafer(self, timeout_s: float = _CASSETTE_TIMEOUT_S):
@@ -251,20 +233,6 @@ class AccretechUF200R(GPIBInstrument):
             return None
 
     def cassette_unload_and_load_next(self, timeout_s: float = _CASSETTE_TIMEOUT_S):
-        # "U" (see unload_wafer above) only unloads - per the UF GPIB
-        # Commands manual (4.28 U), it ends in STB=71 and then the prober
-        # "waits for the next wafer loading". It never auto-advances the
-        # cassette on its own.
-        #
-        # The real combined unload-current + load/align-next command is
-        # "L" (4.13 L: Unload/load/align): "used at the Wafer End to
-        # unload the wafer and load/align the next wafer" - its own
-        # flowchart terminates in STB=70 (Wafer Loading Done, start die
-        # positioned, Chuck DOWN) on success. When the cassette has no
-        # more wafers, the same example flow (3.4 Example 1, "L" ->
-        # "Not-tested wafers remain?" -> No) ends the lot instead -
-        # 77/82/94 cover Wafer End/Cassette End/Lot Done so that case is
-        # recognized rather than just timing out.
         self.write("L")
         try:
             stb = self._wait_for_stb_any({70, 77, 82, 94}, timeout_s)

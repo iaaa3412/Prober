@@ -1,33 +1,4 @@
-"""Push results straight into an Access database (.mdb / .accdb).
-
-Same data as the .sql export, put in the table instead of written to a file
-for someone else to run. build_rows() below resolves every column through
-export_formats.resolve_column_value, the one the INSERT-statement builder
-uses, so "Export .sql" and "Push to DB" cannot disagree about what a row
-says - only about where it lands.
-
-WHAT AN .mdb ACTUALLY IS
-
-A file. There is no server, no service, no account: the whole database is
-one file on disk, and "connecting" means opening that file. So:
-
-  - The file has to be reachable from THIS machine, either locally or over
-    a UNC/network path (\\\\server\\share\\LaMP.mdb). A local copy is a
-    SEPARATE database - pushing to it changes nothing anyone else can see.
-  - Point it at the shared copy on the network and everyone reading that
-    same file sees the rows immediately. That is the only way a push
-    reaches anyone else.
-  - Access supports several people having it open at once (it writes a
-    .laccdb/.ldb lock file alongside), but it is a file share, not a
-    database server - a dropped network connection mid-write can corrupt
-    it, and it is not built for many simultaneous writers.
-
-DRIVER. Reading the file needs the Microsoft Access ODBC driver, and its
-bitness must match the Python running this GUI - a 64-bit Python cannot
-load a 32-bit driver, which is the usual cause of "data source name not
-found". preflight() reports exactly that rather than letting pyodbc raise
-something opaque.
-"""
+"""Push results straight into an Access database (.mdb / .accdb)."""
 from __future__ import annotations
 
 import json
@@ -40,14 +11,10 @@ import export_formats as xfmt
 try:
     import pyodbc
     _PYODBC_ERR = ""
-except ImportError as _e:  # pragma: no cover - depends on the install
+except ImportError as _e:
     pyodbc = None
     _PYODBC_ERR = f"{type(_e).__name__}: {_e}"
 
-# Per-ATA-folder default .mdb path - separate from app_settings' global
-# "mdb_path" (still used as the starting value before any folder has ever
-# set its own). Same small-JSON-in-the-folder pattern as
-# cassette_panel.save_yield_threshold/load_yield_threshold.
 MDB_PATH_FILENAME = "ata_mdb_path.json"
 
 
@@ -80,15 +47,12 @@ def python_bits() -> int:
 
 
 def access_drivers() -> List[str]:
-    """Installed ODBC drivers that can open an .mdb, newest-looking first."""
     if pyodbc is None:
         return []
     try:
         found = [d for d in pyodbc.drivers() if ACCESS_DRIVER_HINT in d]
     except Exception:
         return []
-    # The *.mdb, *.accdb driver (ACE) handles both formats; the bare
-    # "*.mdb" one is the older Jet driver and only handles .mdb.
     return sorted(found, key=lambda d: ("accdb" not in d, d))
 
 
@@ -102,12 +66,6 @@ def connection_string(path: str, driver: Optional[str] = None) -> str:
 
 
 def preflight(path: str, table: str) -> Dict[str, Any]:
-    """Everything that can be checked before writing anything.
-
-    Returns {"ok", "problems", "warnings", "driver", "columns", "row_count"}.
-    Deliberately does not raise: the caller shows the problems as text, and
-    a push is only offered when ok is True.
-    """
     out: Dict[str, Any] = {"ok": False, "problems": [], "warnings": [],
                            "driver": "", "columns": [], "row_count": None}
     if pyodbc is None:
@@ -128,8 +86,6 @@ def preflight(path: str, table: str) -> Dict[str, Any]:
         out["problems"].append("No database file chosen.")
         return out
     if not os.path.isfile(path):
-        # Said plainly, because a typo'd path and a disconnected share look
-        # the same from here and mean very different things.
         out["problems"].append(
             f"{path} does not exist or is not reachable from this machine. "
             "A network database must be given as a UNC path to the shared "
@@ -169,12 +125,6 @@ def preflight(path: str, table: str) -> Dict[str, Any]:
 
 def build_rows(fmt: Dict[str, Any], results_data: List[Dict[str, Any]],
                lot_id: str, wafer_id: str, folder: str = "") -> Tuple[List[str], List[tuple]]:
-    """(field names, one value tuple per row) for a parameterised INSERT.
-
-    Values are passed to the driver as parameters rather than pasted into
-    SQL text: a device ID with an apostrophe in it would otherwise end the
-    string literal and corrupt the statement.
-    """
     rows = xfmt.rows_for_format(fmt, results_data)
     context = {"test_serial": xfmt.compute_test_serial(lot_id, wafer_id),
                "lot_id": lot_id, "wafer_id": wafer_id}
@@ -189,8 +139,6 @@ def build_rows(fmt: Dict[str, Any], results_data: List[Dict[str, Any]],
             if c.get("quote"):
                 vals.append("" if raw is None else str(raw))
             else:
-                # Same coercion the .sql path uses, then back to a number so
-                # the driver binds it to the numeric column as a number.
                 try:
                     vals.append(float(xfmt.sql_num(raw)))
                 except (TypeError, ValueError):
@@ -202,12 +150,6 @@ def build_rows(fmt: Dict[str, Any], results_data: List[Dict[str, Any]],
 def push(path: str, fmt: Dict[str, Any], results_data: List[Dict[str, Any]],
          lot_id: str, wafer_id: str, driver: Optional[str] = None,
          folder: str = "") -> Dict[str, Any]:
-    """Insert the rows, all or nothing.
-
-    One transaction: a push that fails halfway would otherwise leave a
-    partial wafer in a shared database with no way to tell which rows made
-    it, and re-pushing would double the ones that did.
-    """
     table = fmt["table"]
     fields, rows = build_rows(fmt, results_data, lot_id, wafer_id, folder)
     if not rows:
@@ -223,7 +165,7 @@ def push(path: str, fmt: Dict[str, Any], results_data: List[Dict[str, Any]],
         return {"ok": False, "inserted": 0, "error": f"Could not open: {exc}"}
     try:
         cur = conn.cursor()
-        cur.fast_executemany = False   # Jet/ACE does not support it
+        cur.fast_executemany = False
         cur.executemany(sql, rows)
         conn.commit()
         return {"ok": True, "inserted": len(rows), "error": "", "table": table}
@@ -241,32 +183,11 @@ def push(path: str, fmt: Dict[str, Any], results_data: List[Dict[str, Any]],
             pass
 
 
-# ----------------------------------------------------------------------
-# LAMP SQL DUMP FOLDER -> DATABASE
-#
-# Separate from push() above: those rows come from a run still in memory
-# in the GUI. These come from .sql files someone (or a recipe's own "Save
-# to CSV"-style export) already wrote out to a folder - each file is just
-# plain text, one "INSERT INTO tblLampElectricalMeasurements (...) VALUES
-# (...)" statement per line, no semicolons, no comments (the same shape
-# every LAMP_*.sql export already produced this session). Running this IS
-# how those rows actually reach the shared database - nothing else in this
-# project pushes them there automatically.
-# ----------------------------------------------------------------------
 LAMP_SQL_DUMP_DIR = r"C:\LampDump"
 LAMP_MDB_PATH = r"\\fabserve\ProberStuff\LampElectricalProbeData.mdb"
 
 
 def push_sql_dump_folder(mdb_path: str, dump_dir: str) -> Dict[str, Any]:
-    """Execute every .sql file in dump_dir against the Access database at
-    mdb_path, one file at a time.
-
-    Each file is all-or-nothing (same reasoning as push() above: a file
-    that fails halfway must not leave a partial, undetectable set of rows
-    behind) - a bad file is rolled back and left exactly where it was, for
-    someone to look at. Only a fully-committed file gets moved into
-    dump_dir/Pushed/, so running this again never re-inserts it.
-    """
     result: Dict[str, Any] = {"ok": False, "files": [], "total_rows": 0, "error": None}
     if pyodbc is None:
         result["error"] = f"pyodbc is not installed ({_PYODBC_ERR})"

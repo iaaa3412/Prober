@@ -7,35 +7,9 @@ from instrument_connection_panel import build_address_panel
 from instruments import eg_profiles
 from hp3458a_debug_panel import HP3458ADebugPanel
 
-# The roster of Electroglas instruments is per-bench and lives in
-# GUI System/eg_probers.yaml, not here. The benches are genuinely different -
-# probe02 carries a Keithley 2400 and a working E1326B, probe03 has neither and
-# puts its wired relay card at a different secondary address - so a hardcoded
-# list here would describe one bench while the drivers talked to another.
-#
-# Each profile entry carries the ID query to use, because the right query
-# differs per instrument and getting it wrong makes a healthy instrument look
-# dead: the 2001X is pre-SCPI and parses no ID query at all, the 3458A and
-# 6634B are HP-era and answer "ID?" rather than "*IDN?", and the switchboxes
-# and the 2400 do answer "*IDN?". Presence itself is established by GPIB serial
-# poll, so these only decide what identification string gets displayed.
-#
-# A profile entry may also carry a write probe - a harmless query proving the
-# instrument accepts command bytes. The 2001X answers a serial poll from its
-# GPIB interface chip while refusing every command, so a poll alone reports it
-# healthy when nothing would actually work; "?S" is a query and cannot move the
-# chuck, stage or handler.
-
 
 def _eg_instruments():
-    """Roster for the active bench, from GUI System/eg_probers.yaml.
-
-    Was a hardcoded list. The EG benches carry different instruments at
-    different addresses, so the roster has to follow the selected profile or
-    the panel shows one bench while the drivers talk to another.
-    """
     return eg_profiles.roster()
-
 
 
 class InstrumentsEgPanel(ttk.Frame):
@@ -44,9 +18,6 @@ class InstrumentsEgPanel(ttk.Frame):
         self.controller = controller
         self._addr_panel = None
 
-        # The bench selector, SMU/PS/DMM cards and address panel together can
-        # run taller than the notebook tab, so the whole tab scrolls instead
-        # of clipping the bottom sections.
         canvas = tk.Canvas(self, highlightthickness=0)
         vsb = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
         canvas.configure(yscrollcommand=vsb.set)
@@ -84,11 +55,6 @@ class InstrumentsEgPanel(ttk.Frame):
         lf = ttk.LabelFrame(self._body, text="Prober bench", padding=6)
         lf.grid(row=0, column=0, columnspan=2, sticky="new", padx=8, pady=(8, 0))
 
-        # The bench is CHOSEN from the toolbar picker next to the ATA folder,
-        # so there is deliberately no second dropdown here - two controls for
-        # one setting is a way to get them out of step. This shows what is
-        # active and offers the diagnostic that belongs with the instrument
-        # list rather than with the toolbar.
         row = ttk.Frame(lf)
         row.pack(fill="x")
         self._bench_var = tk.StringVar(value=eg_profiles.active_name())
@@ -111,11 +77,6 @@ class InstrumentsEgPanel(ttk.Frame):
                             + ", ".join(k.replace('_eg', '') for k in fitted))
 
     def _match_bench(self):
-        """Scan the bus and say which profile the hardware actually looks like.
-
-        The benches share most addresses, so what separates them is which relay
-        card sits where and whether the 2400 and VXI multimeter answer at all.
-        """
         def _run():
             from instruments.gpib_base import discover_bus
             try:
@@ -147,9 +108,6 @@ class InstrumentsEgPanel(ttk.Frame):
         self._build_addresses()
 
     def _build_addresses(self):
-        # Sits below the instrument control panels (SMU/PS/DMM), not above -
-        # the ping/address section is a diagnostic, not the first thing an
-        # operator needs.
         self._addr_panel = build_address_panel(
             self._body, _eg_instruments(), self._log, self.controller.init_hardware_eg)
         self._addr_panel.grid(row=3, column=0, columnspan=2, sticky="new",

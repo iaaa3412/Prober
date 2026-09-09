@@ -14,12 +14,6 @@ except ImportError:
     _pma_xlrd = None
 
 
-# "move" only appears in the editor's Type dropdown when a recipe's Minor
-# Moves checkbox (RecipePanel._minor_moves_var) is checked - see
-# RecipePanel._refresh_type_values. It repositions the chuck to a specific
-# die WITHIN the shot the current touchdown is already sitting on (Die #
-# names which one, Wafer Builder Shot-tab order) - meaningless without
-# Minor Moves' shot geometry, so it's hidden rather than just disabled.
 _STEP_TYPES    = ("resistance", "ohmf", "voltage", "current", "wave", "passfail",
                   "delay", "open", "picture", "move")
 _STEP_MODES    = ("measure", "apply")
@@ -27,80 +21,21 @@ _INSTRUMENTS   = ("DMM", "SMU", "WGEN")
 _SMU_CHANNELS  = ("A", "B")
 _WGEN_CHANNELS = ("CH1", "CH2")
 _WAVE_SHAPES   = ("SIN", "SQU", "RAMP", "PULS", "DC")
-# his/los are the 4-wire SENSE pins and are only ever populated on an "ohmf"
-# step. Appended to the end so recipes written before 4-wire existed still
-# parse - _parse_step matches on key name, not position.
 _STEP_FIELDS   = ("name", "type", "mode", "instrument", "chan", "target", "hi", "lo",
                   "level", "limit", "shape", "freq", "conn", "min", "max",
                   "avg_count", "avg_delay", "nplc", "his", "los",
-                  # How long to wait AFTER the bias/output is turned on but
-                  # BEFORE the first reading is taken - separate from
-                  # avg_delay (the gap BETWEEN averaged readings, or the
-                  # SMU's own per-cycle source delay on a "current" step).
-                  # Covers both "the instrument itself needs a moment to
-                  # settle before its first reading is trustworthy" and "I'm
-                  # biasing while measuring and want the bias to actually
-                  # settle before the first sample" - see
-                  # instrument_panel._exec_run_steps_once.
                   "settle_delay",
-                  # Take abs() of the reading before it's compared to a
-                  # target or recorded/painted on the map. "1" = on, blank
-                  # = off (the default - most steps want the signed value).
-                  # Only meaningful on a measurement step.
                   "abs_value",
-                  # LaMP's MeterRange - the fixed measurement range. Appended
-                  # rather than inserted so existing card CSVs, which are read
-                  # by column NAME, keep loading unchanged; a file without the
-                  # column just yields "" and the meter autoranges as before.
                   "mrange",
-                  # Which die of the shot (Wafer Builder's Shot-tab order,
-                  # 1-based) this step's measurement belongs to. Replaces the
-                  # old "(Die N)" name-suffix convention as the source of
-                  # truth for per-die results attribution - see
-                  # instrument_panel._exec_run_steps_once. Blank/unparsable
-                  # defaults to 1, so a single-die shot needs nothing set.
                   "die",
-                  # "switch" (the default) or "direct". A direct step is
-                  # cabled straight from the instrument to the probe card by
-                  # hand, bypassing the switchbox entirely - so it closes no
-                  # channels and needs no pin numbers, because the pins are
-                  # not what routes it. See ROUTE_DIRECT.
                   "route",
-                  # Which SPECIFIC fitted slot to use when more than one
-                  # instrument of "instrument"'s family (SMU/DMM) is fitted
-                  # at once (a second SMU added via Setup tab's + Add
-                  # Instrument, or Electroglas's 3458A + E1326B VXI both
-                  # fitted) - the controller.drivers key, e.g. "smu_2" or
-                  # "dmm_vxi". Blank (the default, and every recipe saved
-                  # before this field existed) means "whichever slot
-                  # 'instrument' has always meant" - see
-                  # instrument_panel._exec_run_steps_once's
-                  # _exec_resolve_instrument.
                   "instrument_key",
-                  # "" (default - send nothing, every recipe saved before
-                  # this existed), "FRONT", or "REAR" - which physical
-                  # terminals to source/measure from, for an instrument
-                  # that supports switching (Keithley2400.set_terminals;
-                  # see that driver's own comment - a switch-matrix-
-                  # routed probe card is wired to REAR, a direct-wired
-                  # one is typically hand-clipped to FRONT instead).
-                  # Applied once at the top of this step, before it
-                  # sources/measures anything - see
-                  # instrument_panel._exec_run_steps_once.
                   "terminals")
 
-# A step is either routed through the switch matrix (pins name the crosspoints
-# / relay channels to close) or wired straight to the probe card by hand. The
-# second case is real: a 4-wire resistance check on the 3458A is often cabled
-# directly, and then a pin number describes nothing the GUI can act on - all
-# it has to do is take the reading.
 ROUTE_SWITCH = "switch"
 ROUTE_DIRECT = "direct"
 _ROUTES = (ROUTE_SWITCH, ROUTE_DIRECT)
 
-# The one step type that takes four pins: source HI/LO carry the test current,
-# sense HI/LO read the voltage right at the pad, so the probe/lead resistance
-# in the source path drops out of the answer. Named for the 3458A's OHMF.
 FOUR_WIRE_TYPE = "ohmf"
 SENSE_FIELDS = ("his", "los")
 
@@ -110,16 +45,6 @@ DEFAULT_RECIPE_FILENAME = "ata_default_recipe.json"
 
 
 def load_default_recipe(folder: str, system: str = None):
-    """(card, recipe) last marked default for this ATA folder, or (None, None).
-
-    Scoped per system (accretech/electroglas) - the same ATA folder's probe
-    card list is shared between benches (one probe_cards\\ folder), so a
-    default set while running Accretech names a card wired for Accretech's
-    pin format. Loading that same entry while on Electroglas would switch
-    to a mismatched card and select that recipe's touchdowns (in Accretech's
-    grid) on the Electroglas map. `system=None` reads the legacy flat
-    top-level entry, for callers that predate this split.
-    """
     if not folder:
         return None, None
     path = os.path.join(folder, DEFAULT_RECIPE_FILENAME)
@@ -176,9 +101,6 @@ def _is_measurement_step(step: dict) -> bool:
 
 
 def _step_unit(step: dict) -> str:
-    """The physical unit a step's own value carries - "" for step types
-    that don't produce/force a plain V/A/ohm quantity (delay, open,
-    passfail, picture, wave)."""
     t = step.get("type")
     if t in ("resistance", FOUR_WIRE_TYPE):
         return "ohm"
@@ -190,14 +112,6 @@ def _step_unit(step: dict) -> str:
 
 
 def describe_target_calc(measured_step: dict, applied_step: dict) -> str:
-    """Grey hint text: what combining a measure step's own reading with its
-    Target step's forced quantity will compute - e.g. force current
-    elsewhere, measure voltage here, and the two combine into a resistance;
-    or (Ohm's law) measure resistance here, force V or I elsewhere, and get
-    the other quantity out. "" means there's no known calculation for this
-    pair of units - the Target is still kept as a reference (so a passfail
-    after it can still name it), but the step's raw reading is what gets
-    reported/checked."""
     a_unit = _step_unit(applied_step)
     m_unit = _step_unit(measured_step)
     if not (a_unit and m_unit):
@@ -216,14 +130,6 @@ def describe_target_calc(measured_step: dict, applied_step: dict) -> str:
 
 def compute_target_derived(measured_value: float, measured_unit: str,
                            applied_value: float, applied_unit: str):
-    """(value, unit) derived from a measure step's own reading plus its
-    Target step's value, or None when no known calculation applies to this
-    pair of units - the caller should keep the raw measured value in that
-    case (blank divide-by-zero also returns None, for the same reason).
-
-    Two known pairings: a measured V + an applied I (or vice versa) combine
-    into resistance; a measured resistance + an applied V or I combine via
-    Ohm's law into the other quantity (I = V/R, or V = I*R)."""
     if {measured_unit, applied_unit} == {"V", "A"}:
         v = measured_value if measured_unit == "V" else applied_value
         i = measured_value if measured_unit == "A" else applied_value
@@ -243,8 +149,6 @@ def _instrument_options(step_type: str, mode: str) -> tuple:
     if step_type == "resistance":
         return ("DMM", "SMU")
     if step_type == FOUR_WIRE_TYPE:
-        # 4-wire ohms is a DMM function (3458A OHMF); the SMU has no
-        # equivalent in this rig, so offering it would only mislead.
         return ("DMM",)
     if step_type in ("voltage", "current"):
         return ("SMU",) if mode == "apply" else ("SMU", "DMM")
@@ -309,14 +213,6 @@ def _serialize_step(step: dict) -> str:
 
 def _normalize_step(step: dict) -> dict:
     t = step["type"]
-    # Blank/unparsable (old recipes, or a hand-edited CSV with no "die"
-    # column at all) defaults to 1 - the common single-die-per-shot case
-    # then needs nothing set. Passfail still carries its own die number (it
-    # tracks a per-die verdict for shot coloring - see
-    # instrument_panel._exec_run_steps_once's _exec_slot_verdicts), so it
-    # defaults the same way. Delay/open/picture touch no die at all - a wait,
-    # a channel release, and a not-yet-implemented photo aren't "of" any
-    # die - so they get no number rather than a misleading "1".
     if t in ("delay", "open", "picture"):
         step["die"] = ""
     else:
@@ -324,21 +220,10 @@ def _normalize_step(step: dict) -> dict:
             step["die"] = str(max(1, int(float(step.get("die") or "1"))))
         except (TypeError, ValueError):
             step["die"] = "1"
-    # Blank means switch-routed, NOT "work out the default from the
-    # instrument". Every recipe written before this field existed was
-    # switch-routed, and quietly re-reading one as direct would stop it
-    # closing the channels it has always closed. The 3458A-defaults-to-direct
-    # rule is an EDITOR default for steps being built (see
-    # _default_route_for), applied when you pick the instrument.
     if step.get("route") not in _ROUTES:
         step["route"] = ROUTE_SWITCH
     if step["route"] == ROUTE_DIRECT:
-        # Nothing to close. Pins stay whatever they were - they are simply
-        # not required or used - so flipping back to switch does not lose
-        # what was already typed.
         step["conn"] = ""
-    # Enforced here rather than only in the editor, so a recipe hand-edited or
-    # imported with sense pins on a 2-wire step cannot smuggle them through.
     if t != FOUR_WIRE_TYPE:
         step["his"] = step["los"] = ""
     if t == "delay":
@@ -377,8 +262,6 @@ def _normalize_step(step: dict) -> dict:
         step["abs_value"] = ""
         return step
     if t == "move":
-        # Die # is the one field that matters - see _STEP_TYPES - everything
-        # else here routes/measures nothing.
         step["mode"] = step["chan"] = step["target"] = step["instrument"] = ""
         step["instrument_key"] = ""
         step["hi"] = step["lo"] = step["conn"] = step["level"] = ""
@@ -402,30 +285,11 @@ def _normalize_step(step: dict) -> dict:
     elif step["mode"] not in _STEP_MODES:
         step["mode"] = "measure"
     if step["mode"] == "measure" and t != FOUR_WIRE_TYPE:
-        # A measure step's Target names an earlier APPLY step whose forced
-        # quantity combines with this step's own reading into a derived
-        # value (resistance, or - for a plain "resistance" step - the other
-        # quantity via Ohm's law; see compute_target_derived /
-        # instrument_panel._exec_run_steps_once). Blank is legitimate -
-        # most measurements need nothing applied elsewhere to already mean
-        # what they say. 4-wire ohms never combines with a Target at all -
-        # see _on_type_change's own comment on why it's excluded here too.
         step["target"] = saved_target
 
     options = _instrument_options(t, step["mode"])
-    # Blank is now a legitimate state, not just "not yet set" - see
-    # pma_params_to_steps, which leaves it blank on purpose for a step
-    # that needs an instrument the active bench does not have fitted at
-    # all (Bias Voltage/apply needs an SMU; probe03 has none). Only a
-    # genuinely WRONG (non-blank, invalid) instrument gets corrected to
-    # the type/mode's default here - forcing blank back to a default
-    # would silently reintroduce the unavailable instrument.
     if step["instrument"] and step["instrument"] not in options:
         step["instrument"] = _default_instrument(t, step["mode"])
-        # A specific-slot pick only ever makes sense for the family it
-        # was picked under - once that family itself was invalid and got
-        # reset, a leftover instrument_key would silently point at the
-        # WRONG family's slot instead of just falling back cleanly.
         step["instrument_key"] = ""
     instrument = step["instrument"]
 
@@ -509,8 +373,6 @@ def write_recipe_file(path: str, recipe: dict):
 
 _PMA_MAPPED_KEYS   = {"Voltage", "MeterCurrentLimit", "Averages", "MeterDelay",
                       "Delay1", "Delay2", "Delay3", "NPLC", "MeterRange"}
-# Iterations is the only one left with nowhere to go: it repeats the whole
-# measurement block, which is a run-level concern rather than a step field.
 _PMA_UNMAPPED_KEYS = {"Iterations"}
 _PMA_USEFUL_KEYS   = _PMA_MAPPED_KEYS | _PMA_UNMAPPED_KEYS
 
@@ -545,17 +407,6 @@ def _pma_num(params: dict, key: str, default: str = "0") -> str:
 
 
 def pma_params_to_steps(params: dict, available: tuple = _INSTRUMENTS) -> list:
-    """`available`: which instruments the active bench actually has fitted
-    (see RecipePanel._bench_instruments) - probe03 has no SMU, only the
-    3458A. A step whose type/mode has no instrument in common with
-    `available` at all (Bias Voltage/apply needs an SMU to source - no DMM
-    can do that) is built with instrument="" rather than a hardcoded "SMU"
-    that does not exist on that bench and would silently measure nothing.
-    A step that CAN run on what IS available (Leakage Measurement/measure
-    accepts either SMU or DMM) picks whichever of those is actually
-    fitted, preferring SMU when both are - so a whole-wafer .PMA imported
-    on probe03 still comes back mostly usable, not entirely blank.
-    """
     steps = []
 
     def _pick_instrument(step_type: str, mode: str, preferred: str) -> str:
@@ -603,27 +454,10 @@ def pma_params_to_steps(params: dict, available: tuple = _INSTRUMENTS) -> list:
         "instrument": _pick_instrument("current", "measure", "SMU"),
         "chan": "A", "name": meas_name,
         "avg_count": avg_count, "avg_delay": avg_delay_ms, "nplc": nplc,
-        # MeterRange used to be dropped, so the SMU autoranged where LaMP had
-        # pinned it. Carrying it means a different .PMA reconfigures the meter
-        # on LOAD ALL rather than silently inheriting the last recipe's range.
         "mrange": (params.get("MeterRange") or "").strip(),
     }))
 
     if limit:
-        # The threshold must sit WELL BELOW the compliance limit, not at it.
-        # A source held in compliance reads a hair under its limit - 999.99 nA
-        # against a 1 uA setting - so "max = limit" can never be exceeded and
-        # a dead short passes by a fraction of a nanoamp. Measured on the
-        # wafer: a TARGET, which is solid metal, passed a Leakage Check
-        # written that way.
-        #
-        # A tenth of the compliance separates the two populations by a wide
-        # margin in both directions. In the LaMP reference data a short sits
-        # at the clamp and an isolated die three orders below it, so anything
-        # between is safe; a tenth is far from both.
-        #
-        # Bounded on BOTH sides, because a large negative current is just as
-        # much a failure and an upper bound alone lets it through.
         try:
             edge = abs(float(limit)) / 10.0
             lo, hi = f"{-edge:.12g}", f"{edge:.12g}"
@@ -646,23 +480,6 @@ def pma_params_to_steps(params: dict, available: tuple = _INSTRUMENTS) -> list:
 
 def repeat_steps_per_die(steps: list, dies_per_shot: int, channels=None,
                         pins=None) -> list:
-    """One block of steps per die under the shot.
-
-    The prober lands ONCE on a shot; the relay card then connects each of the
-    co-touched dies in turn and the block is measured against each. So the
-    repetition belongs here, in the steps, and not in the touchdown list -
-    listing the shot four times would move the chuck to the same place four
-    times.
-
-    `channels` is the relay channel per die, in die order. Without it the
-    blocks are identical and every die is measured through whatever routing
-    the previous one left closed, which silently measures die 1 four times.
-
-    `pins` is the (HI, LO) probe-card pin pair per die. It changes nothing
-    electrically - the relay decides what is connected - but it records which
-    needles the reading came from, and it is what the recipe validator checks
-    against the loaded card.
-    """
     if dies_per_shot <= 1:
         return steps
     names_in_block = {s["name"] for s in steps if s.get("name")}
@@ -675,15 +492,9 @@ def repeat_steps_per_die(steps: list, dies_per_shot: int, channels=None,
         hi = lo = ""
         if pins and i <= len(pins):
             hi, lo = pins[i - 1]
-        # Open everything before connecting this die: the mux would otherwise
-        # hold the previous die closed as well, putting two in parallel.
         if chan:
             out.append({"kind": "STEP", "name": f"Isolate{suffix}",
                         "type": "open", "target": "all", "conn": "all",
-                        # Left unset until now, which _normalize_step then
-                        # defaulted to "1" on load/display - so "Isolate
-                        # (Die 3)"/"Isolate (Die 4)" showed Die # = 1 in the
-                        # Recipe tab, contradicting their own name.
                         "die": str(i)})
         for s in steps:
             s2 = dict(s)
@@ -691,19 +502,7 @@ def repeat_steps_per_die(steps: list, dies_per_shot: int, channels=None,
                 s2["name"] = s2["name"] + suffix
             if s2.get("target") in names_in_block:
                 s2["target"] = s2["target"] + suffix
-            # Every step in this block belongs to die i, whether or not it
-            # touches the wafer itself (delay/open/passfail included) - this
-            # is what _exec_slot_identity reads to file a measurement
-            # against the right square. Previously left unset here, so
-            # every step kept whatever "die" the single-die source steps
-            # had (normalized to "1"), and a whole multi-die shot's worth
-            # of results all filed against die 1 - see the reference
-            # HPLaMP_WHOLE_WAFER recipe in LaMP_HP.csv, which sets this
-            # correctly per block.
             s2["die"] = str(i)
-            # Route only the steps that actually touch the wafer. A delay has
-            # no connection, and giving one a channel would close a relay at
-            # a point the original sequence had it open.
             if s2.get("type") in ("voltage", "current", "resistance"):
                 if chan:
                     s2["conn"] = chan
@@ -714,13 +513,6 @@ def repeat_steps_per_die(steps: list, dies_per_shot: int, channels=None,
 
 
 def _pma_dies_per_shot(path: str) -> int:
-    """How many devices a touchdown of this .PMA co-touches.
-
-    Taken from the widest device-ID string in the recipe, not from the first:
-    a wafer-edge shot is written "NA/86-14/NA/NA" and still costs four
-    switch positions, while a shot that happens to be full would read the
-    same as a genuine single-die recipe.
-    """
     try:
         import electroglas_pma as egpma
         fields = egpma.parse_pma_file(path)
@@ -734,25 +526,6 @@ def _pma_dies_per_shot(path: str) -> int:
 def die_pins_from_card(wiring: list, dies_per_shot: int,
                        rows: int = 0, cols: int = 0,
                        die_pins: dict = None) -> list:
-    """[(hi_pin, lo_pin)] per die, read off the probe card's own pin table.
-
-    Derived, never assumed. A pad is matched to a die only when its label
-    starts with that die's quad corner (TL/BL/TR/BR) and ends U or D, which
-    is how the LaMP_HP card is labelled; the U pad becomes HI and the D pad
-    LO. A card labelled any other way simply yields nothing and the steps
-    keep their blank pins, which is what they had before - a wrong guess here
-    would put a needle on the wrong die and still look plausible.
-
-    Where a pad carries more than one pin the first is taken. On LaMP_HP the
-    second is a manufacturer's spare that is not connected to anything, and
-    that is specific to that card - it is not a pattern to rely on elsewhere,
-    which is exactly why this picks one rather than trying to use both.
-    """
-    # An explicit slot -> (hi, lo) PIN table on the card wins outright. Pins
-    # are the durable identifier: they are the physical contacts, they are what
-    # lands on the relay, and they still mean something on the next probe card.
-    # Pad names like "BRU" are one project's drawing convention, so deriving
-    # dies from them only works by luck.
     if die_pins:
         out = []
         for slot in range(1, dies_per_shot + 1):
@@ -786,16 +559,7 @@ def die_pins_from_card(wiring: list, dies_per_shot: int,
 
 
 def die_channels_for_bench(dies_per_shot: int) -> list:
-    """Relay channel per die for the active Electroglas bench, if known.
-
-    Read from hp_switchbox.BENCH_WIRING rather than assumed, because the two
-    benches differ: probe02's mux switches a HI/LO pair per die (one channel),
-    probe03's form-C card needs two channels for the same job.
-    """
     try:
-        # 'from instruments import', not a bare import - eg_profiles lives in
-        # the instruments package, so the bare form raised ModuleNotFoundError
-        # into the except below and every recipe came out with no channels.
         from instruments import eg_profiles
         from instruments.hp_switchbox import bench_wiring
         die_sets = bench_wiring(eg_profiles.active_name()).get("die_sets") or {}
@@ -811,7 +575,6 @@ def die_channels_for_bench(dies_per_shot: int) -> list:
 
 
 def site_key(site: dict) -> tuple:
-    """(row, col) of a touchdown, or None when it carries only a die ID."""
     try:
         return int(site["row"]), int(site["col"])
     except (KeyError, TypeError, ValueError):
@@ -821,52 +584,13 @@ def site_key(site: dict) -> tuple:
 def recipes_to_rows(recipes: dict) -> list:
     rows = []
     for name, rec in recipes.items():
-        # bench: which Electroglas prober (probe02/probe03) this recipe was
-        # built for - blank for Accretech (one fixed bench, no ambiguity)
-        # and for recipes saved before this existed. See RecipePanel's
-        # _active_bench_tag/_visible_recipe_names - a probe card is shared
-        # hardware between benches, but a recipe built around one bench's
-        # fitted instruments is not automatically usable on the other, so
-        # the picker only shows a bench-tagged recipe on its own bench.
         origin = rec.get("shot_origin")
         rows.append({"kind": "RECIPE", "recipe": name, "bench": rec.get("bench", ""),
-                     # Minor moves: see RecipePanel._on_minor_moves_toggle /
-                     # _set_shot_origin. shot_origin is the die-index
-                     # coordinate the chuck was sitting at (shot row0/col0,
-                     # die #1 - the Wafer Builder Shot tab's own numbering,
-                     # not necessarily grid cell row0/col0) when the
-                     # operator last pressed Set Shot Origin for THIS
-                     # recipe - re-captured live before each run, but saved
-                     # here so a reload does not lose it.
                      "minor_moves": "1" if rec.get("minor_moves") else "",
-                     # Shortcut: see RecipePanel._on_shortcut_toggle /
-                     # instrument_panel._exec_should_configure. Off by
-                     # default (a recipe saved before this existed comes
-                     # back with shortcut=False, same as a fresh one) -
-                     # opt IN per recipe, never assumed safe.
                      "shortcut": "1" if rec.get("shortcut") else "",
-                     # Skip auto-clear on Force Current: see
-                     # RecipePanel._on_fast_current_settle_toggle /
-                     # instruments.keithley2400.set_source_clear_auto. Off by
-                     # default, opt IN per recipe, same as shortcut above.
                      "fast_current_settle": "1" if rec.get("fast_current_settle") else "",
-                     # Manual mode: see RecipePanel._on_manual_mode_toggle /
-                     # instruments.keithley2400.measure_resistance. Off by
-                     # default, opt IN per recipe, same as shortcut/
-                     # fast_current_settle above.
                      "manual_mode": "1" if rec.get("manual_mode") else "",
-                     # Align die: purely a convenience - it preselects the
-                     # Run tab's "Chuck is on" dropdown when this recipe
-                     # loads and the chuck is not already set, so the
-                     # operator does not scroll a list of thousands to
-                     # find the die they always start at. It has no effect
-                     # on the run itself. See RecipePanel._on_align_die_pick
-                     # and instrument_panel._exec_preselect_align_die.
                      "align_die": rec.get("align_die") or "",
-                     # Wafer Map: which of this ATA folder's saved Wafer
-                     # Builder maps this recipe goes with - see
-                     # RecipePanel._on_wafer_map_pick and
-                     # instrument_panel._exec_autoload_recipe_wafer_map.
                      "wafer_map": rec.get("wafer_map") or "",
                      "shot_origin_x": "" if origin is None else str(origin[0]),
                      "shot_origin_y": "" if origin is None else str(origin[1])})
@@ -875,11 +599,6 @@ def recipes_to_rows(recipes: dict) -> list:
             for k in _STEP_FIELDS:
                 row[k] = step.get(k, "")
             rows.append(row)
-        # SITE rows ride in the same CSV as the steps, reusing existing
-        # columns (name = die ID, hi/lo = row/col) so a probe card written by
-        # this version still loads in one that predates touchdown lists - an
-        # unknown "kind" is skipped, and the recipe just comes back without
-        # its sites rather than failing to parse.
         for i, site in enumerate(rec.get("sites", []), 1):
             rows.append({"kind": "SITE", "recipe": name, "seq": str(i),
                          "name": site.get("die_id", ""),
@@ -937,8 +656,6 @@ def rows_to_recipes(rows: list) -> dict:
                     return None
             site = {"die_id": (row.get("name") or "").strip(),
                     "row": _int(row.get("hi")), "col": _int(row.get("lo"))}
-            # A site with no row/col cannot be walked to, so drop it rather
-            # than let the run silently skip it later.
             if site["row"] is not None and site["col"] is not None:
                 site_rows.setdefault(name, []).append((seq, site))
             continue
@@ -966,24 +683,15 @@ class RecipePanel(ttk.Frame):
         self.controller = controller
         self._get_pins = get_pins or (lambda: [])
         self._get_wiring = get_wiring or (lambda: [])
-        # slot -> (hi pin, lo pin) for the active card, if it declares one.
         self._get_die_pins = get_die_pins or (lambda: {})
         self._get_active_card = get_active_card or (lambda: "")
         self._save_recipes = save_recipes or (lambda _card, _recipes: False)
         self._switch_card_cb = switch_card or (lambda _name: None)
         self._get_card_names = get_card_names or (lambda: [])
         self._get_ata_folder = get_ata_folder or (lambda: None)
-        # Names of the ATA folder's saved Wafer Builder maps, for the
-        # Wafer Map: dropdown - see _on_wafer_map_pick/get_wafer_map and
-        # instrument_panel._exec_autoload_recipe_wafer_map.
         self._get_wafer_map_names = get_wafer_map_names or (lambda: [])
-        # Save-also-loads-into-Run-tab redundancy for the ⟳-less Recipe
-        # dropdown on the Run tab - see _save() below.
         self._on_save = on_save or (lambda _name: None)
         self._conn_viewer = None
-        # Which instrument the editor's Direct/Switch box was last defaulted
-        # for, so picking a new instrument re-seeds it (3458A -> direct) but
-        # merely re-running _on_type_change does not clobber a manual choice.
         self._route_defaulted_for = None
         self._system = system
         if system == "electroglas":
@@ -1002,52 +710,13 @@ class RecipePanel(ttk.Frame):
         self._steps: list[dict] = self._recipes[self._current]["steps"]
         self._sites: list[dict] = self._recipes[self._current]["sites"]
 
-        # Minor moves: a wafer-map square is a SHOT (several real dies,
-        # e.g. a 7x9 reticle) rather than one die - single-die probe
-        # cards (Accretech's today; Electroglas's on a future project)
-        # physically reposition to whichever die # a step calls for
-        # instead of contacting the whole shot at once. Off by default -
-        # see the recipe's own "minor_moves"/"shot_origin" fields above.
         self._minor_moves_var = tk.BooleanVar(value=False)
         self._shot_origin_status_var = tk.StringVar(value="")
 
-        # Shortcut: skip resending a step's SMU/DMM configuration (level,
-        # limit, NPLC, range, source delay) on a touchdown where it would
-        # be identical to what was already sent - see
-        # instrument_panel._exec_should_configure. Off by default and
-        # opt-in PER RECIPE, not global - a real-hardware test surfaced a
-        # case (Maddy TL, Keithley 2400) where skipping a resend left
-        # voltage compliance at the instrument's own default instead of
-        # the recipe's configured limit, so this is not assumed safe for
-        # every recipe/instrument combination without being verified on
-        # the bench first.
         self._shortcut_var = tk.BooleanVar(value=False)
 
-        # Skip auto-clear on Force Current: the Keithley 2400's
-        # sour:clear:auto (on by default, _FIXED_SETUP) drops the output
-        # and re-applies the bias fresh on every :READ? - fine for a
-        # reading that's actually used, disruptive when a Force Current
-        # step's own readback is purely for logging and a dependent sense
-        # step reads the pad a moment later (confirmed on the bench,
-        # Cenfire: a marginal contact's sense reading collapsed to
-        # near-zero specifically because of this transient). Off by
-        # default and opt-in PER RECIPE, same reasoning as Shortcut above -
-        # not assumed safe for every recipe/instrument combination (LaMP's
-        # own current-measure step genuinely needs auto-clear ON) without
-        # being verified on the bench first.
         self._fast_current_settle_var = tk.BooleanVar(value=False)
 
-        # Manual mode: which resistance-measurement mode the Keithley 2400's
-        # measure_resistance() uses - see instruments.keithley2400's own
-        # comment. AUTO (this box unchecked, the default) is correct for
-        # every recipe that has no preceding Force Current step reusing the
-        # same pins (10340/10341, any standalone resistance check) - MANUAL
-        # reuses whatever current was last forced, which is 0 with nothing
-        # forced first, and that was the direct-wiring 0-ohm bug. Off by
-        # default and opt-in PER RECIPE, same reasoning as Shortcut/Skip
-        # auto-clear above - only Maddy TL's Kelvin Resistance step (forces
-        # a current, then reads ohms off the same pins) actually needs it
-        # checked.
         self._manual_mode_var = tk.BooleanVar(value=False)
 
         self.rowconfigure(2, weight=1)
@@ -1060,35 +729,12 @@ class RecipePanel(ttk.Frame):
         self._update_validity_label()
 
 
-    # Which recipe "instrument" each profile key can stand in for. The recipe
-    # stays generic - a step says DMM, not "3458A" - so the same recipe runs on
-    # any bench that has some DMM fitted.
     _EG_INSTRUMENT_KEYS = {
         "DMM": ("dmm_eg", "dmm_vxi_eg"),
         "SMU": ("smu_eg",),
     }
 
     def _active_bench_tag(self) -> str:
-        """Which prober bench a recipe created right now should be tagged
-        with, so it only shows on that bench later - see
-        _visible_recipe_names().
-
-        Electroglas: reads instruments.eg_profiles.active_name() directly,
-        NOT AtomicaDashboard._active_bench() - that reflects the bench for
-        whichever system is CURRENTLY DISPLAYED (controller.active_system),
-        which is still "accretech" for a chunk of app startup (both
-        systems' ATA folders autoload before _apply_default_prober ever
-        switches the displayed system - see app.py's __init__ ordering).
-        Going through the controller during that window made every
-        Electroglas recipe tagged for a real bench (e.g. probe03) look
-        invisible - _active_bench() falls through to the Accretech branch
-        and returns "probe08", which never matches - so a default recipe
-        autoload silently found nothing to load.
-
-        Accretech: unchanged, still via the controller (single fixed bench
-        today - probe08 - so nothing is filtered out in practice; a second
-        Accretech prober would already be scoped correctly here).
-        """
         if self._system == "electroglas":
             try:
                 from instruments import eg_profiles
@@ -1101,16 +747,6 @@ class RecipePanel(ttk.Frame):
             return ""
 
     def _visible_recipe_names(self) -> list:
-        """Recipe names the picker/dropdown should show on the CURRENT
-        bench - a probe card is shared hardware between probe02/probe03,
-        but a recipe built around one bench's fitted instruments (e.g. an
-        SMU step) is not automatically usable on the other, so a
-        bench-tagged recipe only shows on its own bench. Untagged recipes
-        (Accretech, or anything saved before this existed) show
-        everywhere - nothing that already worked silently disappears.
-        Storage itself is untouched either way; _save_recipes still writes
-        every recipe on the card, just not all of them are offered here.
-        """
         tag = self._active_bench_tag()
         if not tag:
             return list(self._recipes.keys())
@@ -1118,25 +754,6 @@ class RecipePanel(ttk.Frame):
                if not rec.get("bench") or rec.get("bench") == tag]
 
     def _smu_channels_for_active_bench(self) -> tuple:
-        """Which SMU channel letters ("A", "B") the ACTIVE Accretech bench's
-        switch topology actually has a relay row wired for - not a fixed
-        ("A", "B") regardless of hardware. A single-channel SMU (Keithley
-        2400) only ever has channel A's rows (HI/LO) assigned; picking "B"
-        in the editor used to be possible on every Accretech bench
-        regardless, and switch_topology.rows_for_fields() would silently
-        come back with NO rows for a channel nothing is wired to - no
-        error, just an empty/broken connection the moment "Recompute
-        Connections" ran (see CENFIRE-INLINE's real force1/force2 steps,
-        which used to route channel B through rows C/D - correct on
-        probe08old's 2636B, dead air on probe08's 2400).
-
-        Electroglas doesn't call this - see __init__, it stays hardcoded
-        to ("A",) same as always. Falls back to just ("A",) (the safe
-        minimum every bench needs for its own SMU to work at all) rather
-        than the full set on any lookup failure - offering an EXTRA
-        channel that might not exist is the actual failure mode this
-        exists to prevent; offering too few just limits the editor.
-        """
         try:
             roles = switch_topology.row_roles()
             chans = sorted({role.get("channel") for role in roles.values()
@@ -1147,12 +764,6 @@ class RecipePanel(ttk.Frame):
         return tuple(chans) or ("A",)
 
     def _bench_instruments(self) -> tuple:
-        """Instruments the ACTIVE prober actually has fitted.
-
-        probe03 has only the 3458A, so offering SMU there would let someone
-        build a recipe that cannot run. Accretech is a single fixed bench and
-        keeps the full list.
-        """
         if self._system != "electroglas":
             return _INSTRUMENTS
         try:
@@ -1186,7 +797,6 @@ class RecipePanel(ttk.Frame):
         return f"{bench}:   " + "    ".join(parts)
 
     def refresh_bench_instruments(self):
-        """Re-read the active prober - call after switching benches."""
         self._instrument_choices = self._bench_instruments()
         if self._system != "electroglas":
             self._smu_channel_choices = self._smu_channels_for_active_bench()
@@ -1195,21 +805,10 @@ class RecipePanel(ttk.Frame):
         if hasattr(self, "_instr_cb"):
             self._on_type_change()
         self._update_validity_label()
-        # A recipe tagged for the OTHER bench should stop showing the
-        # moment the bench actually switches, not just next time something
-        # else happens to refresh the picker.
         if hasattr(self, "_picker"):
             self._refresh_picker()
 
     def _log_unbuildable_steps(self, steps: list):
-        """pma_params_to_steps left instrument="" on any step whose type/
-        mode has no instrument the active bench actually has fitted (Bias
-        Voltage/apply needs an SMU to source, and probe03 has none) - say
-        so plainly instead of leaving the operator to notice a blank
-        dropdown on their own. The touchdown list and the rest of the
-        recipe still come through; only these specific steps need a human
-        to either pick an instrument by hand or accept they can't run here.
-        """
         blank = [s.get("name") or f"step {i}" for i, s in enumerate(steps, 1)
                  if not s.get("instrument")
                  and s.get("type") not in ("delay", "open", "passfail", "picture", "move")]
@@ -1255,11 +854,6 @@ class RecipePanel(ttk.Frame):
 
         ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=6, pady=4)
 
-        # The Import Legacy buttons are gone: the PMA Process tab's LOAD ALL
-        # is the one way in, and it drives the same import_legacy_from_path /
-        # import_legacy_workbook_from_path underneath. Two entry points meant a
-        # recipe could be imported here from one PMA while the run adopted
-        # another, with nothing to flag the mismatch.
         self._btn_save = ttk.Button(bar, text="Save", command=self._save)
         self._btn_save.pack(side="left", padx=2, pady=4)
 
@@ -1278,15 +872,6 @@ class RecipePanel(ttk.Frame):
         self._card_picker.bind("<<ComboboxSelected>>",
                                lambda _e: self._on_card_picker_selected())
 
-        # Wafer Map: which of this ATA folder's saved Wafer Builder maps
-        # THIS recipe goes with - saved with the recipe, same spirit as
-        # Align die below. Loading the recipe (any entry point - the Run
-        # tab's own dropdown, autoload on folder open, picking it here)
-        # checks this against whichever map is currently active and
-        # switches to the right one if they disagree - see
-        # instrument_panel._exec_autoload_recipe_wafer_map. Both systems
-        # get this (unlike Align die): Wafer Builder maps are shared
-        # infrastructure, not an Electroglas-only concept.
         tk.Label(bar, text="Wafer Map:", bg="#e2e8f0",
                  font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 2), pady=4)
         self._wafer_map_var = tk.StringVar(value="")
@@ -1303,9 +888,6 @@ class RecipePanel(ttk.Frame):
                                   font=("Segoe UI", 8), anchor="w")
         self._file_lbl.pack(side="left", padx=8)
 
-        # Not shown - cluttered the bar down to just the recipe count and
-        # probe card picker. Both widgets kept alive (unpacked) since other
-        # code still calls .config() on them.
         self._default_lbl = tk.Label(bar, text="", bg="#e2e8f0", fg="#374151",
                                      font=("Segoe UI", 8, "italic"))
         self._bench_note_lbl = tk.Label(bar, text=self._bench_instrument_note(),
@@ -1313,19 +895,6 @@ class RecipePanel(ttk.Frame):
                                         font=("Segoe UI", 8))
 
     def _build_shot_origin_controls(self, parent):
-        """Accretech gets its shot origin from Wafer Builder's own Overlay
-        sub-tab (its confirmed row/col offset IS the translation between
-        Wafer Builder's logical die grid and real absolute die coordinates
-        - nothing to capture or refresh here, the status label just shows
-        whatever Overlay's own Confirm button already set, live). Electroglas
-        has no Overlay yet, so it still needs the manual capture button -
-        self._shot_origin_btn stays None on Accretech, since there is no
-        action for it to take; every other reference to it is guarded
-        accordingly.
-
-        Was its own bar above the step list - moved down here, next to
-        Validate, so every button on this tab lives in one row instead of
-        split across two."""
         if self._system == "accretech":
             self._shot_origin_btn = None
         else:
@@ -1334,9 +903,6 @@ class RecipePanel(ttk.Frame):
                 command=self._set_shot_origin)
             self._shot_origin_btn.pack(side="left", padx=(10, 2))
 
-        # ttk.Label (not tk.Label) - this now sits in the ttk.Frame button
-        # bar, not the old bar's own tk.Frame(bg="#e2e8f0"); a plain
-        # tk.Label's hardcoded bg would fight the themed frame behind it.
         ttk.Label(parent, textvariable=self._shot_origin_status_var,
                  foreground="#6b7280", font=("Segoe UI", 8, "italic")).pack(
                  side="left", padx=(2, 8))
@@ -1362,10 +928,6 @@ class RecipePanel(ttk.Frame):
                 self._save_recipes(card, self._recipes)
 
     def is_shortcut(self) -> bool:
-        """Whether the CURRENTLY LOADED recipe has Shortcut checked - read
-        by instrument_panel._exec_should_configure's own caller to decide
-        whether a repeat-config send can be skipped at all. False (the
-        safe default) for any recipe that has never had this box checked."""
         return self._shortcut_var.get()
 
     def _on_manual_mode_toggle(self):
@@ -1377,13 +939,6 @@ class RecipePanel(ttk.Frame):
                 self._save_recipes(card, self._recipes)
 
     def is_manual_mode(self) -> bool:
-        """Whether the CURRENTLY LOADED recipe has Manual mode checked - read
-        by instrument_panel's resistance-step handler to decide whether the
-        Keithley 2400's measure_resistance() reuses the last-forced current
-        (MANUAL) instead of the instrument's own auto-ranged current source
-        (AUTO). False (the safe default) for any recipe that has never had
-        this box checked - see instruments.keithley2400.measure_resistance's
-        own comment for why AUTO, not MANUAL, is the correct default."""
         return self._manual_mode_var.get()
 
     def _on_fast_current_settle_toggle(self):
@@ -1395,12 +950,6 @@ class RecipePanel(ttk.Frame):
                 self._save_recipes(card, self._recipes)
 
     def is_fast_current_settle(self) -> bool:
-        """Whether the CURRENTLY LOADED recipe has Skip auto-clear on Force
-        Current checked - read by instrument_panel's Force Current ("current"
-        + apply) step handler to decide whether to turn the Keithley 2400's
-        sour:clear:auto off before its own readback. False (the safe,
-        unchanged-behavior default) for any recipe that has never had this
-        box checked."""
         return self._fast_current_settle_var.get()
 
     def _refresh_shot_origin_label(self):
@@ -1430,14 +979,6 @@ class RecipePanel(ttk.Frame):
                 "origin not set — 📍 Set Shot Origin before running")
 
     def _set_shot_origin(self):
-        """Capture the chuck's CURRENT die coordinate as this recipe's
-        minor-moves origin - the operator must have it sitting on shot
-        (row 0, col 0)'s die #1 first (the Wafer Builder Shot tab's own
-        die-1, NOT necessarily grid cell (0,0) - present_slots()'s "order"
-        can put die #1 anywhere in the shot), same manual alignment step
-        every other run mode already requires before starting. Mirrors
-        eg_pma_run_panel's _set_anchor in spirit, without the quad/
-        align-site disambiguation that has no equivalent here."""
         if self._current not in self._recipes:
             return
         drv = self.controller.drivers.get("prober")
@@ -1466,24 +1007,11 @@ class RecipePanel(ttk.Frame):
             f"X={x:.0f} Y={y:.0f}")
 
     def _build_body(self):
-        # A PanedWindow (drag sash) rather than fixed grid-row weights, so the
-        # Steps/Touchdowns split is something the user can resize by hand -
-        # not just something that happens to grow proportionally when the
-        # window does.
         body = ttk.PanedWindow(self, orient="vertical")
         body.grid(row=2, column=0, sticky="nsew", padx=6, pady=4)
         self._build_steps(body)
         self._build_sites(body)
 
-
-    # -- touchdown list -----------------------------------------------------
-    #
-    # Which dies a recipe probes used to live outside the recipe: Accretech
-    # kept one ata_wafer_map_selected.csv per ATA FOLDER, so every recipe in
-    # that folder shared a single selection and switching recipe silently kept
-    # the previous one's sites. Here the list belongs to the recipe, travels
-    # with the probe card, and carries the die ID beside the row/col so a
-    # saved list can be checked against the map it was taken from.
 
     def _build_sites(self, parent):
         sf = ttk.LabelFrame(parent, text="Touchdown List", padding=6)
@@ -1491,9 +1019,6 @@ class RecipePanel(ttk.Frame):
         sf.rowconfigure(1, weight=1)
         sf.columnconfigure(0, weight=1)
 
-        # Still tracked (see _refresh_sites) even with no label showing it -
-        # only the grey description text was removed, not the underlying
-        # touchdown-count bookkeeping.
         self._sites_var = tk.StringVar(value="No touchdowns — the run walks every die")
 
         bar = ttk.Frame(sf)
@@ -1508,20 +1033,11 @@ class RecipePanel(ttk.Frame):
                    command=self._site_remove).pack(side="left", padx=(16, 0))
         ttk.Button(bar, text="Clear all",
                    command=self._sites_clear).pack(side="left", padx=(6, 0))
-        # Same swap-and-reselect pattern as the Step editor's own ▲/▼
-        # (_step_move) - touchdown order matters here too (it's the order
-        # a run with no Minor Moves/.PMA route actually visits them in),
-        # and until now the only way to change it was Remove + re-add at
-        # the end.
         ttk.Button(bar, text="▲", width=3,
                    command=lambda: self._site_move(-1)).pack(side="left", padx=(10, 2))
         ttk.Button(bar, text="▼", width=3,
                    command=lambda: self._site_move(+1)).pack(side="left", padx=2)
 
-        # Basic map-only builders: fill the table below and nothing else -
-        # no map highlighting, no auto-save. ➡ Push to map / 💾 Save (both
-        # already exist) are the separate, explicit next steps, same as a
-        # hand-picked list from ⬅ Take from map selection.
         ttk.Button(bar, text="Pull shots",
                    command=self._sites_pull_shots).pack(side="left", padx=(16, 0))
         ttk.Button(bar, text="🔎 Find all",
@@ -1530,18 +1046,6 @@ class RecipePanel(ttk.Frame):
         ttk.Entry(bar, textvariable=self._find_all_var, width=14).pack(
             side="left", padx=(4, 0))
 
-        # Align die. Saved with the recipe and otherwise inert: it does not
-        # anchor anything, does not move the chuck and takes no part in the
-        # run. All it does is preselect the Run tab's "Chuck is on"
-        # dropdown when this recipe loads and the chuck is not already set,
-        # so the operator does not scroll thousands of entries to reach the
-        # die they always start from. See _on_align_die_pick and
-        # instrument_panel._exec_preselect_align_die.
-        #
-        # Electroglas only, because the box it preselects is: Accretech has
-        # no "Chuck is on" dropdown to point at, so the control would be
-        # inert there. The var is still created either way, so the save/
-        # load path does not have to test for it.
         self._align_die_var = tk.StringVar(value="")
         self._align_die_cb = None
         if self._system == "electroglas":
@@ -1549,10 +1053,6 @@ class RecipePanel(ttk.Frame):
             self._align_die_cb = ttk.Combobox(
                 bar, textvariable=self._align_die_var, width=22)
             self._align_die_cb.pack(side="left", padx=(4, 0))
-            # Editable and filtered as you type, for the same reason the
-            # Run tab's own anchor box is (EgPmaRunPanel._build_controls):
-            # a whole-wafer map has thousands of dies and scrolling to one
-            # is hopeless.
             self._align_die_cb.bind("<KeyRelease>", self._on_align_die_typed)
             self._align_die_cb.bind("<<ComboboxSelected>>", self._on_align_die_pick)
             self._align_die_cb.bind("<FocusOut>", self._on_align_die_pick)
@@ -1574,7 +1074,6 @@ class RecipePanel(ttk.Frame):
         self._site_tree.configure(yscrollcommand=sb.set)
 
     def _run_panel(self):
-        """The Run tab that owns the wafer map, or None if not built yet."""
         return getattr(self.controller, "ui", None)
 
     def _site_move(self, delta: int):
@@ -1620,11 +1119,6 @@ class RecipePanel(ttk.Frame):
                 "Touchdowns",
                 "No dies are selected on the Run tab's map.")
             return
-        # On Electroglas a square is a die and a shot owns several of them -
-        # the chuck lands once per shot, so four picked dies of one shot
-        # must collapse to ONE touchdown, not four. Accretech: a no-op
-        # (a square already is a touchdown there) - see
-        # instrument_panel._exec_picks_as_touchdowns's own docstring.
         collapse = getattr(ui, "_exec_picks_as_touchdowns", None)
         if collapse:
             picks = collapse(picks)
@@ -1637,10 +1131,6 @@ class RecipePanel(ttk.Frame):
         self._sites[:] = sites
         self._store_form()
         self._refresh_sites()
-        # Save immediately, not deferred until some later 💾 Save - this is
-        # the only place a map selection becomes a touchdown list now (the
-        # Run tab's own Save Selected Map was removed as a duplicate of
-        # this button), so it must not silently be lost on a restart.
         card = self._get_active_card()
         saved = bool(card) and bool(self._save_recipes(card, self._recipes))
         self.controller.log(
@@ -1681,17 +1171,8 @@ class RecipePanel(ttk.Frame):
             + (f" and saved to probe card '{card}'." if saved
                else " — NOT saved (no probe card); press 💾 Save."))
 
-    # -- align die (a Run tab convenience, saved with the recipe) ----------
 
     def _align_die_choices(self) -> list:
-        """The same entries the Run tab's "Chuck is on" box offers.
-
-        Taken from that box's own list wherever it exists, so the two can
-        never drift apart or format an entry differently - the whole point
-        is that what is picked here is what gets preselected there. Falls
-        back to the published map's die IDs when the Run tab has not built
-        its list yet (a recipe can be edited before a map is loaded).
-        """
         run = getattr(self._run_panel(), "eg_pma_run", None)
         choices = list(getattr(run, "_anchor_choices", None) or [])
         if choices:
@@ -1706,9 +1187,6 @@ class RecipePanel(ttk.Frame):
             cb.config(values=self._align_die_choices())
 
     def _on_align_die_typed(self, _event=None):
-        """Filter the list to what has been typed, same as the Run tab's
-        anchor box - then persist, so typing a die ID straight in counts
-        as picking it."""
         text = (self._align_die_var.get() or "").strip().lower()
         allc = self._align_die_choices()
         shown = [c for c in allc if text in c.lower()] if text else allc
@@ -1730,8 +1208,6 @@ class RecipePanel(ttk.Frame):
             self._save_recipes(card, self._recipes)
 
     def get_align_die(self) -> str:
-        """The loaded recipe's align die, or "" - read by
-        instrument_panel._exec_preselect_align_die."""
         rec = self._recipes.get(self._current) or {}
         return (rec.get("align_die") or "").strip()
 
@@ -1748,39 +1224,10 @@ class RecipePanel(ttk.Frame):
             self._save_recipes(card, self._recipes)
 
     def get_wafer_map(self) -> str:
-        """The loaded recipe's saved wafer map name, or "" - read by
-        instrument_panel._exec_autoload_recipe_wafer_map."""
         rec = self._recipes.get(self._current) or {}
         return (rec.get("wafer_map") or "").strip()
 
     def _sites_pull_shots_eg(self, ui, wm):
-        """Pull Shots, Electroglas: die #1 of every shot on the published map.
-
-        Same intent as the Accretech path below - one pick per shot, at the
-        shot's first die - but it needs none of that path's machinery. The
-        Accretech version derives which shot a square is in by
-        floor-dividing (row, col) by the Shot tab's live dims and a
-        confirmed Overlay offset. On Electroglas the published Wafer
-        Builder map states it outright: every die row carries the seq of
-        its shot and the slot it occupies. So there is no Overlay to
-        confirm, no Tk entry box to have open, and no arithmetic that can
-        drift out of alignment with the map.
-
-        Die #1 is the shot's first canonical slot (slot_names()[0] - the
-        top-left for every layout), and only falls past it when the shot
-        genuinely has no cell there.
-
-        It does NOT look at the label. An earlier version skipped a slot
-        whose die ID was "NA" or blank, which made the picks jump around
-        the shot for no reason an operator could see - "NA" is simply what
-        LaMP calls some of its dies, and on a map with no IDs at all
-        (Cenfire: 12505 of 12915 dies unlabelled) every slot would have
-        been skipped. A die is a cell the map marks enabled; what it is
-        called has nothing to do with it.
-
-        Selection ONLY. This fills the touchdown table and nothing else -
-        it never writes to the wafer map, which is the source of truth.
-        """
         run = getattr(ui, "eg_pma_run", None)
         slots_fn = getattr(run, "_builder_shot_slots", None)
         if slots_fn is None:
@@ -1809,10 +1256,6 @@ class RecipePanel(ttk.Frame):
                 rc = slots.get(q)
                 if rc is None:
                     continue
-                # Whatever the map calls it, including "NA" and nothing at
-                # all - see the docstring. An unlabelled die is named by
-                # its position, the same fallback the Run tab's Die list
-                # uses (eg_pma_run_panel.adopt_from_wafer_builder).
                 die_id = die_id_by_rc.get(rc) or f"({rc[0]},{rc[1]})"
                 picks.append((rc, die_id))
                 break
@@ -1827,12 +1270,6 @@ class RecipePanel(ttk.Frame):
         self._refresh_sites()
 
     def _sites_pull_shots(self):
-        """Basic touchdown-list builder: one pick per shot on the loaded
-        map - the die Wafer Builder's Shot tab numbers #1 in each. Only
-        fills the table below (➡ Push to map / 💾 Save stay separate,
-        explicit steps) - matches the "any die within the shot" touchdown
-        style (see instrument_panel._exec_prepare_shot_geometry), just
-        picking THE specific one that is #1."""
         ui = self._run_panel()
         wm = getattr(ui, "_exec_wafer_map", None)
         if wm is None:
@@ -1858,10 +1295,7 @@ class RecipePanel(ttk.Frame):
                 "and press 🖌 Overlay on Map first, so a real (row, col) on the "
                 "map can be resolved into a shot.")
             return
-        from recipe_gen_panel import shot_die_rc as _shot_die_rc  # deferred: avoids
-        # a module-load-time circular import (recipe_gen_panel -> wafer_map_view
-        # -> recipe_panel), same reason other cross-panel imports in this file
-        # are done lazily inside the function that needs them.
+        from recipe_gen_panel import shot_die_rc as _shot_die_rc
         die1_rc = _shot_die_rc(dict(gen._shot_cells), shot_rows, shot_cols, 1)
         if die1_rc is None:
             messagebox.showinfo("Touchdowns",
@@ -1879,17 +1313,6 @@ class RecipePanel(ttk.Frame):
             slot_col = wb_col - shot_col * shot_cols
             if (slot_row, slot_col) != (slot_r1, slot_c1):
                 continue
-            # wm.dies is every square on the Accretech map, which is NOT the
-            # same grid as the Wafer Builder shot map it's being aligned
-            # against here - the two only line up inside the real wafer, so
-            # a square near the edge can satisfy the slot-position check
-            # above by pure modular arithmetic while corresponding to no
-            # real Wafer Builder shot at all. Its die ID is exactly what
-            # tells the two apart (a real shot always has one; a phantom
-            # edge square never does), so requiring one keeps this pull
-            # scoped to actual shots. Electroglas's map has no such
-            # mismatch (there is no separate Accretech-style grid), so this
-            # only ever filters anything out here.
             if not (overlay.get((row, col)) or wm.die_ids.get((row, col), "")):
                 continue
             picks.append((row, col))
@@ -1911,9 +1334,6 @@ class RecipePanel(ttk.Frame):
             "press 💾 Save when ready.")
 
     def _sites_find_all(self):
-        """Basic touchdown-list builder: every die on the loaded map whose
-        ID exactly matches the typed text. Only fills the table below,
-        same as 🎯 Pull shots - no map highlighting, no auto-save."""
         ui = self._run_panel()
         wm = getattr(ui, "_exec_wafer_map", None)
         if wm is None:
@@ -1952,11 +1372,6 @@ class RecipePanel(ttk.Frame):
         if not self._sites:
             messagebox.showinfo("Touchdowns", "This recipe has no touchdowns yet.")
             return
-        # Electroglas: resolve each site's die_id against the loaded map
-        # (ground truth) rather than trusting the recipe's own (row, col) -
-        # same reasoning/helper as the Run tab's own recipe-load path (see
-        # instrument_panel._exec_resolve_site_cells). Accretech falls
-        # straight through to the site's own row/col, unchanged.
         resolve = getattr(ui, "_exec_resolve_site_cells", None)
         picks = resolve(self._sites) if resolve else [
             (s["row"], s["col"]) for s in self._sites]
@@ -1992,12 +1407,6 @@ class RecipePanel(ttk.Frame):
         self._refresh_sites()
 
     def set_sites(self, recipe: str, sites: list) -> bool:
-        """Replace a recipe's touchdown list. Used by the PMA tab's LOAD ALL.
-
-        Saves to the probe card straight away: the list arrives as part of a
-        chain the operator did not step through, so leaving it unsaved would
-        mean a restart silently drops it.
-        """
         rec = self._recipes.get(recipe)
         if rec is None:
             return False
@@ -2018,7 +1427,6 @@ class RecipePanel(ttk.Frame):
         return True
 
     def get_sites(self) -> list:
-        """The active recipe's touchdown list, as [(row, col), ...]."""
         return [(s["row"], s["col"]) for s in self._sites]
 
     def get_site_records(self) -> list:
@@ -2053,10 +1461,6 @@ class RecipePanel(ttk.Frame):
                 cid, width=width,
                 anchor="center" if cid in ("n", "type", "instrument", "mode", "chan",
                                            "shape") else "w")
-        # All 20 fields stay in `columns`/get inserted (and saved) in full -
-        # `displaycolumns` just narrows what's shown so the table reads at a
-        # glance. Selecting a row still pulls every field into the editor
-        # below from self._steps, not from what's on screen.
         self._step_tree["displaycolumns"] = (
             "n", "name", "type", "die", "hi", "lo", "level")
         self._step_tree.grid(row=0, column=0, sticky="nsew")
@@ -2065,10 +1469,6 @@ class RecipePanel(ttk.Frame):
         self._step_tree.configure(yscrollcommand=ssb.set)
         self._step_tree.bind("<<TreeviewSelect>>", lambda _e: self._step_to_editor())
 
-        # A compact label:widget grid (2 fields per row-slot) instead of one
-        # long pack()ed row per group - keeps the editor readable without
-        # needing to widen the window, now that the per-field hint labels
-        # (which used to force the old rows wide) are gone.
         editor = ttk.Frame(sf)
         editor.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         for c in range(8):
@@ -2079,8 +1479,6 @@ class RecipePanel(ttk.Frame):
         self._ed_vars["mode"].set("measure")
         self._ed_vars["die"].set("1")
         self._ed_vars["route"].set(ROUTE_SWITCH)
-        # A checkbox is the control; the step field stays the "switch"/
-        # "direct" string, so a recipe CSV reads as words rather than 0/1.
         self._direct_var = tk.BooleanVar(value=False)
 
         def _lbl(r, c, text):
@@ -2101,14 +1499,6 @@ class RecipePanel(ttk.Frame):
         self._mode_cb.grid(row=0, column=5, sticky="w")
         self._mode_cb.bind("<<ComboboxSelected>>", lambda _e: self._on_type_change())
         _lbl(0, 6, "Instr:")
-        # Displays "SMU (Keithley2636B)" etc, and - only when more than one
-        # instrument of a family is actually fitted at once - one entry per
-        # slot so a step can target a specific one. Purely a display layer:
-        # the combobox is NOT bound to _ed_vars["instrument"] directly, that
-        # stays the real stored family string exactly as before (every
-        # other reader of _ed_vars["instrument"]/step["instrument"] is
-        # unaffected) - see _refresh_instrument_dropdown/
-        # _on_instrument_display_selected.
         self._instr_label_map: dict = {}
         self._instr_display_var = tk.StringVar()
         self._instr_cb = ttk.Combobox(editor, textvariable=self._instr_display_var,
@@ -2128,18 +1518,8 @@ class RecipePanel(ttk.Frame):
         self._target_cb.grid(row=1, column=3, sticky="w")
         self._target_cb.bind("<<ComboboxSelected>>", lambda _e: self._update_target_calc_hint())
         self._target_cb.bind("<KeyRelease>", lambda _e: self._update_target_calc_hint())
-        # Grey, computed-on-the-fly explanation of what a measure step's
-        # Target will combine into (e.g. force current elsewhere + measure
-        # voltage here -> resistance) - see describe_target_calc. The Label
-        # itself is built down by term_row, next to Terminals - only the
-        # StringVar is declared here, next to Target, since every other
-        # reader of _target_calc_var is a .set() call, not layout.
         self._target_calc_var = tk.StringVar(value="")
         _lbl(1, 4, "HI:")
-        # readonly - a step can only pick a pin actually on the active probe
-        # card, which itself can now only carry pins the active bench really
-        # has wired (see ProbeCardWiringFrame._valid_pins). A free-typed pin
-        # here would look plausible but close nothing on real hardware.
         self._hi_cb = ttk.Combobox(editor, textvariable=self._ed_vars["hi"], width=8,
                                    state="readonly",
                                    postcommand=lambda: self._refresh_pin_values(self._hi_cb))
@@ -2151,8 +1531,6 @@ class RecipePanel(ttk.Frame):
         self._lo_cb.grid(row=1, column=7, sticky="w")
         self._pin_widgets = [self._hi_cb, self._lo_cb]
 
-        # The 4-wire sense pair. Present on every step for a stable layout but
-        # only ever enabled for "ohmf" - see _on_type_change.
         _lbl(5, 0, "Sense HI:")
         self._his_cb = ttk.Combobox(editor, textvariable=self._ed_vars["his"], width=8,
                                     state="readonly",
@@ -2197,8 +1575,6 @@ class RecipePanel(ttk.Frame):
             editor, textvariable=self._ed_vars["settle_delay"], width=7)
         self._settle_delay_ent.grid(row=5, column=5, sticky="w")
 
-        # abs() the reading before target/pass-fail compares against it and
-        # before it's recorded/painted - see _STEP_FIELDS' own comment.
         self._abs_chk = ttk.Checkbutton(
             editor, text="Absolute Value",
             variable=self._ed_vars["abs_value"], onvalue="1", offvalue="")
@@ -2211,25 +1587,12 @@ class RecipePanel(ttk.Frame):
         _lbl(4, 2, "Conn:")
         conn_ent = ttk.Entry(editor, textvariable=self._ed_vars["conn"], width=16)
         conn_ent.grid(row=4, column=3, columnspan=3, sticky="w")
-        # ⚙ button used to sit right here, unlabeled - moved down to the
-        # button bar, next to ✓ Validate, as "Compute Connection".
         self._conn_widgets = [conn_ent]
-        # Direct: the instrument is cabled straight to the probe card by
-        # hand, so no channel is closed and the pin fields below stop
-        # applying (they grey out). Ticked by default for the 3458A, which
-        # is usually leaded up directly for a 4-wire check - see
-        # _default_route_for.
         self._direct_chk = ttk.Checkbutton(
             editor, text="Direct wiring",
             variable=self._direct_var, command=self._on_route_toggle)
         self._direct_chk.grid(row=6, column=0, columnspan=3, sticky="w",
                               padx=(6, 2), pady=(2, 0))
-        # Front/Rear terminal select - blank (the default) sends nothing,
-        # same as every recipe saved before this existed. Only meaningful
-        # for an instrument whose driver actually supports switching
-        # (Keithley2400.set_terminals) - harmless no-op logged, not an
-        # error, if the step's resolved driver doesn't have one (see
-        # instrument_panel._exec_run_steps_once).
         term_row = ttk.Frame(editor)
         term_row.grid(row=7, column=0, columnspan=3, sticky="w",
                       padx=(6, 2), pady=(2, 0))
@@ -2241,13 +1604,6 @@ class RecipePanel(ttk.Frame):
         ttk.Label(term_row, textvariable=self._target_calc_var, foreground="#6b7280",
                  font=("Arial", 8, "italic"), wraplength=380, justify="left").pack(
                  side="left", padx=(12, 0))
-        # Per-RECIPE toggles (not per-step, unlike everything else in this
-        # editor) - moved down here next to Direct Wiring, on the same row,
-        # so every checkbox on the tab lives in one place at the bottom
-        # instead of split between here and a separate bar above the step
-        # list. Columns run past the 8 the rest of the editor uses (fine -
-        # an ungoverned grid column just takes its natural width from
-        # whatever's in it, same as any other).
         self._shortcut_chk = ttk.Checkbutton(
             editor, text="Don't resend configs",
             variable=self._shortcut_var, command=self._on_shortcut_toggle)
@@ -2264,21 +1620,12 @@ class RecipePanel(ttk.Frame):
             command=self._on_fast_current_settle_toggle)
         self._fast_current_settle_chk.grid(row=8, column=3, columnspan=4, sticky="w",
                                            padx=(6, 2), pady=(2, 0))
-        # Manual mode: see this class's own _manual_mode_var comment /
-        # instruments.keithley2400.measure_resistance. Unchecked (AUTO) is
-        # correct for almost every recipe - only check this for one that
-        # forces a specific current then reads ohms off the same pins in
-        # the same step (Maddy TL's Kelvin Resistance).
         self._manual_mode_chk = ttk.Checkbutton(
             editor, text="Manual mode (reuse forced current for Ω, Keithley 2400)",
             variable=self._manual_mode_var, command=self._on_manual_mode_toggle)
         self._manual_mode_chk.grid(row=8, column=7, columnspan=7, sticky="w",
                                    padx=(6, 2), pady=(2, 0))
         _lbl(4, 6, "Die #:")
-        # Which die of the shot this measurement belongs to (Wafer Builder
-        # Shot tab's die order, 1-based) - what the Results tab uses to
-        # paint the right square. "1" covers the common single-die-per-shot
-        # case with nothing to set.
         self._die_ent = ttk.Spinbox(editor, textvariable=self._ed_vars["die"],
                                     from_=1, to=64, width=4)
         self._die_ent.grid(row=4, column=7, sticky="w")
@@ -2300,12 +1647,6 @@ class RecipePanel(ttk.Frame):
         self._btn_move_down = ttk.Button(btns, text="▼", width=3,
                                          command=lambda: self._step_move(+1))
         self._btn_move_down.pack(side="left", padx=2)
-        # Electroglas connections depend on per-bench relay wiring that
-        # isn't reliable/present for every project (unlike Accretech's
-        # pin-table approach - see BENCH_WIRING's own per-bench notes), and
-        # HI/LO pins can't be inferred from a .PMA at all. A button that
-        # looks like it computes the right answer but can't for most
-        # projects is worse than no button - both stay Accretech-only.
         if self._system != "electroglas":
             self._btn_conn = ttk.Button(btns, text="Compute Connection",
                                         command=self._conn_from_editor)
@@ -2329,11 +1670,6 @@ class RecipePanel(ttk.Frame):
         cb.config(values=tokens)
 
     def _refresh_type_values(self):
-        # "move" needs Minor Moves' shot geometry to mean anything - see
-        # _STEP_TYPES - so it's only offered while that recipe's checkbox is
-        # on. A step already saved as "move" still shows/loads fine if the
-        # box later gets unchecked; it just can't be freshly picked again
-        # until it's back on.
         choices = self._step_type_choices
         if not self._minor_moves_var.get():
             choices = tuple(t for t in choices if t != "move")
@@ -2346,12 +1682,6 @@ class RecipePanel(ttk.Frame):
             names = [s.get("name", "") for s in self._steps
                      if _is_measurement_step(s) and s.get("name")]
         elif mode == "measure":
-            # A measure step's Target is an earlier APPLY step (force
-            # current/voltage), not "all"/any-step like open's - it's naming
-            # what to divide this reading by, not what to release. Blank
-            # (first, so it's the easy pick) clears a Target set by mistake -
-            # the step then just reports its own raw reading, same as if
-            # Target had never been touched.
             names = [""] + [s.get("name", "") for s in self._steps
                             if s.get("mode") == "apply" and s.get("type") in ("voltage", "current")
                             and s.get("name")]
@@ -2388,9 +1718,6 @@ class RecipePanel(ttk.Frame):
                 w.config(state=state)
 
         _set(self._pin_widgets + self._conn_widgets + [self._level_ent], "normal")
-        # Four pins are exclusive to the 4-wire step; every other branch below
-        # leaves these disabled, and the values are cleared so a type change
-        # cannot leave orphaned sense pins behind.
         if t == FOUR_WIRE_TYPE:
             _set(self._sense_widgets, "normal")
         else:
@@ -2410,18 +1737,11 @@ class RecipePanel(ttk.Frame):
         self._nplc_ent.config(state="disabled")
         self._settle_delay_ent.config(state="disabled")
         self._abs_chk.config(state="disabled")
-        # Die # means nothing for a wait or a channel release - see
-        # _normalize_step - so it's greyed out and cleared for those, same
-        # as every other field that type doesn't use.
         if t in ("delay", "open", "picture"):
             self._ed_vars["die"].set("")
             self._die_ent.config(state="disabled")
         else:
             self._die_ent.config(state="normal")
-        # delay/open/passfail/picture route nothing and return early below,
-        # so settle the Direct box here rather than in each branch. Only
-        # "open" can carry channels, and those are the target step's, not
-        # its own - none of the four is a thing you cable up by hand.
         if t in ("delay", "open", "passfail", "picture", "move"):
             self._ed_vars["route"].set(ROUTE_SWITCH)
             self._route_defaulted_for = None
@@ -2492,8 +1812,6 @@ class RecipePanel(ttk.Frame):
         if t in ("resistance", FOUR_WIRE_TYPE):
             self._ed_vars["mode"].set("measure")
             self._mode_cb.config(state="disabled")
-            # Neither type sources anything - the instrument just reads
-            # whatever's across the pins - so there is no level to set.
             self._ed_vars["level"].set("")
             self._level_ent.config(state="disabled")
         elif t == "wave":
@@ -2546,13 +1864,6 @@ class RecipePanel(ttk.Frame):
             self._nplc_ent.config(state="normal")
             self._settle_delay_ent.config(state="normal")
             self._abs_chk.config(state="normal")
-            # The 2636B (Accretech's SMU) has no source-delay mechanism at
-            # all - it averages internally via its own repeat-average filter
-            # (set_averages), so a per-reading delay here would be a no-op.
-            # The 2400 (Electroglas's SMU) does implement it and genuinely
-            # needs it - see instrument_panel.py's set_source_delay comment
-            # about the charging-transient read on LaMP data - so leave it
-            # live there.
             if instrument == "SMU" and self._system == "accretech":
                 self._avg_delay_ent.config(state="disabled")
                 self._ed_vars["avg_delay"].set("0")
@@ -2567,22 +1878,12 @@ class RecipePanel(ttk.Frame):
             if not self._ed_vars["settle_delay"].get():
                 self._ed_vars["settle_delay"].set("0")
 
-        # A measure step's Target names an earlier apply step to combine
-        # with (see _normalize_step / describe_target_calc) - open/passfail
-        # already enabled it for their own, different, meaning above.
-        # 4-wire ohms is excluded: it's a DMM function with its own dedicated
-        # sense pins, never combined with a separate apply step in practice,
-        # and offering a Target here that quietly never did anything was
-        # more confusing than useful - a plain "resistance" step keeps
-        # Target (see the Ohm's law pairing in describe_target_calc).
         if mode == "measure" and t != FOUR_WIRE_TYPE:
             self._target_cb.config(state="normal")
             self._refresh_target_values()
         else:
             self._ed_vars["target"].set("")
 
-        # Last, so it can override the pin/conn states the branches above
-        # just set: a direct step disables them whatever its type wanted.
         if instrument != self._route_defaulted_for:
             self._ed_vars["route"].set(self._default_route_for(instrument))
             self._route_defaulted_for = instrument
@@ -2590,23 +1891,6 @@ class RecipePanel(ttk.Frame):
         self._update_target_calc_hint()
 
     def _refresh_instrument_dropdown(self, options):
-        """Rebuild self._instr_cb's displayed choices from `options` (the
-        valid instrument FAMILIES for the step's current type/mode, e.g.
-        ("SMU", "DMM")) - each shown with its model name, and, only when a
-        family has more than one instrument fitted at once (a second SMU
-        added via Setup tab's + Add Instrument, or Electroglas's 3458A +
-        E1326B VXI both fitted), one entry per slot so a step can target a
-        specific one.
-
-        Purely a display layer - self._ed_vars["instrument"] (the family)
-        is unaffected and every other reader of it still sees exactly what
-        it always has. self._ed_vars["instrument_key"] only ever gets a
-        non-blank value here when the operator actually picks one of the
-        per-slot entries below; a family with a single fitted instrument
-        never sets it, so every recipe saved on a single-instrument bench
-        looks identical to one saved before this feature existed. See
-        controller.slots_for_family (app.py) for what builds `options`'
-        per-family (key, model, display) list."""
         self._instr_label_map = {}
         labels = []
         for family in options:
@@ -2635,9 +1919,6 @@ class RecipePanel(ttk.Frame):
         match = next((lbl for lbl, (fam, key) in self._instr_label_map.items()
                      if fam == want_family and key == want_key), None)
         if match is None:
-            # A saved instrument_key that no longer matches any currently-
-            # fitted slot (bench reconfigured since) - fall back to any
-            # label for the same family rather than showing nothing.
             match = next((lbl for lbl, (fam, _key) in self._instr_label_map.items()
                          if fam == want_family), None)
         self._instr_display_var.set(match or "")
@@ -2650,19 +1931,7 @@ class RecipePanel(ttk.Frame):
         self._ed_vars["instrument_key"].set(key)
         self._on_type_change()
 
-    # ------------------------------------------------------------------
-    # DIRECT vs SWITCH
-    #
-    # Most steps route through the switch matrix, and their HI/LO pins are
-    # what say which crosspoints (Accretech) or relay channels (Electroglas)
-    # to close. Some are cabled by hand straight from the instrument to the
-    # probe card - a 4-wire resistance check on the 3458A usually is - and
-    # then a pin number describes nothing the GUI can act on: the operator
-    # has already made the connection, and all the run has to do is take the
-    # reading.
-    # ------------------------------------------------------------------
     def _instrument_model(self, instrument: str) -> str:
-        """The model name behind a step's DMM/SMU/WGEN choice on this bench."""
         if not instrument:
             return ""
         try:
@@ -2686,18 +1955,10 @@ class RecipePanel(ttk.Frame):
         return ""
 
     def _default_route_for(self, instrument: str) -> str:
-        """Direct for the 3458A, switch for everything else.
-
-        Keyed off the MODEL rather than the "DMM" slot: the same slot is a
-        34461A on Accretech, which is bench-wired through the matrix like
-        anything else. Only ever seeds a step being built - a saved recipe
-        keeps whatever it was saved with (see _normalize_step).
-        """
         return (ROUTE_DIRECT if "3458" in self._instrument_model(instrument)
                 else ROUTE_SWITCH)
 
     def _apply_route_state(self):
-        """Grey the pin/Conn fields when the step is directly wired."""
         direct = self._ed_vars["route"].get() == ROUTE_DIRECT
         self._direct_var.set(direct)
         if direct:
@@ -2709,12 +1970,6 @@ class RecipePanel(ttk.Frame):
         for btn in (getattr(self, "_btn_conn", None),):
             if btn is not None:
                 btn.config(state="disabled" if direct else "normal")
-        # Terminals (Front/Rear) only makes sense for a direct-wired
-        # step - a switch-routed one's physical connection point is
-        # whatever the switch matrix wiring is, not a front/rear panel
-        # choice. Cleared (not just disabled) going back to switch, so a
-        # step doesn't carry a stale FRONT/REAR into a mode it no longer
-        # applies to.
         term_cb = getattr(self, "_terminals_cb", None)
         if term_cb is not None:
             term_cb.config(state="readonly" if direct else "disabled")
@@ -2725,8 +1980,6 @@ class RecipePanel(ttk.Frame):
         self._ed_vars["route"].set(
             ROUTE_DIRECT if self._direct_var.get() else ROUTE_SWITCH)
         if not self._direct_var.get():
-            # Back to switch: re-run the type logic so the pin and Conn
-            # fields come back in whatever state this step type wants them.
             self._on_type_change()
         else:
             self._ed_vars["conn"].set("")
@@ -2779,9 +2032,6 @@ class RecipePanel(ttk.Frame):
 
     def step_connections(self, step: dict):
         t = step.get("type")
-        # Before every type check: a directly-cabled step closes nothing
-        # whatever it measures, because the operator has already made the
-        # connection by hand at the probe card.
         if step.get("route") == ROUTE_DIRECT and t not in ("delay", "picture", "move"):
             return [], ["direct wiring — no switchbox, nothing to close"], []
         if t == "delay":
@@ -2821,14 +2071,6 @@ class RecipePanel(ttk.Frame):
         max_pin = switch_topology.total_pins()
         instrument = step.get("instrument") or ""
         chan = step.get("chan") or "A"
-        # "hi"/"lo" are whichever instrument the step actually names
-        # (SMU or DMM) - "his"/"los" are always the DMM's own 4-wire
-        # sense legs (rows_for_fields' own docstring). Used to say "DMM
-        # SHI/SLO" unconditionally, which was flat wrong for an SMU hi/lo
-        # field with no row wired for its channel (e.g. picking channel B
-        # on a bench whose SMU only has channel A wired) - named the
-        # actual instrument/channel instead so the message says what to
-        # go fix in Switch Settings.
         field_labels = {
             "hi": f"{instrument} {f'channel {chan} ' if instrument == 'SMU' else ''}HI",
             "lo": f"{instrument} {f'channel {chan} ' if instrument == 'SMU' else ''}LO",
@@ -2857,14 +2099,6 @@ class RecipePanel(ttk.Frame):
         return channels, detail, unresolved
 
     def _step_connections_eg(self, step: dict):
-        """Electroglas equivalent of the block above.
-
-        There is no per-pin crosspoint here - the relay card selects a whole
-        die of the 2x2 shot at once (see hp_switchbox.BENCH_WIRING), so the
-        step's `die` field is what decides the channel(s), not its HI/LO pin
-        names. HI/LO are still checked against the card's wiring below (in
-        validate_recipe), just not used to compute the connection.
-        """
         try:
             from instruments import eg_profiles
             from instruments.hp_switchbox import bench_wiring
@@ -2930,9 +2164,6 @@ class RecipePanel(ttk.Frame):
 
 
     _CHAN_RE = re.compile(r"^[24][A-H](0[1-9]|1[0-2])$")
-    # Electroglas conn strings are relay channel numbers ("00".."15"), zero
-    # padded by die_channels_for_bench/_step_connections_eg - a different
-    # shape entirely from Accretech's crosspoint channel spec above.
     _CHAN_RE_EG = re.compile(r"^(0[0-9]|1[0-5])$")
 
     def validate_recipe(self) -> list:
@@ -3043,12 +2274,6 @@ class RecipePanel(ttk.Frame):
                                       f"{self._steps[idx].get('type')} step (not a "
                                       "voltage/current APPLY step to combine with)")
 
-            # A directly-cabled step routes through no switch, so its pins
-            # name nothing the GUI can act on. They are not required, and a
-            # blank one is not an error - the operator made the connection at
-            # the probe card by hand. Anything that IS filled in still gets
-            # the consistency checks below, so a half-remembered pin cannot
-            # sit there contradicting the wiring unnoticed.
             direct = s.get("route") == ROUTE_DIRECT
             hi, lo = s.get("hi", "").strip(), s.get("lo", "").strip()
             if hi and lo and hi == lo:
@@ -3061,8 +2286,6 @@ class RecipePanel(ttk.Frame):
                 if missing and not direct:
                     issues.append(f"ERROR {tag}: 4-wire needs all four pins — "
                                   f"missing {', '.join(missing)}")
-                # Four legs on one pin is a 2-wire measurement wearing a
-                # 4-wire label, and would read lead resistance as device.
                 named = [(n, v) for n, v in (("HI", hi), ("LO", lo),
                                              ("Sense HI", his), ("Sense LO", los)) if v]
                 seen = {}
@@ -3074,10 +2297,6 @@ class RecipePanel(ttk.Frame):
                                       f"same pin ({val}) — 4-wire needs four "
                                       f"separate pins")
                 if self._system != "electroglas" and not direct:
-                    # Accretech's crosspoint needs a row explicitly assigned
-                    # to SHI/SLO in Switch Settings - Electroglas's relay
-                    # wiring has no such per-role assignment to check, and a
-                    # direct step does not go through either.
                     rows = switch_topology.rows_for_fields(t, s.get("chan") or "", instrument)
                     for field, role in (("his", "SHI"), ("los", "SLO")):
                         if s.get(field, "").strip() and not rows.get(field):
@@ -3092,8 +2311,6 @@ class RecipePanel(ttk.Frame):
                 if not token:
                     continue
                 if self._system == "electroglas":
-                    # Electroglas HI/LO already store the physical pin label
-                    # (e.g. "A32"), not something to resolve first.
                     if wiring_pins and token not in wiring_pins:
                         issues.append(f"WARN {tag}: pin '{token}' is not defined "
                                       "in the probe card wiring")
@@ -3154,8 +2371,6 @@ class RecipePanel(ttk.Frame):
 
             conn = (s.get("conn") or "").replace(" ", "")
             if direct:
-                # Storing no closures is the whole point of a direct step,
-                # not a missing-configuration error.
                 if conn:
                     issues.append(f"WARN {tag}: marked direct but still carries "
                                   f"switch closures ({conn}) — they will not be "
@@ -3170,9 +2385,6 @@ class RecipePanel(ttk.Frame):
                 issues.append(f"ERROR {tag}: invalid channel(s): {', '.join(bad)}")
                 continue
             if self._system == "electroglas":
-                # No row/role concept on the relay card to check for a
-                # second-HI-on-the-same-pin conflict - just track what is
-                # closed, for the "still closed at the end" check below.
                 for ch in conn.split(","):
                     closed[ch] = tag
             else:
@@ -3187,12 +2399,6 @@ class RecipePanel(ttk.Frame):
                                 f"WARN {tag}: {ch} puts a second instrument HI row on "
                                 f"the same pin as {other} (closed by {other_tag}) — "
                                 "intended bias, or missing open step?")
-                        # A row is one shared electrical bus (e.g. row A =
-                        # SMU-A HI). Closing two channels on that SAME row
-                        # but DIFFERENT pins ties those two pins directly
-                        # together for as long as both stay closed - an
-                        # actual short, not just a bias question, whichever
-                        # instrument/steps put them there.
                         if other[:2] == bus_key and other[2:] != ch[2:]:
                             issues.append(
                                 f"ERROR {tag}: {ch} shares a row (bus) with "
@@ -3245,11 +2451,6 @@ class RecipePanel(ttk.Frame):
             self._update_validity_label()
 
     def validate_all_recipes(self) -> dict:
-        # validate_recipe() reads self._minor_moves_var (a single shared
-        # checkbox var, not per-recipe) for its 'move' step check - swap it
-        # to each recipe's OWN saved minor_moves while validating, or every
-        # recipe but whichever one currently matches the checkbox's on-
-        # screen value comes back invalid regardless of what was saved.
         saved_steps = self._steps
         saved_minor_moves = self._minor_moves_var.get()
         results = {}
@@ -3331,9 +2532,6 @@ class RecipePanel(ttk.Frame):
                     except ValueError:
                         pass
                 self._ed_vars[k].set(raw)
-            # Claim the instrument as already-defaulted BEFORE _on_type_change
-            # runs, or it would treat this step's instrument as a fresh pick
-            # and overwrite the route the step was actually saved with.
             self._route_defaulted_for = stored.get("instrument", "")
             self._on_type_change()
 
@@ -3401,10 +2599,6 @@ class RecipePanel(ttk.Frame):
                         messagebox.showerror("Invalid Step", f"{label} must be a number.")
                         return False
             return True
-        # A direct-wired step is cabled straight to the probe card by hand -
-        # its HI/LO pins name nothing the GUI can act on (same exemption
-        # validate_recipe() already gives it), so requiring them here just
-        # blocks saving a step that is correctly configured.
         if step.get("route") != ROUTE_DIRECT and not (step["hi"] or step["lo"]):
             messagebox.showerror("Invalid Step", "Specify at least one HI or LO pin.")
             return False
@@ -3555,11 +2749,6 @@ class RecipePanel(ttk.Frame):
         elif names:
             self._load_form(names[0])
         else:
-            # Nothing visible on this bench (e.g. every recipe on the card
-            # is tagged for a different one) - clear the display instead
-            # of leaving the previous bench's recipe/steps stuck on
-            # screen with a dropdown that no longer lists it. The recipe
-            # itself is untouched in self._recipes, just not shown here.
             self._current = ""
             self._picker_var.set("")
             self._steps = []
@@ -3635,19 +2824,10 @@ class RecipePanel(ttk.Frame):
             messagebox.showerror("Duplicate", f"Recipe '{name}' already exists.")
             return
         self._store_form()
-        # No recipe to copy from once the card's last one was deleted -
-        # start blank rather than KeyError on a self._current that no
-        # longer points at anything.
         cur = self._recipes.get(self._current, {"steps": [], "sites": []})
         rec = {"steps": [dict(s) for s in cur["steps"]],
                "sites": [dict(s) for s in cur.get("sites", [])],
                "bench": self._active_bench_tag(),
-               # Copies whether the sibling recipe used minor moves, but
-               # NOT its captured shot_origin - that was a physical chuck
-               # position read live for that run, and blindly trusting it
-               # for a new recipe (possibly a different shot layout) would
-               # be exactly the kind of stale-state mistake Set Shot Origin
-               # exists to prevent. The new recipe has to capture its own.
                "minor_moves": bool(cur.get("minor_moves")),
                "shot_origin": None}
         self._recipes[name] = rec
@@ -3707,9 +2887,6 @@ class RecipePanel(ttk.Frame):
             self._current = next(iter(self._recipes))
             self._load_form(self._current)
         else:
-            # The last recipe on this card is gone - leave the dropdown
-            # blank rather than conjuring up a placeholder "(unsaved)"
-            # recipe nobody asked for. _new_recipe/import can start one.
             self._current = ""
             self._steps = []
             self._sites = []
@@ -3766,10 +2943,6 @@ class RecipePanel(ttk.Frame):
             return False
         steps = pma_params_to_steps(useful, available=self._bench_instruments())
         self._log_unbuildable_steps(steps)
-        # A .PMA whose touchdowns name several devices is a multi-die shot,
-        # and the block has to run once per die. This path never did that -
-        # only the workbook import did - so a LOAD ALL of a quad recipe built
-        # a recipe that measured one die and called the shot done.
         dies_per_shot = _pma_dies_per_shot(path)
         if dies_per_shot > 1:
             try:
@@ -3786,10 +2959,6 @@ class RecipePanel(ttk.Frame):
             channels = die_channels_for_bench(dies_per_shot)
             pins = die_pins_from_card(wiring, dies_per_shot,
                                       die_pins=card_die_pins)
-            # Say so when the bench cannot reach every die. Without a channel
-            # per die the steps all measure whichever path is already closed,
-            # so N dies come back as N copies of one reading - which looks
-            # like a working multi-die recipe right up until the data is used.
             if dies_per_shot > 1 and not channels:
                 self.controller.log(
                     f"[RECIPE] ⚠ This shot has {dies_per_shot} dies but the "
@@ -3805,11 +2974,6 @@ class RecipePanel(ttk.Frame):
             steps = repeat_steps_per_die(steps, dies_per_shot, channels, pins)
 
         name = os.path.splitext(os.path.basename(path))[0]
-        # Silently uniquifying was wrong for the main caller. LOAD ALL exists to
-        # regenerate a recipe from its .PMA, so a name clash is the normal case,
-        # not an accident - and minting "name (2)" meant every regeneration went
-        # somewhere the user was not looking. Seven stale copies of the gauge
-        # recipe accumulated that way while the loaded one kept its old steps.
         if name in self._recipes:
             choice = messagebox.askyesnocancel(
                 "Recipe Already Exists",
@@ -3832,18 +2996,6 @@ class RecipePanel(ttk.Frame):
             else:
                 self.controller.log(f"[RECIPE] Replacing existing recipe '{name}'.")
         self._store_form()
-        # NOT auto-computing conn here on purpose. Electroglas connections
-        # come from per-bench relay wiring (hp_switchbox.BENCH_WIRING) that
-        # does not exist - or cannot be assumed correct - for every project,
-        # unlike Accretech's pin-table approach; silently "computing" a
-        # value from possibly-wrong/missing wiring is worse than leaving it
-        # blank and making that fact visible. HI/LO pins can't be inferred
-        # from the .PMA either - checked a real file (LAMPATA's own "HP LaMP
-        # electrical gauge.PMA"): it carries only touchdown-move references
-        # and generic measurement parameters (voltage/delays/averages/NPLC/
-        # current limit), no electrical pin/device field at all. Both stay
-        # exactly what pma_params_to_steps set (blank) until the operator
-        # fills them in by hand.
         self._recipes[name] = {"steps": steps, "sites": [],
                                "bench": self._active_bench_tag()}
         if ("(unsaved)" in self._recipes and "(unsaved)" != name
@@ -3853,12 +3005,6 @@ class RecipePanel(ttk.Frame):
             del self._recipes["(unsaved)"]
         self._load_form(name)
         self._refresh_picker()
-        # Without this the just-imported recipe's "valid" flag is whatever
-        # it happened to be before (stale, or never set for a brand new
-        # recipe) - not a reflection of the steps actually just built. A
-        # recipe with no pins/connections set yet should show red
-        # (unresolved) or at least accurately "not validated", not a
-        # leftover green from some earlier recipe.
         self.validate_all_recipes()
 
         mapped = ", ".join(f"{k}={useful[k]}" for k in _PMA_MAPPED_KEYS if k in useful)
@@ -3947,10 +3093,6 @@ class RecipePanel(ttk.Frame):
             name = f"{orig_name} ({n})"
             n += 1
         self._store_form()
-        # See import_legacy_from_path's identical comment - not auto-
-        # computing conn or pins here on purpose. Neither is reliably
-        # inferrable for Electroglas across every project; left for the
-        # operator to fill in by hand.
         self._recipes[name] = {"steps": steps, "sites": [],
                                "bench": self._active_bench_tag()}
         if ("(unsaved)" in self._recipes and "(unsaved)" != name
@@ -4018,23 +3160,11 @@ class RecipePanel(ttk.Frame):
     def load_recipes(self, card: str, recipes: dict):
         self._active_card = card
         if recipes:
-            # bench dropped here previously - every recipe reloaded from
-            # disk came back untagged, so _visible_recipe_names() could
-            # never actually filter anything and every recipe showed on
-            # every bench regardless of what it was saved with.
-            # {**rec, ...}: see WaferMapPanel.get_recipes for why this
-            # copies the whole recipe instead of naming fields.
             self._recipes = {name: {**rec,
                                     "steps": [dict(s) for s in rec.get("steps", [])],
                                     "sites": [dict(s) for s in rec.get("sites", [])],
                                     "bench": rec.get("bench", ""),
                                     "minor_moves": bool(rec.get("minor_moves")),
-                                    # shortcut/fast_current_settle used to be
-                                    # dropped here - this dict only copied a
-                                    # hand-picked list of fields, so either
-                                    # checkbox silently reset to unchecked on
-                                    # every probe-card (re)load regardless of
-                                    # what was actually saved.
                                     "shortcut": bool(rec.get("shortcut")),
                                     "fast_current_settle": bool(rec.get("fast_current_settle")),
                                     "manual_mode": bool(rec.get("manual_mode")),
@@ -4083,14 +3213,10 @@ class RecipePanel(ttk.Frame):
         return self._current
 
     def is_minor_moves(self) -> bool:
-        """Whether the loaded recipe wants shot-aware single-die stepping
-        - see the Recipe tab's Minor Moves checkbox / _build_minor_moves_bar."""
         rec = self._recipes.get(self._current)
         return bool(rec and rec.get("minor_moves"))
 
     def get_shot_origin(self):
-        """The (die_x, die_y) captured by 📍 Set Shot Origin for the loaded
-        recipe, or None if it has not been set yet this session."""
         rec = self._recipes.get(self._current)
         return rec.get("shot_origin") if rec else None
 

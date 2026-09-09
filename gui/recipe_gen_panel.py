@@ -39,27 +39,17 @@ except ImportError:
     _MPL = False
 
 
-_COLOR_BLANK = "#93c5fd"     # present, no die ID yet
-_COLOR_HAS_ID = "#22c55e"    # present, has a die ID
-_COLOR_SKIP = "#9ca3af"      # marked skip (grey)
-_COLOR_ALIGN = "#ef4444"     # marked alignment die (red)
-_COLOR_ABSENT = "#e2e8f0"    # not present (blank slot in the shot / no shot here)
+_COLOR_BLANK = "#93c5fd"
+_COLOR_HAS_ID = "#22c55e"
+_COLOR_SKIP = "#9ca3af"
+_COLOR_ALIGN = "#ef4444"
+_COLOR_ABSENT = "#e2e8f0"
 _COLOR_SELECTED = "#f59e0b"
 
-# Alignment/PCM/target dies are usually named differently from the real
-# device IDs around them on an imported recipe - either with one of these
-# explicit keywords, or (see _die_id_shape/_find_alignment_ids) a naming
-# shape that doesn't match the majority of the wafer's other die IDs. Used
-# by _autofill_from_major_grid (Load PMA/Recipe Gen) and _import_diemap_csv
-# (Import CSV) so those imports auto-mark them status="align" (highlighted
-# red) instead of importing them as ordinary numbered dies.
 _ALIGN_KEYWORDS = {"target", "pcm", "align", "alignment", "ref", "reference"}
 
 
 def _die_id_shape(text: str) -> str:
-    """'N12345' -> '@#' - letters collapse to one '@', digits to one '#',
-    everything else kept literal. Shape, not exact length/value, is what
-    should distinguish "just another die ID" from an oddly-named one."""
     out = []
     for ch in text:
         marker = "@" if ch.isalpha() else "#" if ch.isdigit() else ch
@@ -70,13 +60,7 @@ def _die_id_shape(text: str) -> str:
 
 
 def _find_alignment_ids(die_ids) -> set:
-    """Which of these non-blank die ID strings look like alignment/PCM/
-    target dies rather than real device IDs. Needs at least 4 IDs to trust
-    a "majority" shape - with fewer, nothing is confidently the odd one
-    out, so only the explicit keyword list applies."""
     texts = [d.strip() for d in die_ids if d and d.strip()]
-    # startswith, not ==, so "PCM1"/"Target-5"/"align_2" also match, not
-    # only the bare keyword itself.
     outliers = {d for d in texts
                if any(d.lower().startswith(kw) for kw in _ALIGN_KEYWORDS)}
     if len(texts) >= 4:
@@ -101,18 +85,6 @@ def _to_int(text, default: int = 0) -> int:
 
 
 def present_slots(cells: Dict[tuple, dict], rows: int, cols: int) -> Dict[tuple, int]:
-    """(row, col) -> 1-based slot number ("which die is 1, 2, 3... in this
-    shot") for PRESENT cells only.
-
-    Honors each cell's own explicit "order" (set by clicking a die in the
-    Shot tab - see _set_shot_order) where one is set, since the physical
-    relay/channel order a shot's dies are wired in does not have to match
-    any particular reading direction across the grid. Any cell with no
-    explicit order yet - a freshly added one, or an old saved map from
-    before "order" existed - falls back to column-major (top-to-bottom then
-    left-to-right), the same convention electroglas_pma's quad/slot helpers
-    use, so nothing already relying on the old numbering changes.
-    """
     present = [(r, c) for c in range(cols) for r in range(rows)
               if cells.get((r, c), {}).get("present")]
     out, used = {}, set()
@@ -135,11 +107,6 @@ def present_slots(cells: Dict[tuple, dict], rows: int, cols: int) -> Dict[tuple,
 
 def shot_die_rc(cells: Dict[tuple, dict], rows: int, cols: int,
                 die_num: int) -> Optional[tuple]:
-    """The inverse of present_slots(): (row, col) within the shot for a
-    given 1-based die #, or None if that die # is not on this shot -
-    used by the minor-moves execution path (a recipe step's own "die"
-    field is exactly this die #) to know which cell of the shot to move
-    to, and by Set Shot Origin's sanity check that die #1 exists."""
     for rc, num in present_slots(cells, rows, cols).items():
         if num == die_num:
             return rc
@@ -148,7 +115,6 @@ def shot_die_rc(cells: Dict[tuple, dict], rows: int, cols: int,
 
 def _resize_cells(cells: Dict[tuple, dict], new_rows: int, new_cols: int,
                   default: dict) -> Dict[tuple, dict]:
-    """New cell dict of the given size, keeping whatever still fits."""
     out = {}
     for r in range(new_rows):
         for c in range(new_cols):
@@ -157,39 +123,6 @@ def _resize_cells(cells: Dict[tuple, dict], new_rows: int, new_cols: int,
 
 
 class RecipeGenPanel(ttk.Frame):
-    """Wafer Builder: three independent pages that together describe a
-    wafer with no .PMA/.xls needed at all.
-
-    Shot - what one touchdown covers: a rows x cols block where each slot is
-    either present (numbered - which die is 1, 2, 3... in the shot, i.e. the
-    physical/relay order the Recipe tab's Die # field and the Results tab go
-    by) or blank (nothing there - e.g. a corner of an otherwise-2x2 shot).
-    Pins are NOT assigned here - they're picked per measurement step on the
-    Recipe tab, restricted to whatever the active bench actually has wired.
-    Shot Map - how many touchdowns the wafer has and how they're arranged: a
-    plain presence grid, one square per touchdown. Die Map - the wafer at
-    die resolution (Shot x Shot Map expanded), where every real die gets an
-    ID, and any die can be marked skip or align instead.
-
-    A CSV always imports as Die Map - a plain grid of die IDs (blank cells
-    are empty positions). It used to also import Shot/Shot Map CSVs, keyed
-    on a pin_hi/pin_lo header for Shot - dropped once pins moved to Recipe
-    tab steps, since the Shot tab has not produced (or needed) that format
-    in a long time. Confirm Shot/Shot Map are set up correctly FIRST - the
-    importer reads their current dimensions to slice the flat grid back
-    into shots (see _import_diemap_csv) - then import die IDs. A legacy
-    .PMA or Recipe Generator .xls can still be loaded on either system to
-    autofill all three pages at once from an older file instead of a plain
-    grid (see _autofill_from_major_grid) - that only ever touches this
-    tab's own Shot/Shot Map/Die Map state, unlike Electroglas's separate
-    PMA Process tab, whose own .PMA loading also feeds the Run tab's
-    EgPmaRunPanel bridge - so offering it here doesn't affect that.
-
-    system picks which system's wafer map file Save Wafer Map writes to
-    (ata_wafer_map_accretech.csv vs _electroglas.csv) and whether the
-    Electroglas-only EgPmaRunPanel bridge (_push_to_pma_wafer) applies -
-    Accretech has no such pane.
-    """
 
     def __init__(self, parent, controller, main_layout, system: str = "electroglas"):
         super().__init__(parent)
@@ -197,16 +130,8 @@ class RecipeGenPanel(ttk.Frame):
         self._main_layout = main_layout
         self._system = system
 
-        # The current map's name AND the picker's display value - one var,
-        # since there is no free-typed name to diverge from the picker
-        # anymore (see _build_toolbar).
         self.map_name_var = tk.StringVar(value="")
 
-        # -- Shot --
-        # 1x1 default (a shot IS one die) - most projects (this one's real
-        # ATA folders included, see e.g. Peanut/Cenfire) are single-die-per-
-        # touchdown; 2x2 used to be the default and had to be shrunk back
-        # down by hand on every new map for the common case.
         self._shot_rows_var = tk.StringVar(value="1")
         self._shot_cols_var = tk.StringVar(value="1")
         self._die_pitch_x_var = tk.StringVar(value="1000")
@@ -217,24 +142,15 @@ class RecipeGenPanel(ttk.Frame):
         self._shot_selected: Optional[tuple] = None
         self._shot_status_var = tk.StringVar(value="")
 
-        # -- Shot Map --
         self._shotmap_rows_var = tk.StringVar(value="4")
         self._shotmap_cols_var = tk.StringVar(value="4")
         self._shotmap_cells: Dict[tuple, bool] = {
             (r, c): True for r in range(4) for c in range(4)}
         self._shotmap_status_var = tk.StringVar(value="")
 
-        # -- Die Map --
-        # (shot_r, shot_c, slot_r, slot_c) -> {"die_id": str, "status":
-        # "normal"/"skip"}. Keyed by position, not by a flat index,
-        # so it survives Shot/Shot Map edits that don't touch that slot.
         self._die_status: Dict[tuple, dict] = {}
         self._diemap_mode_var = tk.StringVar(value="id")
         self._diemap_status_var = tk.StringVar(value="")
-        # SAME Variable object as main_layout._exec_label_min_px_var, not a
-        # copy - one "Label min width (px):" control drives the zoom
-        # threshold on both this tab's Die Map AND the Run tab's map (see
-        # instrument_panel.MainLayout.__init__ and _exec_labels_fit).
         self._diemap_label_min_px_var = main_layout._exec_label_min_px_var
         self._diemap_label_min_px_var.trace_add("write", self._on_diemap_label_min_px_change)
         self._die_editor: Optional[tk.Entry] = None
@@ -262,27 +178,12 @@ class RecipeGenPanel(ttk.Frame):
         self._sub_nb.add(diemap_tab, text="Die Map")
         self._build_diemap_tab(diemap_tab)
 
-        # Identified by widget, not position - Accretech inserts an "Accr
-        # Wafer" sub-tab in front of these from instrument_panel.py after
-        # this constructor returns, which would otherwise shift every fixed
-        # index (0/1/2) this class assumes for Shot/Shot Map/Die Map.
         self._shot_tab_widget = shot_tab
         self._shotmap_tab_widget = shotmap_tab
         self._diemap_tab_widget = diemap_tab
 
-        # Die Map is computed from Shot x Shot Map, but nothing about editing
-        # either of those pages touched Die Map's cached _die_boxes/canvas -
-        # so switching to Die Map after resizing Shot, or after just toggling
-        # a Shot Map square, showed (and let you click into) stale die
-        # positions from before the edit. Redrawing on every arrival at Die
-        # Map, rather than chasing down every individual mutation call site,
-        # guarantees it is always freshly recomputed from current Shot/Shot
-        # Map state by the time it is visible or clickable.
         self._sub_nb.bind("<<NotebookTabChanged>>", self._on_subtab_changed)
 
-        # Keeps PmaWaferPanel (Overlay dialog / Run tab centroid-match) alive
-        # without a visible tab - Wafer Builder no longer round-trips through
-        # it, but other code still reads self.pma_wafer defensively.
         self._hidden_pma_wafer_parent = ttk.Frame(self)
 
     def _log(self, msg: str):
@@ -291,12 +192,7 @@ class RecipeGenPanel(ttk.Frame):
         except Exception:
             pass
 
-    # ------------------------------------------------------------------
     def _build_toolbar(self):
-        # Same shape as the Probe Card tab's card bar: a readonly picker plus
-        # New/Rename/Delete/Set Default, instead of a free-typed name field -
-        # a map is either one of the saved ones or a brand new one, never an
-        # unsaved name that has drifted from what's on disk.
         bar = ttk.Frame(self, padding=6)
         bar.grid(row=0, column=0, sticky="ew")
         ttk.Label(bar, text="Map:").pack(side="left")
@@ -317,20 +213,11 @@ class RecipeGenPanel(ttk.Frame):
             side="left", padx=(6, 12))
         ttk.Button(bar, text="Import CSV…", command=self._import_csv).pack(
             side="left", padx=(0, 6))
-        # Both systems get these now - _import_pma/_import_recipe_gen_xls
-        # only ever touch this tab's own Shot/Shot Map/Die Map state (via
-        # _autofill_from_major_grid), same as Import CSV. That's different
-        # from the Electroglas PMA Process tab's own .PMA loading, which
-        # also feeds the Run tab's EgPmaRunPanel bridge - this one doesn't
-        # affect anything outside Wafer Builder.
         ttk.Button(bar, text="Load PMA…", command=self._import_pma).pack(
             side="left", padx=(0, 6))
         ttk.Button(bar, text="Load Recipe Gen (.xls)…",
                   command=self._import_recipe_gen_xls).pack(side="left", padx=(0, 6))
 
-    # ==================================================================
-    # SHOT — what one touchdown covers
-    # ==================================================================
     _CELL = 78
     _GAP = 6
 
@@ -408,10 +295,6 @@ class RecipeGenPanel(ttk.Frame):
         rows, cols = self._shot_dims()
         w = int(self._shot_canvas.winfo_width() or 1)
         h = int(self._shot_canvas.winfo_height() or 1)
-        # Cell size is capped by available space, not floored above it - a
-        # floor here (as this used to have) forces cells bigger than the
-        # canvas actually has room for whenever the window is smaller than
-        # rows*cols*28px, cutting the grid off instead of shrinking to fit.
         avail_w = (w - 20 - self._GAP * cols) // max(1, cols)
         avail_h = (h - 20 - self._GAP * rows) // max(1, rows)
         cell = max(4, min(self._CELL, avail_w, avail_h))
@@ -487,14 +370,6 @@ class RecipeGenPanel(ttk.Frame):
                 return
 
     def _set_shot_order_dialog(self, row: int, col: int):
-        """Which die this square is - 1, 2, 3... - within the shot.
-
-        Not a pin assignment: pins are picked per measurement step on the
-        Recipe tab now, restricted to whatever is actually wired there. This
-        only records physical/relay ORDER, which the Recipe tab's Die #
-        field and the Results tab use to know which square a step's
-        measurement belongs to.
-        """
         rows, cols = self._shot_dims()
         slots = present_slots(self._shot_cells, rows, cols)
         cur = slots.get((row, col))
@@ -510,12 +385,6 @@ class RecipeGenPanel(ttk.Frame):
         self._draw_shot()
 
     def _set_shot_die_id_dialog(self, row: int, col: int):
-        """Name this SLOT's die ID once here, rather than per shot on the
-        Die Map - every shot's own die at this slot picks it up
-        automatically (see _die_positions()'s fallback), useful when a
-        known real ID/label always lands on the same die-in-shot across
-        the whole wafer. An individual edit on one specific die (Die Map
-        tab) still overrides this for that die alone."""
         cell = self._shot_cells.get((row, col))
         if not cell or not cell.get("present"):
             return
@@ -536,8 +405,6 @@ class RecipeGenPanel(ttk.Frame):
     def _set_shot_order(self, row: int, col: int, new_order: int):
         rows, cols = self._shot_dims()
         slots = present_slots(self._shot_cells, rows, cols)
-        # Swap with whichever die currently holds that number, so every
-        # present cell keeps a unique order rather than colliding.
         for rc, n in slots.items():
             if n == new_order and rc != (row, col):
                 self._shot_cells[rc]["order"] = slots[(row, col)]
@@ -556,21 +423,11 @@ class RecipeGenPanel(ttk.Frame):
         return spx, spy
 
     def shots_as_die_list(self) -> list:
-        """The wafer's SHOT positions, shaped like WaferMapPanel's own
-        die-list rows (row/col/x_um/y_um/die_id) - used by Minor Moves so
-        the Run tab's map can show one square per SHOT instead of one per
-        individual die. x_um/y_um here are purely for on-screen layout
-        (spaced by _shot_pitch()) - the real chuck motion never reads
-        them; see instrument_panel.py/eg_pma_run_panel.py's minor-moves
-        execution path, which works entirely in die-index coordinates."""
         spx, spy = self._shot_pitch()
         return [{"row": r, "col": c, "x_um": c * spx, "y_um": -r * spy,
                 "die_id": ""}
                for (r, c), present in self._shotmap_cells.items() if present]
 
-    # ==================================================================
-    # SHOT MAP — how many touchdowns, and their arrangement
-    # ==================================================================
     def _build_shotmap_tab(self, tab):
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(1, weight=1)
@@ -638,8 +495,6 @@ class RecipeGenPanel(ttk.Frame):
         cell = max(2, min(self._SM_CELL, avail_w, avail_h))
         span_w = cols * cell + (cols - 1) * self._SM_GAP
         span_h = rows * cell + (rows - 1) * self._SM_GAP
-        # Floors bumped from 8 to leave room for the row/col index labels
-        # drawn along the left/top edges - see _draw_shotmap_axis_labels.
         x0 = max(22, (w - span_w) // 2)
         y0 = max(16, (h - span_h) // 2)
         out = {}
@@ -671,10 +526,6 @@ class RecipeGenPanel(ttk.Frame):
             self._shotmap_fill_btn.config(text="☐ Clear All" if all_filled else "☑ Fill All")
 
     def _draw_shotmap_axis_labels(self, rects: Dict[tuple, tuple]):
-        """Row/col index labels along the left/top edges - same idea as the
-        Run tab wafer map's axis grid (wafer_map_view.py's
-        _draw_axis_ticks), so a touchdown's row/col can be read straight
-        off this tab instead of counting squares."""
         cv = self._shotmap_canvas
         rows, cols = self._shotmap_dims()
         font = ("TkDefaultFont", 7)
@@ -696,9 +547,6 @@ class RecipeGenPanel(ttk.Frame):
                 self._draw_shotmap()
                 return
 
-    # ==================================================================
-    # DIE MAP — the whole wafer, at die resolution
-    # ==================================================================
     def _build_diemap_tab(self, tab):
         tab.columnconfigure(0, weight=1)
         tab.rowconfigure(1, weight=1)
@@ -748,14 +596,6 @@ class RecipeGenPanel(ttk.Frame):
             self.canvas.mpl_connect("button_press_event", self._on_diemap_click)
             self.canvas.mpl_connect("scroll_event", self._on_diemap_scroll_zoom)
             bind_middle_pan_mpl(self.canvas, lambda: getattr(self, "ax", None))
-            # xlim_changed fires on ANY axes limit change - scroll-zoom,
-            # the navigation toolbar's zoom/pan tools, everything - so die
-            # ID label visibility stays correct regardless of how the view
-            # changed, not just the one zoom path this tab wires by hand.
-            # Connected fresh in _redraw_diemap (not just here) because
-            # Axes.clear() silently drops every callback connection along
-            # with the artists - reconnecting only once here left it dead
-            # after the very first redraw.
             self._diemap_xlim_cid = None
         else:
             ttk.Label(body, text="matplotlib not installed — install it to "
@@ -765,17 +605,6 @@ class RecipeGenPanel(ttk.Frame):
         self._redraw_diemap()
 
     def _die_positions(self) -> List[dict]:
-        """Every die the current Shot x Shot Map produces, in wafer microns,
-        each carrying its own status (defaulting to normal/blank).
-
-        die_id: an individual edit on THIS die (Die Map tab, self._die_status)
-        wins if there is one; otherwise it falls back to whatever name the
-        Shot tab gave this die's SLOT (self._shot_cells[(slr,slc)]["die_id"])
-        - naming a slot once on the Shot tab labels that same die-in-shot
-        across every shot on the wafer, e.g. a real ID known to be at slot 1
-        of every shot, without visiting/typing it in per shot. See
-        _set_shot_die_id_dialog.
-        """
         shot_rows, shot_cols = self._shot_dims()
         dpx, dpy = self._die_pitch()
         spx, spy = self._shot_pitch()
@@ -807,19 +636,9 @@ class RecipeGenPanel(ttk.Frame):
         return _COLOR_HAS_ID if box["die_id"] else _COLOR_BLANK
 
     def _redraw_diemap(self, reset_view: bool = True):
-        # Guards construction-order calls too, not just missing matplotlib -
-        # Shot/Shot Map's own initial _draw_shot()/_draw_shotmap() run during
-        # __init__ before _build_diemap_tab has created self.ax/self.canvas.
         if not _MPL or not hasattr(self, "ax"):
             return
         self._close_die_editor(commit=True)
-        # reset_view=False (the click/edit paths - see _diemap_update_one,
-        # which now handles those without a full rebuild at all, but keeps
-        # this as its fallback) preserves whatever the operator was zoomed/
-        # panned to instead of re-fitting the whole wafer - a full rebuild
-        # used to always re-fit, which is what made clicking a die appear to
-        # "zoom you out". Captured before clear() wipes it; already reflects
-        # the y-axis inversion below, since get_ylim() reports it as-is.
         prev_xlim = self.ax.get_xlim()
         prev_ylim = self.ax.get_ylim()
         self.ax.clear()
@@ -843,14 +662,6 @@ class RecipeGenPanel(ttk.Frame):
             coll.set_facecolor([self._die_color(b) for b in self._die_boxes])
             self.ax.add_collection(coll)
             self._diemap_coll = coll
-            # Labels are NOT created for every die with an ID here anymore -
-            # see _diemap_sync_visible_labels, called below once the view is
-            # final. A real wafer can carry thousands of die IDs, and every
-            # one of them being a live matplotlib Text artist at all times
-            # (regardless of whether it was ever on screen) made a single
-            # repaint take SECONDS - matplotlib has no batched way to draw
-            # text the way PatchCollection batches the rectangles above, so
-            # every Text costs real per-object overhead on every draw().
             if reset_view:
                 xs = [b["x"] for b in self._die_boxes]
                 ys = [b["y"] for b in self._die_boxes]
@@ -877,10 +688,6 @@ class RecipeGenPanel(ttk.Frame):
         self.canvas.draw_idle()
 
     def _draw_diemap_axis_ticks(self):
-        """Row/col index tick labels along the left/bottom edges - same
-        idea as the Run tab wafer map's axis grid (wafer_map_view.py's
-        _draw_axis_ticks), so a die's row/col can be read straight off
-        this tab instead of counting/clicking squares."""
         shot_rows, shot_cols = self._shot_dims()
         row_y, col_x = {}, {}
         for b in self._die_boxes:
@@ -907,16 +714,9 @@ class RecipeGenPanel(ttk.Frame):
             spine.set_visible(False)
         self.ax.grid(True, which="major", alpha=0.15, linestyle="--")
 
-    # Extra viewport-widths of margin kept "live" (real Text artists)
-    # around the visible area, so a small pan does not immediately need a
-    # label add/remove pass. Bigger = fewer resyncs but more per-frame cost;
-    # 0.4 keeps a real LAMPATA-scale wafer (~2400 die IDs) down to a few
-    # dozen live labels at a readable zoom instead of all of them.
     _DIEMAP_LABEL_VIEW_MARGIN = 0.4
 
     def _diemap_visible_keys(self) -> set:
-        """Die keys within the current view (+ margin) that should have a
-        label - has an ID, status normal (skip/align dies never got one)."""
         if not getattr(self, "_die_boxes", None):
             return set()
         try:
@@ -929,20 +729,11 @@ class RecipeGenPanel(ttk.Frame):
         pad_y = (y1 - y0) * self._DIEMAP_LABEL_VIEW_MARGIN
         x0, x1 = x0 - pad_x, x1 + pad_x
         y0, y1 = y0 - pad_y, y1 + pad_y
-        # die_id alone, no status filter - matches _diemap_update_one's own
-        # "if box['die_id']:" check: a die marked skip/align after already
-        # carrying an ID keeps showing it (status only changes its color),
-        # same as before this culling existed.
         return {b["key"] for b in self._die_boxes
                if b["die_id"]
                and x0 <= b["x"] <= x1 and y0 <= b["y"] <= y1}
 
     def _diemap_sync_visible_labels(self):
-        """Add/remove Text artists so only dies within the current view
-        (+ margin, _DIEMAP_LABEL_VIEW_MARGIN) have one - see that
-        attribute's comment for why this exists. Called after every real
-        redraw and (debounced) after every pan/zoom settles.
-        """
         if not getattr(self, "_die_boxes", None) or not hasattr(self, "ax"):
             return
         want = self._diemap_visible_keys()
@@ -971,18 +762,6 @@ class RecipeGenPanel(ttk.Frame):
         self.canvas.draw_idle()
 
     def _diemap_update_one(self, key: tuple):
-        """Fast path for a single die's id/status changing (skip/align
-        toggle, ID edit commit, right-click clear) - repaints just that
-        die's patch color + label instead of a full ax.clear()+rebuild.
-        Falls back to a (view-preserving) full redraw if anything about the
-        fast path doesn't apply (matplotlib missing, no prior draw, or the
-        die/collection bookkeeping is stale for any reason).
-
-        This is what actually fixes the lag on a wafer with many die ID
-        labels showing - a full rebuild recreated every Text artist (one of
-        matplotlib's more expensive operations) on every single click, even
-        though only one die changed.
-        """
         if (not _MPL or not hasattr(self, "ax")
                 or getattr(self, "_diemap_coll", None) is None):
             self._redraw_diemap(reset_view=False)
@@ -1026,18 +805,9 @@ class RecipeGenPanel(ttk.Frame):
         self.canvas.draw_idle()
         self._diemap_status_var.set(f"{len(self._die_boxes)} die(s) on the wafer.")
 
-    _DIEMAP_LABEL_MIN_PX = 22  # below this on-screen die width, an ID is unreadable clutter
+    _DIEMAP_LABEL_MIN_PX = 22
 
     def _diemap_debounced_label_visibility(self, delay_ms: int = 60):
-        """xlim_changed fires on every pixel of a middle-drag pan or a
-        toolbar zoom-drag, not just once per gesture - coalesce those into
-        a single _diemap_sync_visible_labels() call ~delay_ms after the
-        last one, instead of running it on every single motion event.
-        Panning moves which dies are near the view, not just whether the
-        current ones are big enough to read, so this has to resync the
-        live label set (add/remove), not just toggle visibility - see
-        _diemap_sync_visible_labels.
-        """
         pending = getattr(self, "_diemap_visibility_after_id", None)
         if pending is not None:
             try:
@@ -1048,17 +818,10 @@ class RecipeGenPanel(ttk.Frame):
             delay_ms, self._diemap_sync_visible_labels)
 
     def _on_diemap_label_min_px_change(self, *_args):
-        # Fires on every keystroke while typing into the Spinbox too, not
-        # just the arrow buttons (command= only covers those) - guarded on
-        # self.ax existing since the trace is live from __init__, before
-        # _build_diemap_tab has created it.
         if hasattr(self, "ax"):
             self._diemap_label_visibility()
 
     def _diemap_label_min_px(self) -> float:
-        # User control (Die Map tab toolbar) over the class default below -
-        # falls back to the hardcoded constant on a blank/invalid entry
-        # rather than erroring, since this reads on every zoom/pan settle.
         try:
             return float(self._diemap_label_min_px_var.get())
         except (tk.TclError, ValueError):
@@ -1086,9 +849,6 @@ class RecipeGenPanel(ttk.Frame):
         self.canvas.draw_idle()
 
     def _hit_die(self, xdata, ydata) -> Optional[dict]:
-        # event.xdata/ydata are already in DATA space, not screen pixels, so
-        # this keeps working correctly at any zoom level - matplotlib does
-        # the pixel<->data conversion itself before this handler ever runs.
         for b in self._die_boxes:
             if b["x"] <= xdata < b["x"] + b["w"] and b["y"] <= ydata < b["y"] + b["h"]:
                 return b
@@ -1096,10 +856,6 @@ class RecipeGenPanel(ttk.Frame):
 
     def _on_diemap_click(self, event):
         if event.button == 2:
-            # Middle button is map_nav's pan gesture, not a die click -
-            # without this, pressing it to START a pan fell through to the
-            # "id" mode branch below and popped the die-ID text editor
-            # open at that spot every time.
             return
         if event.xdata is None or event.ydata is None:
             return
@@ -1177,14 +933,6 @@ class RecipeGenPanel(ttk.Frame):
             else:
                 self._redraw_diemap(reset_view=False)
 
-    # ==================================================================
-    # NAMED MAPS — many Shot/Shot Map/Die Map definitions can live in one
-    # ATA folder (under wafer_builder_maps/<name>.json), picked from the
-    # Load dropdown. Save Wafer Map ALSO auto-saves under the current Map
-    # Name when it publishes, so the dropdown always has an accurate copy
-    # of whatever was last made active; Save Map alone just saves work in
-    # progress without publishing it as the Run tab's active map.
-    # ==================================================================
     def _maps_dir(self, create: bool = False) -> Optional[str]:
         folder = getattr(self._main_layout, "_exec_map_folder", None) or \
             getattr(self._main_layout, "_ata_folder", None)
@@ -1196,10 +944,6 @@ class RecipeGenPanel(ttk.Frame):
         return d
 
     def list_map_names(self) -> list:
-        """Every saved map name for the current ATA folder - same listing
-        _refresh_map_picker uses for the Map: dropdown, exposed for
-        callers outside this tab (RecipePanel's own Wafer Map: dropdown,
-        via instrument_panel's get_wafer_map_names injection)."""
         d = self._maps_dir()
         if not d or not os.path.isdir(d):
             return []
@@ -1221,13 +965,6 @@ class RecipeGenPanel(ttk.Frame):
     def _state_to_dict(self) -> dict:
         def kstr(k):
             return f"{k[0]},{k[1]}"
-        # The Run tab's Overlay alignment (row/col offset between this map's
-        # logical die grid and the real Accretech extraction) lives on the
-        # OTHER panel (instrument_panel.py's Run tab, self._main_layout) -
-        # saved here anyway because it is meaningless without the map it was
-        # confirmed against, and there is nowhere else it survives a
-        # relaunch. See _state_from_dict / instrument_panel._exec_reapply_
-        # overlay for the restore side.
         ml = self._main_layout
         return {
             "shot_rows": self._shot_rows_var.get(), "shot_cols": self._shot_cols_var.get(),
@@ -1269,19 +1006,6 @@ class RecipeGenPanel(ttk.Frame):
         self._draw_shot()
         self._draw_shotmap()
         self._redraw_diemap()
-        # Restore (or, for a map/folder that never had one, correctly clear)
-        # the Overlay alignment - see _state_to_dict. Only stores
-        # the numbers here; the Accretech map for THIS folder may not be
-        # loaded yet at this point in a folder switch, so the actual re-draw
-        # is instrument_panel.load_ata_folder's job, after its own map load.
-        # Accretech-only: the Overlay sub-tab reconciles the Accretech
-        # hardware-extracted map against this Wafer Builder map, but this
-        # JSON is shared/cross-synced with Electroglas's own RecipeGenPanel
-        # instance for the same ATA folder (see "CROSS-SYSTEM SYNC" below) -
-        # restoring the confirmed flag onto Electroglas's ml here too meant
-        # _exec_reapply_overlay (Run tab, on folder open) auto-selected
-        # every overlay-matched die on that bench as well, even though the
-        # Overlay button doesn't exist there.
         ml = self._main_layout
         if self._system == "accretech" and hasattr(ml, "_exec_overlay_offset_confirmed"):
             try:
@@ -1296,10 +1020,6 @@ class RecipeGenPanel(ttk.Frame):
             getattr(self._main_layout, "_ata_folder", None)
 
     def _new_named_map(self):
-        """Starts a brand new map: blank Shot/Shot Map/Die Map state, saved
-        immediately under a name the user picks - mirrors the Probe Card
-        tab's ＋ New (which also writes an empty file right away so the new
-        item shows up in its own picker with nothing further to do)."""
         folder = self._current_folder()
         d = self._maps_dir(create=True)
         if not d or not folder:
@@ -1376,7 +1096,7 @@ class RecipeGenPanel(ttk.Frame):
             except OSError:
                 pass
         self.map_name_var.set(new_name)
-        self._redraw_diemap()  # title reads map_name_var live
+        self._redraw_diemap()
         self._log(f"[MAP] Renamed map '{old_name}' → '{new_name}'")
         self._refresh_map_picker()
         folder = self._current_folder()
@@ -1398,10 +1118,6 @@ class RecipeGenPanel(ttk.Frame):
         except (OSError, ValueError) as exc:
             messagebox.showerror("Load Failed", str(exc))
             return
-        # Set the name BEFORE the redraw _state_from_dict triggers - the die
-        # map title reads map_name_var live, so setting it after left the
-        # title showing the previous map's name until the next unrelated
-        # redraw.
         self.map_name_var.set(name)
         self._state_from_dict(data)
         self._log(f"[MAP] Loaded map '{name}'")
@@ -1440,12 +1156,6 @@ class RecipeGenPanel(ttk.Frame):
     _DEFAULT_MARKER = "_default.txt"
 
     def _set_default_map(self):
-        """Marks the current Map Name as this ATA folder's default Wafer
-        Builder map, so it is the one autoload_map_for_folder picks - both
-        on the next folder load AND, right now, on the other system's tab
-        if it has this same folder open (see _sync_partner_after_change).
-        Saves the map first if it hasn't been saved yet, so "Set Default"
-        works directly off unsaved work in progress too."""
         name = self.map_name_var.get().strip()
         if not name:
             messagebox.showerror("No Map Name", "Type/select a map name first.")
@@ -1479,20 +1189,6 @@ class RecipeGenPanel(ttk.Frame):
         self._sync_partner_after_change(folder, None)
 
     def autoload_map_for_folder(self, folder: str):
-        """Called when the ATA folder loads/changes. Prefers the folder's
-        explicit default (set via the Set Default button); falls back to a
-        map named "Autoload", or the single map present if there is only
-        one, so older folders that predate Set Default keep working. Zero or
-        multiple ambiguous candidates with no default set leaves this tab
-        blank - left to the Load dropdown in that case.
-
-        Always starts blank (below), regardless of which branch this ends up
-        taking: a folder switch must never leave the PREVIOUS folder's map on
-        screen just because the new one doesn't have an unambiguous one of
-        its own - a brand new ATA folder used to keep showing whatever map
-        was loaded before it, with nothing on this tab suggesting it was
-        stale.
-        """
         self.map_name_var.set("")
         self._state_from_dict({})
         d = os.path.join(folder, "wafer_builder_maps")
@@ -1544,16 +1240,6 @@ class RecipeGenPanel(ttk.Frame):
             return
         self._sync_partner_after_change(folder, name)
 
-    # ------------------------------------------------------------------
-    # CROSS-SYSTEM SYNC — Accretech and Electroglas each have their own
-    # RecipeGenPanel instance, but a saved/default map is just a file under
-    # the ATA folder both can see. Whenever this panel changes what's on
-    # disk, push a refresh to the other system's tab IF it currently has
-    # the same ATA folder open, so both keep showing the same map without
-    # a manual reload. Never touches a map the partner is mid-editing under
-    # a different name - only a save/default change to the exact map it's
-    # already showing (or, for Set Default, a general re-check).
-    # ------------------------------------------------------------------
     def _sibling_recipe_gen(self) -> Optional["RecipeGenPanel"]:
         by_system = getattr(self.controller, "_by_system", None)
         if not by_system or self._system not in ("accretech", "electroglas"):
@@ -1589,21 +1275,11 @@ class RecipeGenPanel(ttk.Frame):
         self._log(f"[MAP] Synced map '{name}' — updated on the "
                  f"other system's tab.")
 
-    # ------------------------------------------------------------------
     def _wafer_map_filename(self) -> str:
         return WAFER_MAP_SOURCES["Wafer Builder"]
 
     def _write_active_wafer_map_csv(self, folder: str, dies: list):
-        """Write WAFER_MAP_SOURCES["Wafer Builder"] (the Run tab's actual
-        "Wafer Builder" map source) from an already-computed die list - the
-        part of Save Wafer Map that isn't the confirmation dialog, so LOAD
-        ALL and Sync Run Map (already their own explicit operator action)
-        can publish the SAME file without a second prompt. Returns the
-        written path, or raises OSError on failure - callers decide how to
-        report that."""
         shot_rows, shot_cols = self._shot_dims()
-        # A stable per-touchdown sequence number, row-major over the shot map
-        # - only used as a label (the "seq" column), not for geometry.
         shot_order = {(sr, sc): i + 1 for i, (sr, sc) in
                      enumerate(sorted(k for k, v in self._shotmap_cells.items() if v))}
         path = os.path.join(folder, self._wafer_map_filename())
@@ -1629,9 +1305,6 @@ class RecipeGenPanel(ttk.Frame):
         return path
 
     def _save_wafer_map(self):
-        """Write the Run tab's wafer map directly from the Die Map, one row
-        per real die - no touchdown-text encoding involved, since this tab
-        already knows each die's exact position and status."""
         self._close_die_editor(commit=True)
         folder = getattr(self._main_layout, "_exec_map_folder", None) or \
             getattr(self._main_layout, "_ata_folder", None)
@@ -1666,13 +1339,6 @@ class RecipeGenPanel(ttk.Frame):
         self._sync_views(folder)
 
     def _export_diemap_csv(self):
-        """A standalone CSV of the Die Map as it looks right now, shaped
-        like the wafer itself - one cell per die, arranged by row/col,
-        holding nothing but that die's ID (blank if it has none). No
-        header, no status/shot/slot columns - a plain grid meant to be
-        opened and looked at, not read back by this app or the Run tab.
-        Written to the user's Downloads folder, independent of Save Wafer
-        Map."""
         self._close_die_editor(commit=True)
         dies = self._die_positions()
         if not dies:
@@ -1714,23 +1380,7 @@ class RecipeGenPanel(ttk.Frame):
         layout = self._main_layout
         try:
             layout._exec_map_folder = folder
-            # Accretech's Run tab map stays on its own hardware-extracted
-            # source (Accr Wafer's "Accretech") - Wafer Builder's die IDs
-            # get OVERLAID onto that map (Overlay... button), not swapped in
-            # as the primary map, since the Accretech extraction is the
-            # physically-real geometry. Electroglas has no such hardware
-            # extraction of its own; Wafer Builder IS the wafer there, so
-            # publishing makes it the active source directly.
             if self._system != "accretech":
-                # Publish the CURRENT in-memory Die Map to the file
-                # "Wafer Builder" actually reads, not just point the source
-                # var at it - selecting the right source but leaving
-                # whatever was last manually Saved (possibly stale, or
-                # from an unrelated recipe) sitting in the file looked
-                # exactly like the map not updating at all. Every caller
-                # of _sync_views (LOAD ALL, Sync Run Map, Save Wafer Map
-                # itself) gets a genuinely fresh publish this way, not just
-                # the ones that remember to write the CSV first.
                 dies = self._die_positions()
                 if dies:
                     try:
@@ -1749,20 +1399,10 @@ class RecipeGenPanel(ttk.Frame):
                 proc.refresh_align_site()
             except Exception:
                 pass
-        # EgPmaRunPanel (the .PMA-recipe-stepping pane) only exists for
-        # Electroglas - nothing on Accretech reads pma_wafer._csv_shot_data,
-        # so there is nothing to bridge there.
         if self._system != "accretech":
             self._push_to_pma_wafer(folder)
 
     def _plain_csv_rows(self) -> List[List[str]]:
-        """This wafer as the 'plain CSV wafer map' shape PmaWaferPanel
-        already understands: one cell per touchdown, holding that shot's
-        dies slash-joined in Shot's own column-major slot order (skip dies
-        written as the literal SKIP, matching the Die Map CSV import
-        convention) - because Shot only ever includes PRESENT slots, every
-        joined entry is a real die; there is no blank-corner case to
-        represent here."""
         shot_rows, shot_cols = self._shot_dims()
         ordered = sorted(present_slots(self._shot_cells, shot_rows, shot_cols).items(),
                          key=lambda kv: kv[1])
@@ -1791,17 +1431,6 @@ class RecipeGenPanel(ttk.Frame):
         return rows
 
     def _push_to_pma_wafer(self, folder: str):
-        """Feeds PmaWaferPanel's in-memory CSV source from this page's own
-        state, best-effort. Nothing here reads ata_wafer_map_electroglas.csv
-        (the file _save_wafer_map just wrote) - PmaWaferPanel is legacy
-        machinery of its own, read directly by EgPmaRunPanel (the .PMA
-        recipe-stepping pane's own embedded map, its shot-window sizing, and
-        its per-die row/col lookup for multi-die shots) via
-        self.pma_wafer._csv_shot_data/_xls_shot_data. With the old Wafer
-        View tab (and its Import .xls/Load CSV buttons) gone, that data
-        would otherwise never get populated again once this tab replaces
-        it - silently blanking EgPmaRunPanel's own map/shot-window for
-        anyone still driving a run from a loaded .PMA recipe."""
         wafer = getattr(self._main_layout, "pma_wafer", None)
         if wafer is None:
             return
@@ -1820,15 +1449,6 @@ class RecipeGenPanel(ttk.Frame):
             self._log(f"[MAP] Could not sync the .PMA-recipe "
                      f"wafer view: {type(exc).__name__}: {exc}")
 
-    # ==================================================================
-    # CSV IMPORT — Die Map only. Used to also sniff/import Shot and Shot
-    # Map CSVs (the Shot format keyed on a pin_hi/pin_lo header) - dropped
-    # since pins moved to Recipe tab steps and the Shot tab has not had
-    # pins of its own in a long time, so that detection path was dead. The
-    # operator now confirms Shot/Shot Map are set up correctly first (the
-    # importer reads their CURRENT dimensions to slice the flat grid back
-    # into shots - see _import_diemap_csv), then imports die IDs.
-    # ==================================================================
     def _current_tab_kind(self) -> str:
         cur = self._sub_nb.select()
         if cur == str(self._shot_tab_widget):
@@ -1837,19 +1457,9 @@ class RecipeGenPanel(ttk.Frame):
             return "shotmap"
         if cur == str(self._diemap_tab_widget):
             return "die"
-        # Some other sub-tab (e.g. Accretech's inserted Accr Wafer) is
-        # showing - CSV import falls back to "die", same as before this
-        # became identity-based, and the tab-change redraw hook below just
-        # does nothing for it, which is correct: nothing here to redraw.
         return "die"
 
     def _on_subtab_changed(self, _event=None):
-        # A hidden Notebook tab's canvas can still be reporting a stale (or
-        # never-laid-out) size the first time it's shown, which drew a
-        # cramped grid surrounded by grey space until something else
-        # happened to trigger another redraw. Forcing one here, right after
-        # Tk has actually mapped the tab and given it real geometry, means
-        # every arrival at a tab draws against its true current size.
         self.update_idletasks()
         kind = self._current_tab_kind()
         if kind == "shot":
@@ -1869,13 +1479,6 @@ class RecipeGenPanel(ttk.Frame):
             return
         ext = os.path.splitext(path)[1].lower()
         if ext in (".xlsx", ".xls"):
-            # A plain grid export (one cell per die, same (row, col) layout
-            # as the sheet) - not the Recipe Generator's MajorMoves workbook
-            # format (that's _import_recipe_gen_xls, a different button).
-            # csv.reader on an .xlsx used to be the only path here, which
-            # read the file's raw zipped-XML bytes as "CSV" text - garbage
-            # that came out looking like one column, hundreds of rows (a
-            # real report: 1322x2). Read it properly instead.
             try:
                 import openpyxl
             except ImportError:
@@ -1911,10 +1514,6 @@ class RecipeGenPanel(ttk.Frame):
         self._import_diemap_csv(rows, os.path.basename(path))
 
     def _diemap_csv_cells(self, rows: List[List[str]]):
-        """Every (row, col) -> stripped text in the CSV, plus which shot
-        (sr, sc)/slot (slr, slc) it lands on for the currently-defined Shot
-        template - shared by the conflict check and the actual import below
-        so the two can never disagree about where a cell lands."""
         shot_rows, shot_cols = self._shot_dims()
         out = []
         for r, row in enumerate(rows):
@@ -1927,25 +1526,6 @@ class RecipeGenPanel(ttk.Frame):
         return out
 
     def _import_diemap_csv(self, rows: List[List[str]], name: str):
-        """The shot map (which shots are present) is not read from the CSV
-        as its own section - it is derived, in order:
-
-        1. Trust the CURRENTLY DEFINED Shot Map as-is, if every cell this
-           CSV actually fills in lands on a shot it already marks present -
-           a shot with no die IDs filled in yet in this CSV is NOT treated
-           as absent here; the existing map is just adopted unchanged. This
-           is what makes a partially-filled CSV (not every die named yet)
-           still work without guessing.
-        2. If the existing Shot Map disagrees anywhere (a filled cell lands
-           on a shot it marks absent, or a shot map doesn't exist yet at
-           all), fall back to deriving presence purely from the CSV itself:
-           any shot with at least one non-blank cell in it is present.
-        3. Either way, first reject outright if any filled cell lands on a
-           slot the Shot TEMPLATE itself (Shot tab, not Shot Map) marks
-           blank - a die can never legitimately be there, no shot map
-           guess can paper over that, and silently ignoring it would just
-           misplace/drop a real die - the operator has to fix Shot first.
-        """
         shot_rows, shot_cols = self._shot_dims()
         max_row = len(rows) - 1
         max_col = max(len(r) for r in rows) - 1
@@ -1953,8 +1533,6 @@ class RecipeGenPanel(ttk.Frame):
         need_shot_c = max_col // shot_cols + 1
         filled = self._diemap_csv_cells(rows)
 
-        # Step 1 (hard reject): does every filled cell land on a slot the
-        # Shot template marks present?
         template_conflicts = [
             (r, c, text) for r, c, text, _sr, _sc, slr, slc in filled
             if not self._shot_cells.get((slr, slc), {}).get("present")]
@@ -1972,7 +1550,6 @@ class RecipeGenPanel(ttk.Frame):
                 "first, then import again.")
             return
 
-        # Step 2: try the existing Shot Map unchanged.
         existing_ok = all(
             self._shotmap_cells.get((sr, sc), False)
             for _r, _c, _text, sr, sc, _slr, _slc in filled)
@@ -1981,17 +1558,12 @@ class RecipeGenPanel(ttk.Frame):
                     for r in range(need_shot_r) for c in range(need_shot_c)}
             source = "the existing Shot Map"
         else:
-            # Step 3: derive presence purely from which shots have content.
             cells = {(r, c): False
                     for r in range(need_shot_r) for c in range(need_shot_c)}
             for _r, _c, _text, sr, sc, _slr, _slc in filled:
                 cells[(sr, sc)] = True
             source = "the CSV's own blanks"
 
-        # SKIP/ALIGN are explicit literal keywords (unchanged, blank the ID
-        # since they're not a real device name) - anything else that looks
-        # like an alignment/PCM/target die (see _find_alignment_ids) also
-        # gets marked align, but keeps its own text as the die_id.
         align_ids = _find_alignment_ids(
             text for _r, _c, text, *_rest in filled
             if text.upper() not in ("SKIP", "ALIGN"))
@@ -2018,37 +1590,8 @@ class RecipeGenPanel(ttk.Frame):
                  f"(shot map from {source}).")
         self._sub_nb.select(2)
 
-    # ==================================================================
-    # LEGACY IMPORT (both systems) — .PMA / Recipe Generator .xls
-    #
-    # Same idea as Import CSV, just autofilling all three pages from an
-    # older file instead of a plain grid: dies-per-shot is only ever
-    # inferred from an actual slash/comma-separated die list in a cell (see
-    # _autofill_from_major_grid) - never guessed from the file format, since
-    # nothing about a .PMA or .xls otherwise says how many dies share a
-    # touchdown.
-    # ==================================================================
     def load_touchdowns_as_map(self, touchdowns: list, name: str, source_label: str,
                                save_as: Optional[str] = None):
-        """Same autofill _import_pma/_import_recipe_gen_xls do below, but
-        from an already-loaded touchdown list rather than re-reading a file
-        - what PmaProcessPanel.load_all (Electroglas's PMA Process tab)
-        calls so its LOAD ALL also builds a Wafer Builder map from the same
-        touchdowns it writes to the Run tab's wafer map, instead of leaving
-        Wafer Builder's Shot/Shot Map/Die Map untouched - which meant the
-        Run tab's "Wafer Builder" map source (set right after this by
-        _sync_views) only ever drew whatever stale/empty map Wafer Builder
-        already had, not the wafer LOAD ALL just loaded.
-
-        save_as: if given, this ALSO creates/overwrites a NAMED map on
-        disk (warning first if one with that name already exists) instead
-        of just mutating whatever map happened to be active in memory - a
-        second LOAD ALL for a different recipe used to silently clobber
-        an unrelated map the operator had open on the Wafer Builder tab,
-        with no name and nothing saved either. _import_pma/
-        _import_recipe_gen_xls (the manual buttons) do not pass this -
-        their existing "edit whatever's active" behaviour is unchanged.
-        """
         if not touchdowns:
             return
         save_path = None
@@ -2106,9 +1649,6 @@ class RecipeGenPanel(ttk.Frame):
             messagebox.showerror("Empty Recipe", "No touchdowns found — are "
                                  "the .PMV and .PMS siblings next to the .PMA?")
             return
-        # A .PMA only lists the touchdowns its recipe actually visits, not
-        # the whole wafer - so the Shot Map this produces is that sampled
-        # subset, same spirit as "autofill", not a claim of completeness.
         self.load_touchdowns_as_map(touchdowns, os.path.basename(path), "PMA recipe")
 
     def _import_recipe_gen_xls(self):
@@ -2135,13 +1675,6 @@ class RecipeGenPanel(ttk.Frame):
 
     def _autofill_from_major_grid(self, cells: Dict[tuple, str], name: str,
                                   source_label: str):
-        """cells: {(row, col): device_id_text} for touchdowns that are ON
-        the wafer - blank/absent positions are simply not keys here. Infers
-        Shot's size from the widest slash/comma-separated die list (default
-        1 - a single id with no separator is one die, never guessed
-        otherwise), Shot Map's presence from which positions have a cell,
-        and Die Map's ids from each cell's own die list in Shot's
-        column-major slot order."""
         if not cells:
             messagebox.showerror("Nothing to Import",
                                  f"{source_label} had no touchdowns.")

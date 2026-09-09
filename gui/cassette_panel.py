@@ -7,13 +7,6 @@ import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-# Pass-yield auto-continue threshold is a per-ATA-folder setting, not a
-# per-machine/global one - different projects have different real yield
-# expectations, so the default that makes sense for one is not necessarily
-# right for another. Same small-JSON-file-in-the-ATA-folder pattern used
-# throughout this codebase (e.g. instruments/nanoz_board.py's
-# save_probe_height) rather than a shared settings module - this file has
-# no existing dependency on one, and this is the only value it persists.
 YIELD_THRESHOLD_FILENAME = "ata_cassette_yield.json"
 
 
@@ -39,59 +32,20 @@ def load_yield_threshold(folder: str, default: float = 0.0) -> float:
 
 
 class CassettePanel(ttk.Frame):
-    """Drives a real cassette load end-to-end: one physical wafer per
-    cassette slot, each tagged with its own Lot ID/Wafer ID. The operator
-    loads the cassette, presses NEW CST on the prober, loads/starts the
-    FIRST wafer normally (ATA folder + ▶ Full Die, ▶ Test Selected, or
-    ▶ Run), then presses ▶ Arm here - from then on this panel watches for that run
-    to finish, auto-exports it (reusing the ATA Folder tab's own Export
-    Directory/Format), checks yield against the threshold (pausing if
-    it's too low instead of silently continuing to burn wafers on a bad
-    recipe/setup), and if it's fine sends U (unload/load next wafer) and
-    auto-starts the next slot's run in that SAME mode the first wafer
-    used (see _run_mode) - repeating until the list is exhausted or the
-    cassette reports no next wafer."""
 
     def __init__(self, parent, controller, ui):
         super().__init__(parent)
         self.controller = controller
         self.ui = ui
-        self._wafers: list[str] = []  # [wafer_id, ...] in slot order; lot_id is shared
+        self._wafers: list[str] = []
         self._slot_idx = 0
         self._armed = False
         self._paused_for_yield = False
-        # Set when an advance (L) or a run auto-start failed - e.g. a
-        # physical cassette/prober error on some slot (a real report: slot
-        # 4 of 6 was a bit faulty). Distinct from _paused_for_yield (a
-        # wafer finished fine, yield was just low) - here the slot in
-        # question never actually finished, so ▶ Continue has to RETRY it,
-        # not advance past it. _error_retry_kind says what to retry:
-        # "advance" (resend L - _advance_thread) if the load itself
-        # failed, "start" (just retry starting the run - _start_next_run)
-        # if the wafer loaded fine but the run failed to auto-start.
         self._paused_for_error = False
         self._error_retry_kind = "advance"
-        # Set while the "Move to Selected Slot" arm/target toggle is
-        # active - see _move_selected_slot_button.
         self._move_slot_armed = False
-        # "full" (▶ Full Die), "test" (▶ Test Selected), or "run" (▶ Run -
-        # the recipe's own saved touchdown list, Minor Moves included) -
-        # which one to repeat on every later slot, set from the first
-        # wafer's actual run (see _on_wafer_finished/_exec_start_site_list's
-        # own run_mode strings). Defaults to "full" so arming before that
-        # first run has even finished once still falls back to the old
-        # Full Die behavior.
         self._run_mode = "full"
-        # One entry per wafer actually finished this lot (not aborted runs -
-        # nothing real to report for those) - {"wafer_id", "pass_n",
-        # "fail_n", "tested", "pct"}, in slot order. Shown in the "lot
-        # complete" popup (_show_lot_summary); cleared by _reset_slot, same
-        # "start the whole list over" action that resets _slot_idx.
         self._lot_summary: list = []
-        # Which ATA folder self._yield_var currently reflects, so a later
-        # edit knows where to save without needing an explicit "current
-        # folder" argument threaded through - see on_ata_folder_loaded/
-        # _on_yield_edited.
         self._yield_folder: str | None = None
 
         self.rowconfigure(3, weight=1)
@@ -102,7 +56,6 @@ class CassettePanel(ttk.Frame):
         self._build_export()
         self._build_progress()
 
-    # ------------------------------------------------------------------ UI
 
     def _build_topbar(self):
         bar = ttk.Frame(self, padding=(6, 4))
@@ -116,14 +69,6 @@ class CassettePanel(ttk.Frame):
         self._stop_btn.pack(side="left", padx=4)
         ttk.Button(bar, text="Reset to Slot #1",
                   command=self._reset_slot).pack(side="left", padx=4)
-        # Bookkeeping-only, same as Reset to Slot #1 (no hardware command -
-        # the prober's cassette mechanism has no "jump to slot N", only
-        # sequential unload+load-next), just to any slot instead of always
-        # #1 - for a slot the operator skipped after an error, or one they
-        # want to re-run. Same arm/target-toggle pattern as the Run tab's
-        # own ➡ Move to Selected (instrument_panel._exec_move_selected_
-        # button): click to arm, click a slot ROW below, click again
-        # ("📍 Move") to confirm.
         self._move_slot_btn = ttk.Button(bar, text="Move to Selected Slot",
                                          command=self._move_selected_slot_button)
         self._move_slot_btn.pack(side="left", padx=4)
@@ -135,9 +80,6 @@ class CassettePanel(ttk.Frame):
         self._yield_var = tk.StringVar(value="0")
         yield_ent = ttk.Entry(bar, textvariable=self._yield_var, width=5)
         yield_ent.pack(side="left", padx=(2, 0))
-        # Saved per ATA folder (see on_ata_folder_loaded) - the operator can
-        # set a project's real default once and have it stick, rather than
-        # every session starting back at the flat 95% default.
         yield_ent.bind("<Return>", lambda _e: self._on_yield_edited())
         yield_ent.bind("<FocusOut>", lambda _e: self._on_yield_edited())
         ttk.Label(bar, text="% to auto-continue, else pause").pack(side="left", padx=(2, 0))
@@ -181,23 +123,15 @@ class CassettePanel(ttk.Frame):
             self._slot_tree.column(cid, width=width, anchor="center" if cid == "slot" else "w")
         self._slot_tree.grid(row=1, column=0, sticky="ew")
         self._slot_tree.bind("<Double-1>", lambda _e: self._edit_slot())
-        # Only acts while Move to Selected Slot is armed - see
-        # _move_selected_slot_button. Harmless no-op the rest of the time.
         self._slot_tree.bind("<<TreeviewSelect>>", self._on_move_slot_row_selected)
 
     def _build_export(self):
-        # Shares the "Cassette Slots" LabelFrame instead of its own - one
-        # section for slots + export, not two stacked ones.
         ef = ttk.Frame(self._slots_lf)
         ef.grid(row=2, column=0, sticky="ew", pady=(6, 0))
 
         self._auto_export_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(ef, text="Auto Export",
                        variable=self._auto_export_var).pack(side="left", padx=(0, 16))
-        # In addition to the Format export below (last-run-only, see
-        # MainLayout.get_last_run_results) - "Save to CSV" writes the plain
-        # self-contained results CSV (cmd_save_csv) the Results tab's own
-        # button already writes, same file every manual export uses.
         self._auto_export_csv_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(ef, text="Also Save CSV",
                        variable=self._auto_export_csv_var).pack(side="left", padx=(0, 16))
@@ -206,9 +140,6 @@ class CassettePanel(ttk.Frame):
         ttk.Entry(ef, textvariable=self.ui.export_path_var, width=32).pack(
             side="left", padx=6)
         ttk.Button(ef, text="Browse...", command=self._browse_export_dir).pack(side="left")
-        # Same quick-choice dropdown as the Results tab's own Export Path
-        # row (self.ui._export_dir_choices, built there) - Accretech-only,
-        # same as this whole Cassette tab.
         export_dir_choices = getattr(self.ui, "_export_dir_choices", None)
         if export_dir_choices:
             export_dir_var = tk.StringVar(value=next(iter(export_dir_choices)))
@@ -248,7 +179,6 @@ class CassettePanel(ttk.Frame):
         tsb.grid(row=0, column=1, sticky="ns")
         self._tree.configure(yscrollcommand=tsb.set)
 
-    # ------------------------------------------------------------- helpers
 
     def _log(self, msg: str):
         self.controller.log(msg)
@@ -260,10 +190,6 @@ class CassettePanel(ttk.Frame):
     def _set_locked(self, locked: bool):
         self._go_btn.config(state="disabled" if locked else "normal")
         self._stop_btn.config(state="normal" if locked else "disabled")
-        # Cassette automation is a "run" the same as a Recipe-tab-started
-        # one - switching system/bench or the ATA folder mid-lot would pull
-        # hardware out from under it just as badly. See
-        # AtomicaDashboard.set_run_lock.
         try:
             self.controller.set_run_lock(locked)
         except Exception:
@@ -307,10 +233,6 @@ class CassettePanel(ttk.Frame):
             return 0.0
 
     def on_ata_folder_loaded(self, folder_path: str):
-        """Called from MainLayout.load_ata_folder whenever a folder opens -
-        loads that folder's own saved yield threshold (95% if it's never
-        set one), and remembers the folder so a later edit knows where to
-        save."""
         self._yield_folder = folder_path
         self._yield_var.set(f"{load_yield_threshold(folder_path):g}")
 
@@ -319,7 +241,6 @@ class CassettePanel(ttk.Frame):
             return
         save_yield_threshold(self._yield_folder, self._yield_threshold())
 
-    # ------------------------------------------------------------ slot list
 
     def _lot_id(self) -> str:
         return self._lot_id_var.get().strip()
@@ -400,38 +321,13 @@ class CassettePanel(ttk.Frame):
         self._slot_idx = 0
         self._lot_summary = []
         self._redraw_slots()
-        # Keep the Run tab's own Lot ID/Wafer ID in sync with the slot
-        # tracking now points at - same reasoning as _move_selected_slot's
-        # own sync (see that method's comment): whatever the operator does
-        # next (manually start slot #1's run, or press ▶ Arm), the export
-        # this produces has to be tagged with the RIGHT wafer, not whatever
-        # was left over from wherever automation was before this reset.
         if self._wafers:
             self.ui.lot_id.set(self._lot_id())
             self.ui.wafer_id_var.set(self._wafers[0])
         self._log_event(1, "", "Reset — next Arm will start tracking from slot #1.")
 
-    # ------------------------------------------------------- move to slot
 
     def _move_selected_slot_button(self):
-        """📍 Move to Selected Slot - arm/target toggle, same shape as the
-        Run tab's own ➡ Move to Selected:
-
-          IDLE ("📍 Move to Selected Slot") --click--> ARMED, no target
-              ("✕ Cancel Move") --click a slot row--> ARMED, one target
-              ("📍 Move") --click--> executes, back to idle
-
-        Bookkeeping only - moves self._slot_idx (and this panel's own
-        _lot_summary is left untouched, unlike 🔄 Reset to Slot #1, since
-        this is meant for skipping/revisiting ONE slot mid-lot, not
-        restarting the whole thing). No hardware command is sent; the
-        prober's cassette mechanism has no "jump to slot N" of its own -
-        only sequential unload+load-next. If the physically-loaded wafer
-        doesn't actually match the slot moved to, that's on the operator
-        to have handled (📥 Load Next Wafer's own manual-recovery warning
-        says the same thing) - this only ever changes what the SOFTWARE
-        thinks the current slot is.
-        """
         if self._armed:
             messagebox.showerror("Automation Armed",
                                  "Stop automation before moving to a different slot.")
@@ -463,13 +359,6 @@ class CassettePanel(ttk.Frame):
         self._slot_idx = idx
         wafer_id = self._wafers[idx]
         lot_id = self._lot_id()
-        # VERY IMPORTANT (per the report this was built for): the next
-        # export - whether from a run the operator starts by hand, or one
-        # ▶ Arm auto-starts - has to be tagged with THIS slot's wafer, not
-        # whatever the Run tab's Lot ID/Wafer ID fields were last left at.
-        # _on_wafer_finished/_export_current always read self._wafers[self.
-        # _slot_idx] fresh at export time, so setting both here is enough -
-        # nothing downstream needs its own separate fix to "match".
         self.ui.lot_id.set(lot_id)
         self.ui.wafer_id_var.set(wafer_id)
         self._redraw_slots()
@@ -479,15 +368,8 @@ class CassettePanel(ttk.Frame):
             "slot. Make sure the physically loaded wafer actually matches before "
             "starting.")
 
-    # --------------------------------------------------------- manual unload
 
     def _manual_unload(self):
-        # "Abort" here means stopping cassette automation's own tracking
-        # (same as ⏹ Stop Automation: clear _armed, unhook _on_wafer_
-        # finished) - it is software bookkeeping only. No hardware
-        # emergency-stop (K) command is sent, same as ⏹ Stop Run on the
-        # Run tab (see _exec_abort's own comment) - K stays reserved for
-        # Prober Debug's dedicated Emergency Stop button.
         drv = self._drv()
         if not drv:
             self._log("[CASSETTE] Unload/Abort Lot: prober not connected.")
@@ -533,10 +415,6 @@ class CassettePanel(ttk.Frame):
             return
         def _run():
             self._log("[CASSETTE] >> L  (Unload / Load Next Wafer)")
-            # A real unload/load-next can take up to ~3 minutes - see
-            # AccretechUF200R._CASSETTE_TIMEOUT_S, whose default this
-            # relies on (240s, well past that) rather than a shorter
-            # value that could mistake a slow-but-normal cycle for a hang.
             stb = drv.cassette_unload_and_load_next()
             if stb == 70:
                 self._log("[CASSETTE] << STB=70  (next wafer loaded, start die positioned, chuck DOWN)")
@@ -545,7 +423,6 @@ class CassettePanel(ttk.Frame):
                          "or wafer load error.")
         threading.Thread(target=_run, daemon=True).start()
 
-    # ------------------------------------------------------------- automation
 
     def _arm(self):
         if not self._wafers:
@@ -594,11 +471,6 @@ class CassettePanel(ttk.Frame):
             else "disabled")
 
     def _continue_after_pause(self):
-        """▶ Continue - dispatches to whichever kind of pause is actually
-        active. A low-yield pause and a failed-advance pause need opposite
-        handling (advance past a finished wafer vs. retry one that never
-        finished), so they can't share one action even though they share
-        one button."""
         if self._armed:
             return
         if self._paused_for_error:
@@ -608,10 +480,6 @@ class CassettePanel(ttk.Frame):
             self._continue_after_yield()
 
     def _continue_after_yield(self):
-        """Resumes past the wafer that just paused automation for low yield
-        (already tested and exported, so this advances to the NEXT slot
-        exactly like a passing wafer would have, rather than re-running the
-        one that triggered the pause)."""
         self._set_paused_for_yield(False)
         lot_id = self._lot_id()
         self._slot_idx += 1
@@ -632,16 +500,6 @@ class CassettePanel(ttk.Frame):
         threading.Thread(target=self._advance_thread, daemon=True).start()
 
     def _continue_after_error(self):
-        """Resumes after a failed advance/run-start - e.g. a physical
-        cassette/prober error on some slot (a real report: slot 4 of 6 was
-        a bit faulty, threw an error, and automation stopped with no way
-        to resume). Retries the SAME slot (self._slot_idx is left exactly
-        where it was), not the next one - that wafer never actually
-        finished, so nothing has been tested or exported for it yet.
-        Assumes the operator has manually fixed whatever the physical
-        problem was before pressing this - there's no way to verify that
-        from software, same as ▶ Load Next Wafer's own manual-recovery
-        warning."""
         self._set_paused_for_error(False)
         lot_id = self._lot_id()
         self._armed = True
@@ -661,11 +519,6 @@ class CassettePanel(ttk.Frame):
 
     def _disarm(self, reason: str = ""):
         self._armed = False
-        # Default to "not resumable" - Stop/aborted-run all route through
-        # here too, and only a real pause (yield or error) should leave
-        # ▶ Continue enabled. _on_wafer_finished's yield branch and
-        # _advance_thread/_start_next_run's error branches all re-enable
-        # it right after calling this, for those specific cases.
         self._set_paused_for_yield(False)
         self._set_paused_for_error(False)
         if getattr(self.ui, "_exec_on_run_finished", None) is self._on_wafer_finished:
@@ -679,12 +532,6 @@ class CassettePanel(ttk.Frame):
                            run_mode: str = "full"):
         if not self._armed:
             return
-        # Whatever mode the FIRST wafer's run was actually started in
-        # (Full Die from the Run tab, or Test Selected) - every later slot
-        # repeats that exact same mode, not always Full Die. run_mode is
-        # None on an aborted run (nothing finished to read a mode from);
-        # keep whatever was last recorded rather than overwrite it with
-        # nothing.
         if run_mode:
             self._run_mode = run_mode
         lot_id, wafer_id = self._lot_id(), self._wafers[self._slot_idx]
@@ -732,13 +579,6 @@ class CassettePanel(ttk.Frame):
         threading.Thread(target=self._advance_thread, daemon=True).start()
 
     def _show_lot_summary(self):
-        """Popup shown once the whole lot is done (list exhausted, from
-        either _on_wafer_finished or _continue_after_pause) - every
-        wafer's yield, where this lot's exports actually went, and a
-        one-press final unload - the LAST wafer stays loaded on the chuck
-        (automation only ever sends L when advancing to a NEXT wafer, and
-        there is none after the last slot), so without this the operator
-        has to go find ⏏ Unload/Abort Lot separately to clear the chuck."""
         if self._lot_summary:
             lines = [f"{s['wafer_id']}:  {s['pass_n']}/{s['tested']} pass "
                     f"({s['pct']:.1f}%)" for s in self._lot_summary]
@@ -788,14 +628,6 @@ class CassettePanel(ttk.Frame):
         dlg.grab_set()
 
     def _export_current(self, lot_id: str, wafer_id: str):
-        # cmd_export_sql/cmd_save_csv return the path written, or None on
-        # any failure (including "no results for the last run" - e.g. a
-        # run that never actually started, silently leaving nothing to
-        # export for this wafer). Logged here, tagged with the wafer, on
-        # the CASSETTE tab's own log - not just the general Run tab log -
-        # so "did wafer N actually export" is answerable by scrolling the
-        # Cassette Automation Log alone, without a silent miss on a later
-        # wafer being mistaken for "only the first wafer exported".
         self.ui.lot_id.set(lot_id)
         self.ui.wafer_id_var.set(wafer_id)
         try:
@@ -826,8 +658,6 @@ class CassettePanel(ttk.Frame):
                 next_ready = False
             else:
                 self._log("[CASSETTE] >> L  (Unload / Load Next Wafer)")
-                # Same generous ceiling as the manual button - see
-                # AccretechUF200R._CASSETTE_TIMEOUT_S (240s).
                 next_ready = drv.cassette_unload_and_load_next() == 70
         except Exception as e:
             self._log(f"[CASSETTE] Unload/load-next error: {e}")
@@ -857,20 +687,8 @@ class CassettePanel(ttk.Frame):
     def _start_next_run(self):
         if not self._armed:
             return
-        # Repeat whatever mode the first wafer was actually started in - the
-        # three _exec_start_site_list callers report themselves as "full"
-        # (▶ Full Die), "test" (▶ Test Selected), or "run" (▶ Run - the
-        # recipe's own saved touchdown list, Minor Moves included). Falling
-        # into Full Die for an unrecognized mode used to be the ONLY
-        # fallback, which is exactly what silently ran Full Die instead of
-        # ▶ Run for every wafer after the first.
         try:
             if self._run_mode == "test":
-                # get_picked() is already empty by the time a run finishes
-                # (see _exec_start_site_list's own comment) - replay the
-                # exact sites the first wafer's Test Selected actually used,
-                # not whatever happens to be picked on the map right now
-                # (nothing), which used to fall back to 5 random sites.
                 sites = list(getattr(self.ui, "_exec_last_test_sites", None) or [])
                 if not sites:
                     self._log_event(self._slot_idx + 1, "",

@@ -50,13 +50,8 @@ class BoardIdentity:
     raw_ver: str
     raw_whoami: str
     usb_id: str
-    slot0: Optional[int] = None  # physical probe-head slot (1..N) wired to chip 0
-    slot1: Optional[int] = None  # physical probe-head slot (1..N) wired to chip 1
-    # Last COM port this board was actually found on, persisted purely as a
-    # hint so Connect All can try it directly instead of requiring a full
-    # Discover Boards scan every session - NOT identity (see save_known_boards),
-    # since Windows can still reassign it; if the board isn't there anymore
-    # this hint just fails quietly and the user re-runs Discover Boards.
+    slot0: Optional[int] = None
+    slot1: Optional[int] = None
     last_port: Optional[str] = None
 
     def chip_slots(self) -> dict:
@@ -285,40 +280,18 @@ def parse_env_data(data: bytes) -> dict:
     }
 
 
-# EEPROM "Configuration" layout — reverse-engineered live against a real
-# EK-IV board and Nanoz_EK.exe (2026-08-04), NOT from any vendor
-# documentation (neither reference PDF documents this). Nanoz_EK.exe embeds
-# named constants (EEPROM_PARAMS_ADDR, EEPROM_CYCLES_PAGE, etc.) via its own
-# Free Pascal RTTI/debug info, but those ADDR constants turned out to be
-# red herrings — the real byte address of a section is PAGE * PAGE_SIZE, not
-# the ADDR constant itself. Confirmed by diffing a real Sequence Duration
-# edit (5s -> 2s) against a live rdeep and finding it land exactly at the
-# predicted offset. Cycle-record layout confirmed against 2 real cycles
-# (32 bytes apart, matching CYCLE_RECORD_SIZE). Sequence-record layout is
-# only confirmed for Duration (offset +2) and Chip (offset +54) - only ONE
-# real sequence has ever been observed, so the exact stride between
-# consecutive sequence records, and the sub-order of the heater ramp
-# fields, are NOT yet confirmed. Read-only so far - no wreep support, since
-# writing to an unconfirmed offset could corrupt the board's stored config
-# with no way to detect or undo it (see gui/nanoz_panel.py's NanoZ_EK tab).
 EEPROM_PAGE_SIZE = 32
 EEPROM_PARAMS_ADDR = 0
 EEPROM_CYCLES_PAGE = 16
-EEPROM_CYCLES_ADDR = EEPROM_CYCLES_PAGE * EEPROM_PAGE_SIZE       # 512
+EEPROM_CYCLES_ADDR = EEPROM_CYCLES_PAGE * EEPROM_PAGE_SIZE
 EEPROM_SEQUENCES_PAGE = 64
-EEPROM_SEQUENCES_ADDR = EEPROM_SEQUENCES_PAGE * EEPROM_PAGE_SIZE  # 2048
+EEPROM_SEQUENCES_ADDR = EEPROM_SEQUENCES_PAGE * EEPROM_PAGE_SIZE
 EEPROM_CYCLE_RECORD_SIZE = 32
 MAX_CYCLES_NB = 48
 MAX_SEQUENCE_NB = 96
 
 
 def parse_params_block(data: bytes) -> dict:
-    """Decode the EEPROM_PARAMS_ADDR (0) region: device signature, cycle
-    count, periodicity, the board's own CAL-1/CAL-2 calibration offsets
-    (same values `calib ?` reports), and the two installed chips'
-    identity/age records. Confirmed field-for-field against Nanoz_EK.exe's
-    own display (Signature, CAL-1/CAL-2, and the "ID:"/"Age:" fields, whose
-    "D{W}L{X}-{Y}-{Z}" format matches this decode's w/x/y/z exactly)."""
     if len(data) < 152:
         raise NanoZError(f"PARAMS block too short: {len(data)} bytes (need >= 152)")
     signature = struct.unpack_from("<H", data, 0)[0]
@@ -343,10 +316,6 @@ def parse_params_block(data: bytes) -> dict:
 
 
 def parse_cycle_record(data: bytes) -> "dict | None":
-    """Decode one EEPROM_CYCLE_RECORD_SIZE-byte (32) cycle record. Returns
-    None if it's erased/unused (all 0xFF). wire_index is 0-based - Nanoz_EK's
-    UI "Cycle 1"/"Cycle 2" are wire index 0/1 (same off-by-one as `run <nn>`,
-    confirmed against the manual's error text for an out-of-range index)."""
     if len(data) < EEPROM_CYCLE_RECORD_SIZE:
         raise NanoZError(f"Cycle record too short: {len(data)} bytes")
     if all(b == 0xFF for b in data[:EEPROM_CYCLE_RECORD_SIZE]):
@@ -361,103 +330,31 @@ def parse_cycle_record(data: bytes) -> "dict | None":
            "sequence_refs": seq_refs}
 
 
-# Named-field byte offsets within a sequence record, mapped against the
-# real Nanoz_EK.exe field names from references/250723_User manual EK IV.pdf
-# section IV.D (Sequence: D.a "Sequence settings", D.b "Heater settings" /
-# Table 2). Values matched byte-for-byte against the UI for one real,
-# fully-populated sequence (2026-08-05) - see parse_sequence_records'
-# docstring for the full derivation and confidence notes per field. This
-# dict exists so a future `wreep`-based write can target the same offsets
-# used here for reading, without re-deriving them.
 SEQ_FIELD_OFFSETS = {
-    "duration_s": 2,        # CONFIRMED (live diff, 5s -> 2s)
-    "delay_s": 4,            # matches UI "Delay", not independently diffed
-    "sensor_mv": 6,           # manual: "one voltage applied for all sensors" -
-                              # UI has a single Sensors-NZG2 field; the board
-                              # stores 4 (offsets 6/10/14/18, all equal here)
-    "ramp_up_ms": 22,         # Table 2 row 3
-    "high_duration_ms": 26,   # Table 2 row 4
-    "ramp_down_ms": 30,       # Table 2 row 5
-    "low_duration_ms": 34,    # Table 2 row 6 - best-effort pairing, see docstring
-    "phase_shift_ms": 38,     # Table 2 row 7 - best-effort pairing, see docstring
-    "heater1_low_mv": 42,     # Table 2 row 1 (low state)
-    "heater2_low_mv": 46,     # Table 2 row 2 (low state)
-    "heater1_high_mv": 50,    # Table 2 row 1 (high state)
-    "heater2_high_mv": 54,    # Table 2 row 2 (high state)
-    "chip": 58,                # ambiguous vs offset 60, see docstring
-    "resolution_ms": 62,       # Table 2 row 8 - ambiguous vs offset 64
+    "duration_s": 2,
+    "delay_s": 4,
+    "sensor_mv": 6,
+    "ramp_up_ms": 22,
+    "high_duration_ms": 26,
+    "ramp_down_ms": 30,
+    "low_duration_ms": 34,
+    "phase_shift_ms": 38,
+    "heater1_low_mv": 42,
+    "heater2_low_mv": 46,
+    "heater1_high_mv": 50,
+    "heater2_high_mv": 54,
+    "chip": 58,
+    "resolution_ms": 62,
 }
 
 
 def parse_sequence_records(data: bytes) -> list:
-    """Scan the EEPROM_SEQUENCES_ADDR region for sequence records, each
-    terminated by a 0xFFFF marker. Layout confirmed 2026-08-04/05 via a
-    live diff against a real, fully-populated sequence (Sensors 1-4=900mV,
-    Heater times=100/200/300, Heater extra=400/500, Heater voltages=
-    1600/1700/1800/1900, Resolution=0 - every value below was cross-checked
-    byte-for-byte against Nanoz_EK.exe's own Sequence/Heater dialog for
-    this exact sequence). Field NAMES below (as opposed to raw offsets)
-    come from references/250723_User manual EK IV.pdf section IV.D, Table 2
-    "Heater control parameters":
-
-    offset 0            u16  wire_index (0-based)
-    offset 2   duration_s     i16   CONFIRMED (earlier diff, 5s -> 2s)
-    offset 4   delay_s        i16   matches UI "Delay: 0", not independently diffed
-    offset 6,10,14,18   i16 x4  sensor_mv/sensors_mv (Sensor 1-4) CONFIRMED
-                       value-match, though the manual says the real UI only
-                       exposes ONE "Sensors-NZG2" voltage applied to all
-                       sensors - offset 6 is treated as that canonical
-                       field. Each real value is immediately followed by a
-                       constant-800 int16 at +8/+12/+16/+20 whose meaning
-                       is still unknown (returned as sensors_pad_raw).
-    offset 22 ramp_up_ms, 26 high_duration_ms, 30 ramp_down_ms   i16 x3
-                       (the UI's 3 "Times in ms" boxes) CONFIRMED value
-                       match against Table 2 rows 3/4/5 by process of
-                       elimination (3 values, 3 remaining un-matched Table-2
-                       time rows before Low state duration/Phase shift) -
-                       each followed by a constant-0 int16 (unused/reserved)
-    offset 34 low_duration_ms, 38 phase_shift_ms   i16 x2 (the UI's 2
-                       bottom boxes, mislabeled "Voltages in mV" in the
-                       dialog but drawn as horizontal ms-style double-
-                       arrows) - values match Table 2 rows 6/7 by
-                       elimination, this specific pairing/order is a
-                       best-effort guess, not yet isolated by its own diff.
-                       followed by constant-0 padding.
-    offset 42 heater1_low_mv, 46 heater2_low_mv, 50 heater1_high_mv,
-    54 heater2_high_mv   i16 x4 (order found on the wire: 1600,1800,1700,
-                       1900 - i.e. NOT left-to-right as drawn; grouped as
-                       [H1_low, H2_low, H1_high, H2_high] since 1600<1700
-                       and 1800<1900, matching Table 2 rows 1/2's "low &
-                       high states") CONFIRMED value match - each followed
-                       by a constant-2000 int16, meaning unknown (returned
-                       as heater_v_pad_raw)
-    offset 58, 60      i16, i16  both =1 in this sample - one of these is
-                       almost certainly Chip (a different dialog for this
-                       same sequence showed "Chip: 1"), but with both equal
-                       to 1 there's no way yet to tell which is Chip vs an
-                       unrelated flag. NOT the old +54 guess - that offset
-                       is actually heater1_high_mv now that a real,
-                       non-erased sequence has been observed; +54 only
-                       looked like Chip=1 before because the old baseline
-                       record's later bytes hadn't been written yet.
-    offset 62, 64      i16, i16  both =0 - resolution_ms (Table 2 row 8,
-                       "Time resolution", matches UI's "Resolution: Time: 0
-                       ms") is presumably one of these, unconfirmed which.
-    offset 66          0xFFFF terminator
-
-    Everything above except duration_s is unconfirmed-by-elimination only
-    (matched by value equality/count against one real sample and the
-    manual's Table 2, not yet isolated by changing that one field alone
-    and re-diffing) - treat sensor/heater-times/heater-voltages as high-
-    confidence but chip/resolution candidates as genuinely ambiguous, and
-    the low_duration/phase_shift and heater-low/high pairings as
-    best-effort, until a future diff isolates them."""
     records = []
     start = 0
     n = len(data)
     while start < n:
         if data[start] == 0xFF and (start + 1 >= n or data[start + 1] == 0xFF):
-            break  # ran into erased/unused space - no more records
+            break
         term = data.find(b"\xff\xff", start)
         if term == -1:
             end = n
@@ -524,29 +421,6 @@ def parse_sequence_records(data: bytes) -> list:
 
 
 def encode_sequence_patch(original_record: bytes, fields: dict) -> bytearray:
-    """Patch a real sequence record (as returned by rdeep/parse_sequence_records)
-    with new values for the D-portion (Sequence settings + Heater settings)
-    fields ONLY - every other byte (wire_index, the sensor/heater padding
-    int16s, the ambiguous Chip/Resolution offsets, and the 0xFFFF
-    terminator) is left exactly as read. Never construct a record from
-    scratch - always patch a real one, since large parts of the layout
-    (padding meaning, whether stride varies) are not understood well
-    enough to safely regenerate from nothing.
-
-    `fields` keys (all optional - omitted keys keep their original byte
-    value): duration_s, delay_s, sensor_mv (single value, written to all 4
-    real sensor slots per the manual's "one voltage for all sensors"),
-    ramp_up_ms, high_duration_ms, ramp_down_ms, low_duration_ms,
-    phase_shift_ms, heater1_low_mv, heater2_low_mv, heater1_high_mv,
-    heater2_high_mv. chip/resolution_ms are deliberately NOT accepted here
-    - their byte offset is still ambiguous (see parse_sequence_records'
-    docstring) and a wrong guess could silently overwrite an unrelated,
-    still-unknown field with no checksum-level way to detect it.
-
-    Duration/Delay/heater timing/heater voltage fields are packed as
-    UNSIGNED 16-bit (manual's documented ranges go up to 60000, which
-    overflows a signed int16) - sensor_mv is packed SIGNED since the
-    manual documents a negative sensor bias range (NZGS2: +/-0.8V)."""
     buf = bytearray(original_record)
 
     def put_u(offset, value):
@@ -584,13 +458,6 @@ BOARDS_MEMORY_FILENAME = "ata_nanoz_boards.json"
 
 
 def save_known_boards(folder, identities: list) -> None:
-    """Persist known boards keyed by serial number, NOT COM port - a board's
-    port is assigned by Windows on connect and can (and does) change across
-    replugs/reboots, so it's not a stable identity and isn't saved. The
-    current port IS saved separately as "last_port" though - purely a hint
-    (see BoardIdentity.last_port), not identity. Dedupes by serial_number
-    defensively (last one wins) so a transient in-memory duplicate never
-    gets written twice."""
     by_sn: dict[str, dict] = {}
     for i in identities:
         by_sn[i.serial_number or f"(no S/N) {i.port}"] = {
@@ -603,10 +470,6 @@ def save_known_boards(folder, identities: list) -> None:
 
 
 def load_known_boards(folder) -> list[BoardIdentity]:
-    """Returns each known board with port="" - its real, LIVE port (if any)
-    is only confirmed by actually finding it this session (Discover Boards,
-    or Connect All trying last_port directly); see save_known_boards for why
-    port itself isn't persisted, only last_port as a hint."""
     path = Path(folder) / BOARDS_MEMORY_FILENAME
     if not path.is_file():
         return []
@@ -619,7 +482,6 @@ def load_known_boards(folder) -> list[BoardIdentity]:
             port="", serial_number=row.get("serial_number", ""),
             firmware=row.get("firmware", ""), signature=row.get("signature", ""),
             raw_ver="", raw_whoami="", usb_id=row.get("usb_id", ""),
-            # Legacy single-slot files (pre-two-chip-per-board) had "slot" -> migrate to slot0.
             slot0=row.get("slot0", row.get("slot")),
             slot1=row.get("slot1"),
             last_port=row.get("last_port"),
@@ -632,10 +494,6 @@ PROBE_HEIGHT_FILENAME = "ata_nanoz_probe_height.json"
 
 
 def save_probe_height(folder, n: int) -> None:
-    """Persist the operator's configured probe-head slot count for THIS ATA
-    folder - a probe card's physical property (Setup tab's Probe Head Slots
-    control), not a hardware constant fixed at 20 (see DEFAULT_PROBE_HEIGHT's
-    own comment) - some probe cards are 1x2, 1x3, or single-die."""
     path = Path(folder) / PROBE_HEIGHT_FILENAME
     path.write_text(json.dumps({"probe_height": int(n)}), encoding="utf-8")
 
@@ -656,18 +514,10 @@ WAFER_PLAN_XLSX_FILENAME = "ata_nanoz_wafer_plan.xlsx"
 
 
 def wafer_plan_path_in_folder(folder) -> str:
-    """The fixed path a wafer plan .xlsx lives at once imported into this ATA
-    folder - see import_wafer_plan_into_folder. Whatever the user originally
-    picked from disk (e.g. references/nautilusprobeplan.xlsx, which is only
-    an example/template) is copied here so the folder is self-contained and
-    doesn't depend on that source file still existing at its original path."""
     return str(Path(folder) / WAFER_PLAN_XLSX_FILENAME)
 
 
 def import_wafer_plan_into_folder(folder, source_path: str) -> str:
-    """Copies source_path into the ATA folder at its fixed name (overwriting
-    any previous import) and returns that new path. Does not parse it -
-    caller should load_wafer_plan the returned path to validate/use it."""
     dest = wafer_plan_path_in_folder(folder)
     if os.path.abspath(source_path) != os.path.abspath(dest):
         shutil.copyfile(source_path, dest)
@@ -738,14 +588,6 @@ def save_named_recipe(folder, name: str, shots: list, wafer_plan_path: str | Non
     data["active"] = name
     if wafer_plan_path:
         data.setdefault("wafer_plan_paths", {})[name] = wafer_plan_path
-    # The touchdown LIST (which dies - see nanoz_panel._touchdowns) is the
-    # source Compute Recipe built these shots from, saved alongside them so
-    # re-opening a recipe restores what to hand back to Compute Recipe, not
-    # just its already-computed result - same as the normal (non-NanoZ)
-    # Recipe tab's own touchdown table, which is part of the saved recipe.
-    # None (the default) leaves whatever was there before untouched, so
-    # code that saves shots without knowing about the touchdown list (the
-    # legacy-migration path) can't silently wipe it.
     if touchdowns is not None:
         data.setdefault("touchdowns", {})[name] = touchdowns
     _write_recipes_file(folder, data)
@@ -762,8 +604,6 @@ def load_named_touchdowns(folder, name: str) -> list[dict]:
 
 
 def get_recipe_wafer_plan_path(folder, name: str) -> str | None:
-    """The source .xlsx path a named recipe's shots were generated from, if any
-    was recorded — lets the GUI auto-reload the wafer map alongside the recipe."""
     return _load_recipes_file(folder).get("wafer_plan_paths", {}).get(name)
 
 
@@ -785,8 +625,6 @@ def delete_named_recipe(folder, name: str) -> None:
 
 
 def load_active_recipe(folder):
-    """Returns (name, shots, wafer_plan_path) for the last-saved/loaded recipe,
-    or (None, [], None)."""
     data = _load_recipes_file(folder)
     name = data.get("active")
     if not name or name not in data["recipes"]:
@@ -796,9 +634,6 @@ def load_active_recipe(folder):
 
 
 def migrate_legacy_recipe(folder):
-    """One-time migration of the old single-recipe file (pre-naming) into the
-    named scheme, under the name 'Imported'. Returns the name if it migrated
-    something, else None. No-op if any named recipe already exists."""
     legacy_path = Path(folder) / LEGACY_RECIPE_FILENAME
     if not legacy_path.is_file() or _load_recipes_file(folder)["recipes"]:
         return None
@@ -813,42 +648,22 @@ def migrate_legacy_recipe(folder):
     return "Imported"
 
 
-# ── Wafer-plan (.xlsx) import ───────────────────────────────────────────────
-# Parses a Nautilus-style wafer-plan workbook - "Die Map" (row/col grid of
-# die serials; fill color marks product vs reference/skip-test) and
-# "Touchdown List" (flat list of Die IDs - the top die of each touchdown, in
-# order) sheets - into the geometry needed to auto-generate the NanoZ recipe:
-# which of the probe head's slots (1..probe_height, top to bottom) land on a
-# real product die, a reference/monitor die, or off the wafer entirely, for
-# every touchdown. A third "Probe Overlay" sheet exists in the workbook too,
-# but it's a human-readable visual (BOLD marks touchdown starts) generated
-# by the same macro that produces Touchdown List - since Touchdown List is
-# already that macro's computed result, Probe Overlay isn't parsed here.
-
 try:
     import openpyxl
     _OPENPYXL_AVAILABLE = True
 except ImportError:
     _OPENPYXL_AVAILABLE = False
 
-# Die Map fill color for a reference/monitor (skip-test) die - everything
-# else with a die serial in it is a normal product die.
 _REFERENCE_FILL_RGBS = frozenset({"FFC00000"})
 
-# The probe head's physical slot count (top to bottom) - varies BY PROBE
-# CARD (some are 1x2, 1x3, or single-die, not every probe card is a full
-# 1x20), so it's not a fixed hardware constant - it's the fallback before
-# the operator has set anything on the Setup tab's Probe Head Slots control
-# (see save_probe_height/load_probe_height), and never carried by the
-# wafer-plan workbook itself either way.
 DEFAULT_PROBE_HEIGHT = 20
 
 
 @dataclass
 class WaferPlan:
-    dies: dict          # (row, col) -> {"serial": str, "status": "product"|"reference"}
-    serial_to_rc: dict  # serial.upper() -> (row, col)
-    touchdowns: list     # [(row, col), ...] top die of each touchdown, sheet order
+    dies: dict
+    serial_to_rc: dict
+    touchdowns: list
     probe_height: int = DEFAULT_PROBE_HEIGHT
 
 
@@ -864,8 +679,6 @@ def load_wafer_plan(path, probe_height: int = DEFAULT_PROBE_HEIGHT) -> WaferPlan
     die_ws = wb["Die Map"]
     dies: dict[tuple[int, int], dict] = {}
     serial_to_rc: dict[str, tuple[int, int]] = {}
-    # Row 1 is a title, row 2 is the "row\col" header, data starts row 3;
-    # column A holds the row-number label, die data starts column B.
     for row in die_ws.iter_rows(min_row=3, min_col=2):
         for cell in row:
             if not cell.value:
@@ -882,7 +695,6 @@ def load_wafer_plan(path, probe_height: int = DEFAULT_PROBE_HEIGHT) -> WaferPlan
     td_ws = wb["Touchdown List"]
     touchdowns = []
     missing = []
-    # Row 1 is a title, row 2 is the "Die ID" header, data starts row 3.
     for row in td_ws.iter_rows(min_row=3, max_col=1, values_only=True):
         serial = row[0] if row else None
         if not serial:
@@ -905,27 +717,6 @@ def load_wafer_plan(path, probe_height: int = DEFAULT_PROBE_HEIGHT) -> WaferPlan
 
 
 def tile_windows_covering_wafer(die_keys, window_height: int) -> list:
-    """The top die of every window needed to cover a wafer map with a 1 x
-    window_height comb (a NanoZ probe head's real physical shape), no
-    overlap, per column - not read from any imported plan, computed
-    straight off the map's own real (row, col) die positions.
-
-    Per column that has at least one real die: tile its rows into
-    consecutive window_height-tall windows starting at that column's own
-    topmost die, continuing past its bottommost die if window_height
-    doesn't divide the column's die count evenly (a window may run off
-    the wafer edge there - that's expected, not an error). Each window
-    contributes the topmost REAL die inside its own row-span; a window
-    whose entire row-span has no real die (fully off-wafer) contributes
-    nothing, since there is nothing there to touch down on.
-
-    die_keys: any iterable of (row, col) tuples (e.g. WaferMapPanel.dies.
-    keys()). Order of the returned list is column-major, top-to-bottom
-    within each column, ascending by column - a plain, deterministic scan
-    order rather than the wafer's own physical layout, which does not
-    matter here since every returned (row, col) is just picked/highlighted
-    on the map, not run in a particular order by this function itself.
-    """
     window_height = max(1, int(window_height or 1))
     rows_by_col: dict = {}
     for r, c in die_keys:
@@ -946,23 +737,12 @@ def tile_windows_covering_wafer(die_keys, window_height: int) -> list:
 
 def classify_die(plan: "WaferPlan", row: int, col: int,
                  row_offset: int = 0, col_offset: int = 0) -> str:
-    """Returns 'product', 'reference', or 'off_wafer' for a given (row, col).
-
-    row_offset/col_offset translate FROM the caller's coordinate space INTO
-    the plan's own Die Map numbering before the lookup - the wafer plan's
-    row/col (1-indexed, top-left origin) is not the same grid as Accretech's
-    (wafer-center-relative, can be negative), see
-    NanoZPanel._wafer_plan_offset. Pass 0, 0 (the default) when row/col are
-    already in the plan's own space."""
     d = plan.dies.get((row - row_offset, col - col_offset))
     return d["status"] if d else "off_wafer"
 
 
 def touchdown_slot_exclusions(die_col: int, start_row: int, end_row: int, plan: "WaferPlan",
                               row_offset: int = 0, col_offset: int = 0) -> dict:
-    """Slot (1..probe_height, top to bottom of this touchdown) -> exclusion reason,
-    or None if that slot lands on a normal product die that should be run.
-    die_col/start_row/end_row are in the caller's space; see classify_die."""
     result = {}
     for slot in range(1, plan.probe_height + 1):
         physical_row = start_row + slot - 1
@@ -976,7 +756,6 @@ def touchdown_slot_exclusions(die_col: int, start_row: int, end_row: int, plan: 
 
 
 def wafer_plan_die_grid(plan: "WaferPlan") -> list[dict]:
-    """Every on-wafer die (product or reference) as {row, col, status, serial}."""
     return [{"row": r, "col": c, "status": d["status"], "serial": d["serial"]}
            for (r, c), d in sorted(plan.dies.items())]
 
@@ -999,33 +778,6 @@ def _build_shot(plan: "WaferPlan", die_col: int, start: int, end: int, ports: li
                 slots_by_port: dict, label: str,
                 row_offset: int = 0, col_offset: int = 0,
                 already_covered: "set | None" = None) -> dict:
-    """Each NanoZ board has two independent chips (0 and 1), each wired to its
-    own physical probe-head slot — `slots_by_port[port]` is a {"0": slot_or_None,
-    "1": slot_or_None} dict (see BoardIdentity.chip_slots()). A `run <nn>`
-    always actuates both chips together (confirmed in the vendor manual, no
-    per-chip run command exists), so a board is only excluded from a shot if
-    BOTH of its chips land off a normal product die for this touchdown — if
-    at least one chip has a real die there, the board still needs to run.
-    "chip_reasons" (port -> {"0": reason_or_None, "1": reason_or_None}) records
-    the per-chip detail for display/filtering; "board_reasons" (port -> reason
-    string, or None if it runs) is the board-level summary, independent of
-    whatever the manual excluded_boards toggle grid does to it afterwards.
-
-    die_col/start/end are in the CALLER's coordinate space (e.g. Accretech's)
-    and are stored as-is in the returned shot - only the classify_die lookups
-    are translated into the plan's own space via row_offset/col_offset, so
-    the shot's die_column/td_start_row/td_end_row stay usable for driving
-    the physical prober.
-
-    already_covered, when given, is a {(row, col), ...} set of dies (in the
-    same caller coordinate space as die_col/start/end) already probed by an
-    earlier touchdown THIS call is part of a sequence with - a chip landing
-    on one of those is excluded too (reason "already probed by an earlier
-    touchdown in this recipe"), same as landing off-wafer, and every chip
-    this call does NOT exclude is added to the set before returning, so the
-    next call in the sequence sees it. None (the default) skips this
-    entirely - used by callers that only care about a single touchdown in
-    isolation (active_ports_for_window), not a sequence."""
     exclusions = touchdown_slot_exclusions(die_col, start, end, plan, row_offset, col_offset)
     excluded_boards = set()
     board_reasons = {}
@@ -1068,29 +820,10 @@ def _build_shot(plan: "WaferPlan", die_col: int, start: int, end: int, ports: li
 def build_shots_from_windows(plan: "WaferPlan", windows: list, ports: list,
                              slots_by_port: dict,
                              row_offset: int = 0, col_offset: int = 0) -> list[dict]:
-    """One shot per (row, col) window - each is a manually-positioned 1-wide x
-    probe_height-tall touchdown footprint (e.g. dies the user highlighted on
-    the Run tab's wafer map, each imagined as a touchdown's top die), rather
-    than the wafer plan's own pre-computed touchdown list. windows are in the
-    caller's coordinate space; see _build_shot.
-
-    windows is expected top-to-bottom, left-to-right (the caller sorts by
-    (row, col) - see nanoz_panel._compute_recipe) - a running "already
-    probed" set is threaded through _build_shot call to call in that order,
-    so a board whose chip would re-probe a die an EARLIER touchdown in this
-    same list already covered gets excluded from the later one instead of
-    running it twice. Windows only partially overlapping (the normal case -
-    see _build_shot's own docstring) still run, just with the
-    already-covered chip(s) skipped rather than the whole touchdown."""
     shots = []
     covered: set = set()
     for start_row, die_col in windows:
         end = start_row + plan.probe_height - 1
-        # The die ID of the selected (top/anchor) die, in the plan's own
-        # coordinate space - what an operator can actually recognize this
-        # touchdown by, rather than a raw grid position. Falls back to a
-        # plain row/col if that die isn't on the plan (an off-map pick,
-        # or plan/map coordinates that don't line up) - never blank.
         d = plan.dies.get((start_row - row_offset, die_col - col_offset))
         label = d["serial"] if d else f"Col {die_col}, Row {start_row}"
         shots.append(_build_shot(plan, die_col, start_row, end, ports, slots_by_port, label,
@@ -1101,12 +834,6 @@ def build_shots_from_windows(plan: "WaferPlan", windows: list, ports: list,
 def active_ports_for_window(plan: "WaferPlan", die_col: int, start_row: int,
                             ports: list, slots_by_port: dict,
                             row_offset: int = 0, col_offset: int = 0) -> list:
-    """Ports whose chip(s) land on a real product die within the touchdown
-    window starting at start_row in die_col (caller's coordinate space) - the
-    same boards Compute Recipe/build_shots_from_windows would leave
-    un-excluded for a touchdown anchored here, used by Run Cycle (Active)/
-    Pause (Active) to scope to the current position window instead of
-    "every connected board"."""
     end_row = start_row + plan.probe_height - 1
     shot = _build_shot(plan, die_col, start_row, end_row, ports, slots_by_port, "",
                        row_offset, col_offset)
@@ -1121,20 +848,7 @@ class NanoZBoard:
         self.identity = identity
         self.port = identity.port
         self.out_queue = out_queue
-        # die_provider(chip) -> (row, col, die_id); chip is "0"/"1" for a
-        # per-chip SPL reading, or None for a board-wide ENV reading.
         self._die_provider = die_provider or (lambda chip: (None, None, None))
-        # Snapshot of which die each chip ("0"/"1") - and the board-wide ENV
-        # reading, key None - is over, taken once when a cycle is armed
-        # (NanoZPanel._arm_settling_skip -> set_active_die) rather than
-        # re-queried live per packet. A cycle can take a while to fully
-        # drain; if the prober/position window has already moved on to the
-        # next touchdown by the time the last few packets of THIS cycle
-        # arrive, live-querying would mis-tag them with the new position
-        # instead of the one they were actually measured at. Falls back to
-        # the live die_provider for any chip key never armed (e.g. a raw
-        # "run" sent straight from the console's Send box, bypassing the
-        # normal arm step).
         self._active_die: dict = {}
         self.env_interval_s = env_interval_s
         self.ser: Optional[serial.Serial] = None
@@ -1151,9 +865,6 @@ class NanoZBoard:
         return self._die_provider(chip_key)
 
     def set_active_die(self, die_map: dict):
-        """Called right when a cycle is armed - fixes which die each chip
-        (and ENV, key None) is over for every packet this cycle produces,
-        immune to the prober moving on to the next touchdown mid-drain."""
         self._active_die = dict(die_map)
 
     @property
@@ -1198,10 +909,6 @@ class NanoZBoard:
             send_ascii(self.ser, "pause")
 
     def request_eeprom(self, addr: int, length: int):
-        """Read-only: request a raw non-volatile-memory block (rdeep). The
-        response arrives asynchronously as a "kind": "eep" item on
-        out_queue, decoded by _handle_eep. Does not actuate anything on the
-        board - safe to call at any time, including mid-cycle."""
         if self.ser:
             send_ascii(self.ser, f"rdeep {addr} {length}")
 
@@ -1210,16 +917,6 @@ class NanoZBoard:
             send_ascii(self.ser, cmd)
 
     def write_eeprom(self, addr: int, data: bytes):
-        """Write a raw block to EEPROM (wreep). DANGEROUS - see the NanoZ_EK
-        tab and project notes: only ever call this with a byte-for-byte
-        patch of a record that was just read (encode_sequence_patch), never
-        a from-scratch record, since large parts of the layout aren't
-        understood well enough to safely regenerate. Per the protocol doc,
-        the board rejects the write outright (no partial/garbled write) if
-        the checksum doesn't match what it computes, or if the full <len>
-        bytes don't arrive within ~1s of the command line - the caller
-        should still verify afterward with a fresh rdeep, since a rejection
-        is only reported as a text error line, not a return value here."""
         if not self.ser:
             return
         cs = 0

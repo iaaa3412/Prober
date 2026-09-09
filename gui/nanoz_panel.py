@@ -50,11 +50,6 @@ def _parse_q_response(raw: str):
 
 
 class NanoZPanel(ttk.Frame):
-    # Raw wire-protocol header chip (0/1, what's actually keyed/stored
-    # everywhere internally) -> display label matching Nanoz_EK.exe's own
-    # 1/2 numbering + confirmed physical side (see nanoz-board-protocol
-    # memory, 2026-08-03: header chip=0 -> Nanoz_EK "Chip 1" -> right side;
-    # header chip=1 -> "Chip 2" -> left side).
     _CHIP_LABELS = {"0": "1 (right)", "1": "2 (left)"}
     _CHIP_LABEL_TO_VALUE = {v: k for k, v in _CHIP_LABELS.items()}
 
@@ -62,18 +57,6 @@ class NanoZPanel(ttk.Frame):
         super().__init__(parent)
         self.controller = controller
         self._main_layout = main_layout
-        # Which prober this instance is driving - "accretech" (native G/J/
-        # STB wafer-map walk) or "electroglas" (relative die-stepping via
-        # goto_die, software-anchored datum - no onboard wafer map). Board
-        # I/O, the shot list/named recipes, Pass/Fail Limits, Charts,
-        # Results and NanoZ_EK are ALL prober-agnostic (they only touch
-        # self._boards/self._current_rc/self._wafer_plan, never the prober
-        # driver directly) and stay completely unbranched - only the Run
-        # tab's own manual-move handlers and wafer-plan/wafer-map data
-        # source differ, branched inline where they occur rather than
-        # duplicated into a second class, so Electroglas gets the exact
-        # same Recipe/Charts/Results/NanoZ_EK code Accretech does, not a
-        # hand-kept copy that can drift.
         self._system = system
 
         self._boards: dict[str, nzb.NanoZBoard] = {}
@@ -85,40 +68,20 @@ class NanoZPanel(ttk.Frame):
         self._run_mode: str | None = None
         self._lot_thread: threading.Thread | None = None
         self._current_rc = (None, None)
-        # Electroglas only - the datum anchor eg_pma_run_panel.py's own
-        # "Set Initial" already uses: (dx, dy) between a real ?P reading
-        # and the wafer grid's own (col, row) for the die the operator
-        # names as where the chuck physically is. Electroglas has no
-        # onboard wafer map (electroglas_2001x.py's own docstring), so
-        # there is nothing equivalent to Accretech's First Die (G) - this
-        # is what establishes "where am I" instead. None until "Chuck Is
-        # Set" is pressed.
         self._eg_origin_offset: "tuple | None" = None
-        # Held for the duration of any XY query (manual Refresh XY or the
-        # auto-refresh below) so a cycle trigger that lands while a refresh
-        # is still in flight waits for it instead of firing against a
-        # stale _current_rc - otherwise every reading from that cycle gets
-        # tagged with the die the prober was AT before the move, not where
-        # it actually moved to.
         self._xy_refresh_lock = threading.Lock()
-        self._position_window_items: list = []  # canvas rect ids for the 1x20 position window
-        self._position_window_dies: list = []  # [{"row","col","present","die_id"}, ...] current window
+        self._position_window_items: list = []
+        self._position_window_dies: list = []
         self._touchdown_errors = 0
         self._touchdown_packets = 0
         self._spl_total = 0
         self._env_total = 0
         self._pass_count = 0
         self._fail_count = 0
-        # Cassette automation hooks into this - set to a callable
-        # fn(pass_n, fail_n, aborted) to be notified whenever a Recipe Run
-        # finishes, instead of polling self._running.
         self._on_wafer_finished = None
         self._spl_path: str | None = None
         self._env_path: str | None = None
         self._latest_spl: dict[tuple[str, str], dict] = {}
-        # Global Pass/Fail Limits (Setup tab) - one metric + one min/max per
-        # sensor (S1-S4), applied to every die's own S1-S4 readings during a
-        # Recipe run. Blank bound = that side isn't checked for that sensor.
         self._pf_metric_var = tk.StringVar(value="Current")
         self._pf_limit_vars: dict[int, tuple] = {
             s: (tk.StringVar(value=""), tk.StringVar(value="")) for s in (1, 2, 3, 4)
@@ -127,12 +90,6 @@ class NanoZPanel(ttk.Frame):
         self._latest_eep: dict[str, dict] = {}
         self._spl_history: dict[tuple[str, str], "collections.deque"] = {}
         self._env_history: dict[str, "collections.deque"] = {}
-        # Settling: the first _SETTLING_SKIP_COUNT SPL packets after a cycle
-        # starts on a given board+chip are still charted (raw, unfiltered -
-        # useful to actually see the settling transient) but excluded from
-        # everything else "of record": _latest_spl (so Results/pass-fail
-        # never judge off a settling reading), the Results tab's averages,
-        # and the SPL CSV export.
         self._SETTLING_SKIP_COUNT = 2
         self._skip_spl_count: dict[tuple[str, str], int] = {}
         self._cycle_start_time: "dt.datetime | None" = None
@@ -141,20 +98,11 @@ class NanoZPanel(ttk.Frame):
         self._chart_t0_by_port: dict[str, "dt.datetime"] = {}
         self._mark_cycle_start()
         self._shots: list[dict] = []
-        # The touchdown LIST - which dies this recipe should probe, built up
-        # by hand (map selection/die-ID search/etc, same tools the normal
-        # Recipe tab's own touchdown table has) BEFORE Compute Recipe turns
-        # each one into an actual board-window shot. Deliberately separate
-        # from self._shots: this is "which dies", editable and re-orderable
-        # without touching board assignments; _shots is "what Compute Recipe
-        # decided to do about it", rebuilt from this list every time it runs.
         self._touchdowns: list[dict] = []
         self._recipe_name_var = tk.StringVar(value="")
         self._current_recipe_name: str | None = None
         self._wafer_plan: "nzb.WaferPlan | None" = None
         self._wafer_plan_path: str | None = None
-        # The Wafer Map tab always shows exactly what this system's own
-        # Run tab shows - see _draw_run_map_nzmap.
         self._nzmap_dies_by_rc: dict[tuple[int, int], dict] = {}
         self._show_nzmap_labels_var = tk.BooleanVar(value=True)
         self._nzmap_label_artists: list = []
@@ -170,9 +118,6 @@ class NanoZPanel(ttk.Frame):
 
     @property
     def _nanoz_ata_folder(self):
-        """NanoZ shares the same ATA folder as the rest of the Accretech tab
-        - selecting the NanoZ tab (see MainLayout._on_top_tab_changed) makes
-        sure it's pointed at NAUTATA rather than tracking its own folder."""
         return getattr(self._main_layout, "_ata_folder", None)
 
     def _build_ui(self):
@@ -189,30 +134,10 @@ class NanoZPanel(ttk.Frame):
 
         self._build_setup_tab(sub_nb)
         self._build_recipe_tab(sub_nb)
-        # Wafer Map tab removed - its own 4-source picker (Probe Plan/
-        # Accretech/CSV/Wafer Builder) duplicated what the Run tab's own
-        # self.wafer_map (WaferMapPanel) already does by auto-loading from
-        # the ATA folder the same way every other tab's wafer map does -
-        # "Wafer Builder" was already the option that matched that. The
-        # underlying _nzmap_*/_draw_*_nzmap/_on_nzmap_* methods below are
-        # left in place (unused, self-contained - nothing else calls them)
-        # rather than bulk-deleted in the same pass as this UI change.
         self._build_run_tab(sub_nb)
         self._build_charts_tab(sub_nb)
         self._build_results_tab(sub_nb)
         if self._system == "accretech":
-            # Cassette automation is built entirely on
-            # drv.cassette_unload_and_load_next() - an Accretech-only STB=70
-            # unload/load-next handshake the Electroglas driver has no
-            # equivalent for - and its auto-run target (_start_recipe_run)
-            # is already refused as Accretech-only on Electroglas anyway
-            # (see that method's own guard). Showing the tab there would
-            # just be a Cassette workflow that silently can't do anything;
-            # leaving it Accretech-only avoids that rather than needing a
-            # runtime warning inside a tab that shouldn't be reachable at
-            # all. The _cst_* methods below are otherwise unbranched (they
-            # never touch self._system) so they still work unchanged for
-            # Accretech.
             self._build_cassette_tab(sub_nb)
         self._build_nanoz_ek_tab(sub_nb)
         self._build_prober_debug_tab(sub_nb)
@@ -229,11 +154,6 @@ class NanoZPanel(ttk.Frame):
         self.log_text.grid(row=0, column=0, sticky="nsew", padx=(2, 0), pady=2)
 
     def _build_prober_debug_tab(self, nb):
-        """Same ProberDebugPanel/EgProberDebugPanel the normal Debug tab
-        uses on either system (instrument_panel._tab_prober_debug) - the
-        prober/hardware is physically the same UF200R or 2001X either
-        way, so its low-level bring-up controls apply unchanged here.
-        Placed last, after NanoZ_EK."""
         tab = ttk.Frame(nb)
         nb.add(tab, text="Prober Debug")
         tab.rowconfigure(0, weight=1)
@@ -243,11 +163,6 @@ class NanoZPanel(ttk.Frame):
         self.prober_debug.grid(row=0, column=0, sticky="nsew")
 
     def _make_scrollable_tab(self, nb, title: str) -> ttk.Frame:
-        """Adds a tab to nb that scrolls vertically (mouse wheel or the
-        scrollbar) once its content is taller than the window - same Canvas
-        + Scrollbar + inner-Frame pattern as build_address_panel in
-        instrument_connection_panel.py. Returns the inner frame to build
-        the tab's actual content into."""
         outer = ttk.Frame(nb)
         nb.add(outer, text=title)
         outer.rowconfigure(0, weight=1)
@@ -268,7 +183,7 @@ class NanoZPanel(ttk.Frame):
             canvas.yview_scroll(-1 if e.delta > 0 else 1, "units")
         canvas.bind("<MouseWheel>", _wheel)
         inner.bind("<MouseWheel>", _wheel)
-        inner.nb_page = outer  # the actual notebook page, for nb.select(...)
+        inner.nb_page = outer
         return inner
 
     def _build_setup_tab(self, nb):
@@ -295,12 +210,6 @@ class NanoZPanel(ttk.Frame):
         self.env_interval_var = tk.StringVar(value="1.0")
         ttk.Entry(brow, textvariable=self.env_interval_var, width=6).pack(side="left", padx=(4, 0))
         ttk.Separator(brow, orient="vertical").pack(side="left", fill="y", padx=8)
-        # Probe head slot count - a PROBE CARD property, not a fixed
-        # hardware constant: some cards are a full 1x20, others 1x2, 1x3,
-        # or single-die. Drives everything sized off it - the wafer-plan
-        # window height (Compute Recipe's touchdown windows), the Run tab's
-        # position-window box on the map, and the valid range for manually
-        # assigning a board's slot (Setup tab's Slot columns, below).
         ttk.Label(brow, text="Number of dies:").pack(side="left")
         self._probe_height_var = tk.IntVar(value=nzb.DEFAULT_PROBE_HEIGHT)
         self._probe_height_spin = ttk.Spinbox(
@@ -311,7 +220,6 @@ class NanoZPanel(ttk.Frame):
         self._probe_height_spin.bind("<FocusOut>", lambda _e: self._on_probe_height_change())
 
         cols = ("port", "sn", "sig", "slot0", "slot1", "status")
-        # height=11 - all 10 boards visible at once with no internal scroll needed.
         self._board_tree = ttk.Treeview(boards_lf, columns=cols, show="headings", height=11)
         heads = [("port", "Port", 70), ("sn", "S/N", 130),
                  ("sig", "Signature", 70), ("slot0", "Slot (chip 0)", 90),
@@ -322,9 +230,6 @@ class NanoZPanel(ttk.Frame):
         self._board_tree.pack(fill="x", padx=6, pady=6)
         self._board_tree.bind("<Double-1>", self._on_board_tree_double_click)
 
-        # Board Console - was its own tab; Connect Prober lived here too but
-        # is redundant (the Instruments tab already connects the same shared
-        # prober driver), so this section replaces it entirely.
         console_lf = ttk.LabelFrame(tab, text="Board Console")
         console_lf.grid(row=1, column=0, sticky="ew", padx=8, pady=(4, 8))
         console_lf.columnconfigure(0, weight=1)
@@ -339,11 +244,6 @@ class NanoZPanel(ttk.Frame):
         self._console_board_cb.pack(side="left", padx=(4, 12))
         self._console_board_cb.bind("<<ComboboxSelected>>", self._on_console_board_picked)
         ttk.Label(pick, text="Chip:").pack(side="left")
-        # console_chip_var stays the raw "0"/"1" wire-protocol header value -
-        # it's read as a dict key in several places (_latest_spl, history).
-        # Only the Combobox's own display text uses Nanoz_EK.exe's 1/2
-        # numbering + physical side, via the same label<->value decoupling
-        # already used for the board S/N picker.
         self.console_chip_var = tk.StringVar(value="0")
         self._console_chip_label_var = tk.StringVar(value=self._CHIP_LABELS["0"])
         self._console_chip_cb = ttk.Combobox(
@@ -466,26 +366,7 @@ class NanoZPanel(ttk.Frame):
                                             foreground="#6b7280")
         self._recipe_active_lbl.pack(side="left", padx=(12, 0))
 
-        # No manual Import Wafer Plan (.xlsx) / Refresh From Wafer Builder
-        # buttons here anymore - Compute Recipe now refreshes
-        # self._wafer_plan itself (Electroglas: straight from the Wafer
-        # Builder tab; Accretech: whatever was auto-loaded for this ATA
-        # folder in on_ata_folder_loaded) rather than requiring a manual
-        # step first. The status label that used to live here is gone too -
-        # every other reference to it (_recipe_plan_status_lbl) is already
-        # guarded with getattr(..., None), so this is safe to drop.
 
-        # -- touchdown list -----------------------------------------------
-        # Same shape as the normal (non-NanoZ) Recipe tab's own "Touchdowns"
-        # table: build up WHICH dies this recipe probes by hand (map
-        # selection, die-ID search, ...), independent of board assignments.
-        # 🧮 Compute Recipe then turns this list into actual shots - each
-        # touchdown becomes a probe-height-tall window at that die's column,
-        # top-to-bottom/left-to-right, with a board excluded from a later
-        # touchdown if every die it would land on was already probed by an
-        # earlier one in this same list (see nanoz_board.build_shots_from_
-        # windows) - so touchdowns can overlap without re-running the same
-        # die twice, without needing to be perfectly non-overlapping by hand.
         td_lf = ttk.LabelFrame(tab, text="Touchdowns (which dies this recipe probes)", padding=6)
         td_lf.grid(row=3, column=0, sticky="ew", padx=8, pady=(0, 4))
         td_lf.columnconfigure(0, weight=1)
@@ -510,13 +391,6 @@ class NanoZPanel(ttk.Frame):
         ttk.Entry(td_bar, textvariable=self._nz_td_find_var, width=14).pack(
             side="left", padx=(4, 0))
         ttk.Separator(td_bar, orient="vertical").pack(side="left", fill="y", padx=12)
-        # Same role as the normal (non-NanoZ) Recipe tab's own "Take from
-        # map selection": select dies on the Run tab's map, then build this
-        # recipe's touchdowns from them - here that also needs a wafer plan
-        # to classify dies and compute each board's probe-height window
-        # (_compute_recipe's own docstring/log covers why), so it keeps its
-        # own name rather than claiming the identical label for a
-        # materially different computation.
         self._btn_compute_recipe = ttk.Button(td_bar, text="🧮 Compute Recipe",
                                               command=self._compute_recipe)
         self._btn_compute_recipe.pack(side="left")
@@ -556,8 +430,6 @@ class NanoZPanel(ttk.Frame):
         tree_frame = ttk.Frame(tab)
         tree_frame.grid(row=5, column=0, sticky="ew", padx=8, pady=(0, 8))
         tree_frame.columnconfigure(0, weight=1)
-        # Shrunk from 16 to make room for Pass/Fail Limits below - the tab
-        # scrolls now, and the tree has its own scrollbar for longer recipes.
         self._recipe_tree = ttk.Treeview(tree_frame, columns=("seq",), show="headings", height=8,
                                          selectmode="extended")
         self._recipe_tree.grid(row=0, column=0, sticky="ew")
@@ -635,10 +507,6 @@ class NanoZPanel(ttk.Frame):
         self._redraw_touchdown_list()
 
     def _redraw_touchdown_list(self):
-        """Run tab mirror of the Recipe tab's shot list - same underlying
-        self._shots, just a compact # / label / active-count view meant for
-        double-clicking a row to jump the prober straight to that touchdown
-        (see _on_touchdown_double_click/_goto_shot), not for editing."""
         tree = getattr(self, "_touchdown_tree", None)
         if tree is None:
             return
@@ -696,15 +564,6 @@ class NanoZPanel(ttk.Frame):
         self._recipe_active_lbl.config(text=active_text)
         self._run_recipe_active_lbl.config(text=active_text)
 
-    # -- New / Rename / Save / Delete - same three-way split the normal
-    # (non-NanoZ) Recipe tab uses: New always asks for a name and starts a
-    # fresh saved recipe (a copy of whatever's currently loaded, same as
-    # RecipePanel._new_recipe); Rename changes the CURRENT recipe's name in
-    # place, keeping its content; Save persists the current shots/touchdowns
-    # under whatever name is already active, with no prompt at all - same
-    # as RecipePanel._save(). Previously this was one "Save As..." button
-    # that always prompted, whether you were naming a brand new recipe or
-    # just persisting an edit to one that already had a name.
     def _new_named_recipe(self):
         folder = self._nanoz_ata_folder
         if not folder:
@@ -761,8 +620,6 @@ class NanoZPanel(ttk.Frame):
                                  "Load an ATA folder from the toolbar first.")
             return
         if not self._current_recipe_name:
-            # Nothing named yet to save into - same starting point as the
-            # normal tab always having at least "(unsaved)" to name via New.
             self._new_named_recipe()
             return
         nzb.save_named_recipe(folder, self._current_recipe_name, self._shots,
@@ -789,20 +646,11 @@ class NanoZPanel(ttk.Frame):
         self._refresh_recipe_name_cb()
         self._log_main(f"Recipe '{name}' loaded — {len(self._shots)} shot(s), "
                        f"{len(self._touchdowns)} touchdown(s).")
-        # Highlight the recipe's touchdowns on the Run tab's map, same as
-        # the normal Accretech/Electroglas Recipe tab does on load - reuses
-        # the same "Push to map" logic the manual button already does.
         if self._touchdowns:
             self._nz_td_to_map()
         self._autoload_wafer_plan_for_recipe(folder, name)
 
     def _autoload_wafer_plan_for_recipe(self, folder: str, name: str):
-        """Legacy path: reload the .xlsx wafer plan an older, recipe-saved
-        wafer_plan_path points to, if one was recorded (from back when
-        Import Wafer Plan lived on the Recipe tab and always saved a recipe).
-        New imports copy themselves into the ATA folder at a fixed name
-        instead (nzb.wafer_plan_path_in_folder) - this only still matters
-        for recipes saved before that change."""
         path = nzb.get_recipe_wafer_plan_path(folder, name)
         if path:
             self._autoload_wafer_plan(path, note=f"Recipe '{name}' remembers wafer plan ")
@@ -814,11 +662,6 @@ class NanoZPanel(ttk.Frame):
             self._log_main(f"{note}'{os.path.basename(path)}' but that file is no longer there — "
                            "Wafer Map tab left as-is.")
             return
-        # Resolved on the MAIN thread, before spawning - self._probe_height()
-        # reads a Tk IntVar, and calling that from the background thread
-        # below would risk the same "main thread is not in main loop" class
-        # of bug this codebase already guards against elsewhere (see
-        # pma_wafer_panel.py's workbook loader).
         probe_height = self._probe_height()
         threading.Thread(target=self._autoload_wafer_plan_thread, args=(path, probe_height),
                          daemon=True).start()
@@ -941,13 +784,6 @@ class NanoZPanel(ttk.Frame):
         self._rename_shot(self._recipe_tree.index(row_iid))
 
     def _compute_recipe(self):
-        # Self-sufficient: refresh the plan itself rather than requiring a
-        # separate manual step first (the old Import Wafer Plan/Refresh
-        # From Wafer Builder buttons, removed). Electroglas can always
-        # rebuild it straight from the Wafer Builder tab; Accretech has
-        # no such live source, so this only ever has what
-        # on_ata_folder_loaded already auto-loaded for this folder (a
-        # previously-imported .xlsx saved into it).
         if self._system == "electroglas":
             self._eg_refresh_wafer_plan_from_wafer_builder(silent=True)
         if not self._wafer_plan:
@@ -960,10 +796,6 @@ class NanoZPanel(ttk.Frame):
                    " Import one on the Wafer Builder tab, or place a wafer plan "
                    f".xlsx in this folder ({nzb.WAFER_PLAN_XLSX_FILENAME})."))
             return
-        # Left to right, then top to bottom across the wafer map - i.e. row
-        # order first (top to bottom), columns within a row left to right -
-        # build_shots_from_windows relies on exactly this order for its own
-        # "don't re-probe a die an earlier touchdown already covered" logic.
         sites = sorted(((t["row"], t["col"]) for t in self._touchdowns),
                        key=lambda rc: (rc[0], rc[1]))
         if not sites:
@@ -984,13 +816,6 @@ class NanoZPanel(ttk.Frame):
         shots = nzb.build_shots_from_windows(self._wafer_plan, sites, ports, slots_by_port,
                                              row_off, col_off)
         self._shots = shots
-        # If a recipe is already active (loaded/previously saved), save the
-        # recomputed touchdowns straight back into it - same "picking a map
-        # selection sets and saves this recipe's touchdowns immediately"
-        # behavior the normal (non-NanoZ) Recipe tab's own Take from map
-        # selection button already has. Only a brand new, never-yet-named
-        # recipe is left unsaved, since there is no name to write to until
-        # the operator picks one via ＋ New.
         active_name = self._current_recipe_name
         if active_name:
             self._persist_recipe()
@@ -1002,15 +827,6 @@ class NanoZPanel(ttk.Frame):
             + (f" and saved to '{active_name}'." if active_name
                else " — not saved yet."))
 
-    # -- touchdown list -----------------------------------------------------
-    #
-    # Same tools/shape as the normal (non-NanoZ) Recipe tab's own touchdown
-    # table (recipe_panel.py's _build_sites) - build up WHICH dies this
-    # recipe probes independent of board assignments, which Compute Recipe
-    # then turns into actual shots. 🎯 Pull Shots has no NanoZ equivalent
-    # (it depends on Wafer Builder's shot-template/die-numbering concept,
-    # which NanoZ's wafer-plan-driven model doesn't have) - left out rather
-    # than faked.
 
     def _nz_refresh_td(self):
         tree = self._nz_td_tree
@@ -1111,26 +927,6 @@ class NanoZPanel(ttk.Frame):
             self._persist_recipe()
 
     def _eg_refresh_wafer_plan_from_wafer_builder(self, silent: bool = False):
-        """Electroglas only - builds self._wafer_plan directly from the
-        Wafer Builder tab's Die Map (main_layout.recipe_gen) instead of
-        requiring an .xlsx import. Touchdown
-        windows are computed by grouping each column's dies into
-        probe-height-tall chunks top-down - the touchdown's reference
-        point is always the TOP die of the column, per the physical probe
-        card's own convention.
-
-        silent=True (used by on_ata_folder_loaded, an automatic callback
-        that can fire for an ATA folder load on a totally unrelated tab/
-        system - see nanoz_mode.NanozModeLayout.on_ata_folder_loaded,
-        which forwards to every built NanoZPanel holder regardless of
-        which one is actually on screen) logs a failure instead of
-        popping a modal messagebox - a blocking dialog appearing out of
-        nowhere while the operator is doing something else entirely (e.g.
-        working the normal Accretech tabs) is its own bug, not a fair
-        price for "no Wafer Builder die map yet" being a completely
-        routine, expected state. The interactive button (no silent=)
-        keeps the popup - there the operator just clicked it and wants an
-        answer immediately."""
         def _warn(msg):
             if silent:
                 self._log_main(f"Wafer Builder auto-refresh: {msg}")
@@ -1193,14 +989,6 @@ class NanoZPanel(ttk.Frame):
 
         src_row = ttk.Frame(tab)
         src_row.grid(row=1, column=0, sticky="w", padx=8, pady=(0, 4))
-        # No source picker - this always shows exactly what this system's
-        # own Run tab shows right now, read straight off that tab's live
-        # WaferMapPanel (main_layout._exec_wafer_map) rather than a
-        # separate import/reconstruction - see _draw_run_map_nzmap's own
-        # docstring. There used to be four switchable sources here
-        # (Probe Plan .xlsx, Accretech, CSV, Wafer Builder), none of
-        # which was guaranteed to be "whatever the Run tab shows," and
-        # most of which never carried real die IDs at all.
         ttk.Label(src_row, text="View: Run Tab").pack(side="left", padx=(0, 4))
         ttk.Checkbutton(src_row, text="🏷 Die Labels", variable=self._show_nzmap_labels_var,
                        command=self._update_visible_nzmap_labels).pack(side="left", padx=(12, 0))
@@ -1249,25 +1037,6 @@ class NanoZPanel(ttk.Frame):
         self._draw_run_map_nzmap()
 
     def _draw_run_map_nzmap(self):
-        """The exact same wafer map this system's own Run tab is showing
-        right now - same dies, same die IDs, no separate copy to drift
-        out of sync.
-
-        main_layout._exec_wafer_map is not a NanoZ-owned object - it's
-        the identical WaferMapPanel instance Accretech's or Electroglas's
-        own Run tab canvas is drawn from (main_layout IS that system's
-        MainLayout - see nanoz_mode.py._build_holder, which hands this
-        panel controller._by_system[system]["ui"] itself, not a copy).
-        Reading .dies (row, col -> canvas item) and .die_ids (row, col ->
-        label) straight from it means "what NanoZ shows" can never
-        disagree with "what the Run tab shows" - the two other sources
-        that looked similar (Accretech: this tab's OWN separate
-        WaferMapPanel, self.wafer_map, loaded independently and never
-        given die IDs at all, only row/col; Wafer Builder: recipe_gen's
-        in-memory Die Map, which can differ from the map actually
-        published/active if that tab has a different project open) were
-        exactly the kind of second copy this avoids.
-        """
         wm = getattr(self._main_layout, "_exec_wafer_map", None)
         rcs = sorted(wm.dies.keys()) if wm is not None else []
         if not rcs:
@@ -1275,9 +1044,6 @@ class NanoZPanel(ttk.Frame):
                 "No wafer map loaded on the Run tab yet.")
             return
         die_ids = wm.die_ids or {}
-        # "status" matches the shape _on_nzmap_click reads for every
-        # non-"accretech" source (d['status']) - "run_tab" here, same as
-        # "wafer_builder"/"reference"/etc. the other sources use.
         self._nzmap_dies_by_rc = {
             rc: {"row": rc[0], "col": rc[1], "serial": die_ids.get(rc, ""),
                 "status": "run_tab"}
@@ -1305,11 +1071,6 @@ class NanoZPanel(ttk.Frame):
         self._nzmap_canvas.draw_idle()
 
     def _draw_overlay_labels_on(self, wm, die_ids_by_rc: dict) -> list:
-        # Same pattern as the Accretech Run tab's overlay
-        # (_exec_draw_overlay_labels_on in instrument_panel.py) - draws
-        # text items directly on the WaferMapPanel canvas, not matplotlib,
-        # since self.wafer_map (this Run tab's map) is the same canvas-based
-        # WaferMapPanel class Accretech uses.
         items = []
         for rc, label_text in die_ids_by_rc.items():
             item = wm.dies.get(rc)
@@ -1332,15 +1093,6 @@ class NanoZPanel(ttk.Frame):
         items.clear()
 
     def _redraw_overlay_on_run_map(self):
-        # Labels come straight from self.wafer_map.die_ids now - the loader
-        # (on_ata_folder_loaded, both systems) already populates that with
-        # every die's real ID for free, the same way the map file itself
-        # gets read. The old Overlay dialog (matching a separate PMA/XLS/
-        # CSV source onto the Accretech map by hand, with an offset to
-        # nudge) and Save/Load Selected Map (persisting that match to a
-        # CSV so it didn't have to be redone) were both working around not
-        # having that - removed as legacy now that the real IDs are just
-        # already there, every load, on both systems.
         self._clear_overlay_labels(self.wafer_map, self._overlay_items)
         die_ids = self.wafer_map.die_ids
         if not die_ids:
@@ -1350,7 +1102,7 @@ class NanoZPanel(ttk.Frame):
             self._update_overlay_visibility()
         self._update_position_window()
 
-    _OVERLAY_MIN_DIE_PX = 22  # below this on-screen die width, overlay text is unreadable clutter
+    _OVERLAY_MIN_DIE_PX = 22
 
     def _update_overlay_visibility(self):
         if not self._overlay_items:
@@ -1379,8 +1131,6 @@ class NanoZPanel(ttk.Frame):
         self._position_window_items = []
 
     def _die_pitch(self):
-        """Canvas (dx, dy) between two adjacent-row dies, so the window can be
-        drawn/extrapolated at the map's current zoom/pan without redrawing it."""
         wm = self.wafer_map
         by_col: dict = {}
         for (r, c) in wm.dies:
@@ -1407,15 +1157,6 @@ class NanoZPanel(ttk.Frame):
         return best_rc, best_item
 
     def _update_position_window(self):
-        """Draw a single rectangle spanning a 1-wide x N-tall window (N = the
-        Setup tab's Probe head slots) on the Run tab wafer map, anchored at
-        the current die (X/Y) and extending down - the same footprint as
-        one physical touchdown on the probe head. One outline instead of N
-        individual cell outlines is much easier to read at a glance. Also
-        records, per cell, whether a die actually exists there
-        (self._position_window_dies) so the recipe/board logic can see what
-        is (or isn't) under the head right now, even though only the
-        overall box is drawn."""
         self._clear_position_window()
         self._position_window_dies = []
         row, col = self._current_rc
@@ -1464,32 +1205,12 @@ class NanoZPanel(ttk.Frame):
             f"{present_n}/{window_size} dies present")
 
     def _wafer_plan_offset(self) -> tuple:
-        """(row_offset, col_offset) translating the wafer plan's own Die Map
-        numbering (1-indexed, top-left origin) onto Accretech's wafer-map
-        grid (center-relative, can be negative) - the two are NOT the same
-        coordinate system despite both driving the same physical wafer, so
-        every plan lookup/pick needs this applied. There's no shared die-ID
-        to match by (Accretech's map has no die IDs), so this matches grid
-        centroids instead - same approach as the CSV/PMA overlay's
-        centroid_offset, and exact here since both grids cover the same
-        8125-die/105x105 footprint one-for-one."""
         if not self._wafer_plan or not self.wafer_map.dies:
             return (0, 0)
         plan_grid = nzb.wafer_plan_die_grid(self._wafer_plan)
         return centroid_offset(plan_grid, self.wafer_map.dies.keys())
 
     def _select_plan(self):
-        # Does NOT read an imported wafer plan (see nzb.tile_windows_
-        # covering_wafer's own docstring) - purely computed from the LIVE
-        # wafer map's own real (row, col) die positions and the Setup
-        # tab's "Number of dies" window height, tiling 1 x N windows down
-        # each column with no overlap (a window may run off the wafer edge
-        # at a column's end - expected) and picking the top real die of
-        # each. Only ever picks/highlights dies on the map, exactly like
-        # Select All or a manual click - never touches the wafer map or
-        # die IDs, and saves nothing on its own; the operator still saves
-        # (＋ New / 💾 Save) whenever they're ready to, same as any other
-        # touchdown-picking button on this tab.
         window_height = self._probe_height()
         die_keys = list(self.wafer_map.dies.keys())
         if not die_keys:
@@ -1581,11 +1302,6 @@ class NanoZPanel(ttk.Frame):
         self._nzmap_canvas.draw_idle()
 
     def _build_run_tab(self, nb):
-        # Layout mirrors the Accretech/Electroglas "Run" tab in
-        # instrument_panel.py (_tab_execution2): a top control bar, then a
-        # horizontal split of [manual controls + status panels] | [wafer
-        # map] | [pass/fail] - same organization, same widget names/
-        # commands as before, just regrouped to match.
         tab = ttk.Frame(nb)
         nb.add(tab, text="Run")
         tab.columnconfigure(0, weight=1)
@@ -1619,17 +1335,8 @@ class NanoZPanel(ttk.Frame):
 
         self.start_btn = ttk.Button(ctrl, text="▶  Start", command=self._start_recipe_run)
         self.start_btn.pack(side="left", padx=4, pady=5)
-        # Not packed - Test Die and Run Recipe are no longer separate
-        # buttons; Start follows the computed recipe directly
-        # (_start_recipe_run). Kept unpacked, not deleted, since
-        # _start_test_die/_start_recipe_run/_finish_lot still toggle their
-        # state alongside start_btn/stop_btn.
         self.test_btn = ttk.Button(ctrl, text="▶  Test Die", command=self._start_test_die)
         self.recipe_btn = ttk.Button(ctrl, text="▶  Run Recipe", command=self._start_recipe_run)
-        # Compute Recipe itself now lives on the Recipe tab (see
-        # _build_recipe_tab) - same relocation as the normal Recipe tab's
-        # own "Take from map selection" button, which also acts on the Run
-        # tab's map from the Recipe tab rather than living next to the map.
 
         ttk.Separator(ctrl, orient="vertical").pack(side="left", fill="y", padx=10, pady=4)
 
@@ -1680,14 +1387,6 @@ class NanoZPanel(ttk.Frame):
         self._btn_manual_zdown = ttk.Button(pos_lf, text="⬇ Z Down", command=self._manual_z_down)
         self._btn_manual_zdown.grid(row=1, column=1, sticky="ew", padx=(1, 0), pady=1)
         if self._system == "electroglas":
-            # No First Die (G) equivalent - Electroglas has no onboard
-            # wafer map, so its die-grid zero moves every time the
-            # operator re-aligns (electroglas_2001x.py's own docstring).
-            # "Chuck Is Set" establishes the datum instead (see
-            # _eg_set_anchor) - everything downstream of it (Next Die,
-            # Move to Selected, Measure) is unchanged from Accretech's own
-            # versions once self._current_rc/self._eg_origin_offset are
-            # right.
             self._btn_manual_first_die = ttk.Button(
                 pos_lf, text="⚓ Chuck Is Set", command=self._eg_set_anchor)
             self._btn_manual_first_die.grid(row=2, column=0, sticky="ew", padx=(0, 1), pady=1)
@@ -1721,28 +1420,15 @@ class NanoZPanel(ttk.Frame):
             ttk.Entry(pitch_row, textvariable=self._eg_pitch_y_var, width=6).pack(side="left")
             ttk.Button(pos_lf, text="Set/Verify Pitch on Prober", command=self._eg_pitch_action
                       ).grid(row=6, column=0, columnspan=2, sticky="ew", pady=(1, 4))
-        # Fixed row 7 regardless of system - rows 3-6 are only occupied on
-        # Electroglas (anchor/pitch controls above); an unused row with no
-        # widget in it takes zero grid space, so this leaves a harmless
-        # gap on Accretech rather than needing two different row numbers.
         self._btn_reset_counts = ttk.Button(pos_lf, text="Reset Counts", command=self._reset_counts)
         self._btn_reset_counts.grid(row=7, column=0, columnspan=2, sticky="ew", pady=1)
         self._btn_manual_next_die = ttk.Button(pos_lf, text="▶▶ Next Die (Recipe)",
                                                command=self._manual_next_die)
         self._btn_manual_next_die.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(1, 0))
-        # Only meaningful with exactly one die picked on the wafer map (see
-        # _on_sites_changed for that toggle) - mirrors Accretech's Run tab
-        # button of the same name. Deliberately NOT in _LOCKABLE_WIDGETS:
-        # that list's blanket state="normal" on unlock would fight the
-        # pick-count toggle: _manual_move_to_selected's own _run_guard
-        # check covers "no run in progress" instead.
         self._btn_manual_move_selected = ttk.Button(
             pos_lf, text="➡ Move to Selected",
             command=self._manual_move_to_selected, state="disabled")
         self._btn_manual_move_selected.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(1, 0))
-        # Not gridded - Measure is no longer a separate manual control. Kept
-        # unpacked, not deleted, since _LOCKABLE_WIDGETS still toggles its
-        # state alongside the rest of Manual Control.
         self._btn_measure = ttk.Button(pos_lf, text="Measure", command=self._manual_measure)
 
         td_lf = ttk.LabelFrame(left_col, text="Recipe — Touchdown List "
@@ -1802,12 +1488,6 @@ class NanoZPanel(ttk.Frame):
         self.wafer_map.grid(row=2, column=0, sticky="nsew", padx=6, pady=(0, 6))
         self.wafer_map.enable_picking(on_change=self._on_sites_changed)
         self.wafer_map.on_redraw = self._redraw_overlay_on_run_map
-        # Overlay labels only make sense zoomed in enough to read - same
-        # spirit as the Wafer Map tab's viewport-driven label visibility
-        # (_update_visible_nzmap_labels), just measured off actual on-canvas
-        # die pixel size since this map is tkinter Canvas-based, not
-        # matplotlib. Bound with add="+" so the map's own pan/zoom/reset
-        # bindings (set up inside WaferMapPanel.__init__) still run first.
         for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>", "<Double-Button-1>"):
             self.wafer_map.canvas.bind(seq, lambda _e: self._update_overlay_visibility(), add="+")
 
@@ -1901,32 +1581,11 @@ class NanoZPanel(ttk.Frame):
             toolbar = NavigationToolbar2Tk(self._chart_canvas, tab, pack_toolbar=False)
             toolbar.update()
             toolbar.grid(row=3, column=0, sticky="ew", padx=8, pady=(0, 8))
-            # Default view auto-scrolls to the last _CHART_WINDOW_S seconds.
-            # Panning/zooming via the toolbar above (or scroll-back) drops
-            # into "browsing history" mode and stops auto-scrolling until
-            # ▶ Jump to Live is pressed - otherwise the 300ms redraw loop
-            # would fight any manual pan attempt.
             self._chart_follow_live = True
             self._chart_programmatic_xlim = False
             self._chart_ax_v.callbacks.connect("xlim_changed", self._on_chart_xlim_changed)
-            # xlim_changed alone isn't reliable for pausing mid-drag - some
-            # backends only fire it once, on button release, so the 300ms
-            # loop could still redraw (and snap the view back to live)
-            # partway through a pan gesture. Pausing on the raw mouse-down
-            # inside the chart canvas instead guarantees nothing resets the
-            # view once the user has started interacting with it.
             self._chart_canvas.mpl_connect("button_press_event", self._on_chart_button_press)
-            # Mouse-wheel zoom on the time axis, same pattern as the Wafer
-            # Map tab's scroll-zoom - the toolbar's own zoom-rectangle button
-            # already allowed manual zoom, but scroll is much faster for "just
-            # narrow the time window a bit". All three stacked subplots share
-            # the x-axis (sharex=), so zooming from any one of them moves all
-            # three together; each subplot's Y-axis keeps auto-fitting to
-            # whatever's visible on every redraw regardless (matplotlib's
-            # default autoscale, never overridden), so only X needs a manual
-            # zoom control here.
             self._chart_canvas.mpl_connect("scroll_event", self._on_chart_scroll_zoom)
-            # No get_ax: three stacked subplots, pan whichever is under the cursor.
             bind_middle_pan_mpl(self._chart_canvas)
             self._draw_empty_charts()
         else:
@@ -2016,10 +1675,6 @@ class NanoZPanel(ttk.Frame):
         if path:
             self._nz_export_path_var.set(path)
 
-    # Columns dropped from the live SPL CSV log when exporting - framing/
-    # protocol bookkeeping (header/checksum/length/reserved bytes, ppms) and
-    # the prober's own row/col numbering (die_id is what's kept - see the
-    # "results should correspond to die id, not row/col" note elsewhere).
     _RAW_EXPORT_DROP_FIELDS = {"die_row", "die_col", "header_time_ms", "header_bfr",
                                "len", "checksum_expected", "ppms", "header_chip", "reserved",
                                "cycle_start"}
@@ -2034,19 +1689,10 @@ class NanoZPanel(ttk.Frame):
             return ""
         return f"{v / i:.4g}"
 
-    # Board-wide ENV fields matched onto each SPL raw-export row (see
-    # _nearest_env_reading) - the ambient/board readings closest in time to
-    # that sample, not per-die like the SPL fields, so kept distinctly
-    # named (env_ prefix) rather than mixed in with the S1-4/H1-2 columns.
     _RAW_EXPORT_ENV_FIELDS = ("temp_h_c", "humidity_percent", "temp_p_c",
                               "pressure_hpa_minus_1013", "mcu_temperature_c")
 
     def _load_env_by_port(self) -> dict:
-        """{port: [(datetime, row_dict), ...]} sorted by time, read from the
-        session's ENV CSV log - the same file _handle_packet appends every
-        settled ENV packet to. Empty per-port lists (or an empty dict, if
-        no ENV data was ever logged this session) if there's nothing to
-        match against; that's fine, the env_ columns just come back blank."""
         by_port: dict = {}
         if not self._env_path or not os.path.isfile(self._env_path):
             return by_port
@@ -2067,10 +1713,6 @@ class NanoZPanel(ttk.Frame):
 
     @staticmethod
     def _nearest_env_reading(env_by_port: dict, port: str, host_timestamp: str) -> "dict | None":
-        """The ENV sample (board-wide temp/humidity/pressure) closest in
-        time to a given SPL row's timestamp, for the same board - ENV
-        packets stream independently (once per env_interval_s) so they
-        never land at the exact same instant as an SPL sample."""
         samples = env_by_port.get(port)
         if not samples:
             return None
@@ -2089,11 +1731,6 @@ class NanoZPanel(ttk.Frame):
         return row.get("die_id") or f"{row.get('die_row')},{row.get('die_col')}"
 
     def _raw_latest_cycle_only(self, rows: list) -> list:
-        """If the same die got cycled more than once (e.g. Run Cycle
-        (Active) fired twice on it), keep only its most recent cycle's
-        samples - concatenating both would double-count/confuse a die's
-        data. cycle_start is an ISO timestamp (nzb.now_stamp-style), so
-        plain string max() already sorts chronologically."""
         latest: dict[str, str] = {}
         for row in rows:
             key = self._raw_die_key(row)
@@ -2104,18 +1741,6 @@ class NanoZPanel(ttk.Frame):
             self._raw_die_key(row), "")]
 
     def _nz_export_raw(self):
-        """Every individual raw SPL sample (not the V/I now/avg summary the
-        results table shows) since the last run started, still tagged with
-        the die each one was taken on. self._spl_path already IS this -
-        every settled SPL packet gets appended to it in real time by
-        _handle_packet regardless of what triggered the cycle (Run Cycle
-        (Active), a double-clicked board, Recipe Run, ...). The on-disk log
-        itself is left as-is (full raw fields, useful for comms debugging);
-        this reads it and writes the export with _RAW_EXPORT_DROP_FIELDS
-        removed, an S1-4/H1-2 resistance column added per row, and the
-        board's ENV reading (temp/humidity/pressure) closest in time to
-        that sample matched in as env_* columns, to the chosen export
-        location with the same Lot/Wafer ID naming the other exports use."""
         if not self._spl_path or not os.path.isfile(self._spl_path):
             messagebox.showerror(
                 "No Raw Data Yet",
@@ -2138,12 +1763,6 @@ class NanoZPanel(ttk.Frame):
             return
         rows = self._raw_latest_cycle_only(rows)
         n_before = len(rows)
-        # A row with no die_id came from a board+chip with no slot assigned
-        # (see _die_provider) - we don't know which of the 20 physical
-        # positions it actually measured, so it has nothing meaningful to
-        # export here. It is NOT dropped from the raw CSV log itself, and
-        # Save CSV still keeps it (with a blank die ID) - only Export Raw,
-        # which is meant to be one row per real, identified die, excludes it.
         rows = [r for r in rows if (r.get("die_id") or "").strip()]
         n_unassigned = n_before - len(rows)
         env_by_port = self._load_env_by_port()
@@ -2206,15 +1825,6 @@ class NanoZPanel(ttk.Frame):
         self._log_main(f"NanoZ Results: saved {len(self._results_tree.get_children())} row(s)")
 
     def _nz_clear_results(self):
-        """Clears the Results table's live data (_latest_spl, what
-        _redraw_results rebuilds the table from every 500ms) - a plain
-        tree.delete() alone would be pointless since the next refresh tick
-        just repopulates it from _latest_spl unchanged. Also truncates the
-        on-disk SPL/ENV CSV logs (what Export Raw/the live log actually
-        read from) so a subsequent Export Raw genuinely comes back empty
-        instead of still containing everything collected before Clear was
-        pressed. Doesn't touch _spl_history (Charts tab keeps its own
-        rolling window regardless)."""
         n = len(self._latest_spl)
         self._latest_spl = {}
         for iid in self._results_tree.get_children():
@@ -2252,10 +1862,6 @@ class NanoZPanel(ttk.Frame):
                 windowed = hist
             updated = latest.get("host_timestamp", "")
             updated = updated.split("T")[-1] if "T" in updated else updated
-            # Die ID (the physical die's real identifier, from whichever
-            # source knows it - Overlay/wafer map/wafer plan) is what
-            # actually matters here, not the prober's own row/col numbering
-            # - fall back to row/col only when no ID is known for this die.
             die_row, die_col = latest.get("die_row"), latest.get("die_col")
             die = latest.get("die_id") or (
                 f"R{die_row}C{die_col}" if die_row is not None and die_col is not None else "—")
@@ -2269,16 +1875,6 @@ class NanoZPanel(ttk.Frame):
                 i_vals = [h[i_field] for h in windowed if i_field in h]
                 v_avg = sum(v_vals) / len(v_vals) if v_vals else None
                 i_avg = sum(i_vals) / len(i_vals) if i_vals else None
-                # R = V(mV)/I(mA) - units cancel to Ohms IF the current field
-                # is genuinely mA. Confirmed against real hardware
-                # (2026-08-07, board COM8): Heater 1 reads ~100 Ohm this way
-                # - its "_ma" field really is mA, formula/label are correct
-                # as-is. But Chip 1/sensor reads ~10 kOhm on real hardware,
-                # not the ~10 Ohm this same formula gives - the "_ma" sensor
-                # current field is actually µA-scale despite its name (or an
-                # equivalent firmware gauge factor), making the raw V/I
-                # number ALREADY the right kOhm magnitude - so sensor rows
-                # just need the unit relabeled to kOhm, not the math changed.
                 r_unit = "kΩ" if is_sensor else "Ω"
                 r_now = v_now / i_now if (v_now is not None and i_now) else None
                 r_avg = v_avg / i_avg if (v_avg is not None and i_avg) else None
@@ -2293,15 +1889,6 @@ class NanoZPanel(ttk.Frame):
                     len(windowed), updated,
                 ))
 
-    # ================================================================
-    # Cassette automation - one physical wafer per cassette slot, each
-    # tagged with its own Lot ID/Wafer ID. Mirrors the Accretech/EG
-    # Cassette tab's design (instrument_panel.py's shared CassettePanel)
-    # but drives Compute Recipe's per-wafer run (_start_recipe_run) instead
-    # of a Full Die walk, and auto-exports through NanoZ's own Results tab
-    # export (Lot ID/Wafer ID/Export Path, _nz_save_results_csv) instead of
-    # the ATA Folder tab's configurable export-format list.
-    # ================================================================
 
     def _build_cassette_tab(self, nb):
         tab = ttk.Frame(nb)
@@ -2325,11 +1912,6 @@ class NanoZPanel(ttk.Frame):
         ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=10)
         ttk.Label(bar, text="Pass yield ≥").pack(side="left")
         self._cst_yield_var = tk.StringVar(value="0")
-        # Which ATA folder this reflects, so an edit knows where to save -
-        # see on_ata_folder_loaded/_on_cst_yield_edited. Saved per ATA
-        # folder, same reasoning/persistence as the normal Cassette tab's
-        # own threshold (cassette_panel.save_yield_threshold) - different
-        # projects have different real yield expectations.
         self._cst_yield_folder: str | None = None
         cst_yield_ent = ttk.Entry(bar, textvariable=self._cst_yield_var, width=5)
         cst_yield_ent.pack(side="left", padx=(2, 0))
@@ -2669,7 +2251,6 @@ class NanoZPanel(ttk.Frame):
         body.columnconfigure(0, weight=1)
         body.columnconfigure(1, weight=1)
 
-        # --- B. Configuration -------------------------------------------------
         cfg_lf = ttk.LabelFrame(body, text="B — Configuration")
         cfg_lf.grid(row=0, column=0, sticky="new", padx=(0, 6), pady=(0, 6))
         self._ek_cycles_count_var = tk.StringVar(value="")
@@ -2696,7 +2277,6 @@ class NanoZPanel(ttk.Frame):
         ttk.Label(cfg_lf, text="Chip 2 (ID / Age):").grid(row=r, column=0, sticky="e", padx=4, pady=2)
         ttk.Label(cfg_lf, textvariable=self._ek_chip2_var).grid(row=r, column=1, columnspan=3, sticky="w")
 
-        # --- C. Cycle -----------------------------------------------------
         cyc_lf = ttk.LabelFrame(body, text="C — Cycle")
         cyc_lf.grid(row=0, column=1, sticky="new", padx=(6, 0), pady=(0, 6))
         self._ek_cycle_index_var = tk.StringVar(value="1")
@@ -2719,7 +2299,6 @@ class NanoZPanel(ttk.Frame):
                         variable=self._ek_cycle_loopback_var, state="disabled").grid(
                         row=3, column=0, columnspan=3, sticky="w", padx=4, pady=(4, 2))
 
-        # --- D.a Sequence settings -----------------------------------------
         seq_lf = ttk.LabelFrame(body, text="D.a — Sequence settings")
         seq_lf.grid(row=1, column=0, sticky="new", padx=(0, 6), pady=(0, 6))
         self._ek_seq_index_var = tk.StringVar(value="1")
@@ -2744,7 +2323,6 @@ class NanoZPanel(ttk.Frame):
         ttk.Label(seq_lf, text="Sensors-NZG2 (mV, all sensors):").grid(row=4, column=0, sticky="e", padx=4, pady=2)
         ttk.Entry(seq_lf, textvariable=self._ek_seq_sensor_var, width=10).grid(row=4, column=1, sticky="w")
 
-        # --- D.b Heater settings (Table 2) ----------------------------------
         heat_lf = ttk.LabelFrame(body, text="D.b — Heater settings  (Table 2: Heater control parameters)")
         heat_lf.grid(row=1, column=1, sticky="new", padx=(6, 0), pady=(0, 6))
         for c, text in enumerate(("Parameter", "Value", "Unit", "Min", "Max")):
@@ -2814,14 +2392,6 @@ class NanoZPanel(ttk.Frame):
 
     def _ek_request_eeprom_sync(self, board: "nzb.NanoZBoard", addr: int, length: int,
                                 timeout_s: float = 3.0) -> "bytes | None":
-        """Send one rdeep and block (in this worker thread) until the async
-        reader thread delivers the matching #eep! response into
-        self._latest_eep, polling since the response arrives via the same
-        queue/_handle_packet path as every other packet - no separate,
-        conflicting serial connection is opened. Clears any stale prior
-        response for this port first, so a leftover response from an
-        earlier addr/len that happens to match can't be mistaken for the
-        new one."""
         self._latest_eep.pop(board.port, None)
         board.request_eeprom(addr, length)
         deadline = time.time() + timeout_s
@@ -2961,8 +2531,6 @@ class NanoZPanel(ttk.Frame):
         self._btn_ek_write.config(
             state="normal" if self._ek_write_board is not None else "disabled")
 
-    # (field_key, StringVar, label, min, max) for validation + the
-    # confirmation dialog. Matches manual Table 2 / section D.a ranges.
     def _ek_d_field_specs(self):
         return [
             ("duration_s", self._ek_seq_duration_var, "Duration (s)", 0, 60000),
@@ -3041,9 +2609,6 @@ class NanoZPanel(ttk.Frame):
             patched = nzb.encode_sequence_patch(original, fields)
             addr = nzb.EEPROM_SEQUENCES_ADDR + s["blob_offset"]
             board.write_eeprom(addr, bytes(patched))
-            # No ack on success per the protocol doc - only an error line on
-            # failure, which lands on the Console tab's log via the normal
-            # text-packet path. Give it a moment, then read back to verify.
             time.sleep(1.0)
             length = s.get("record_len", len(patched))
             readback = self._ek_request_eeprom_sync(board, addr, length, timeout_s=3.0)
@@ -3076,15 +2641,6 @@ class NanoZPanel(ttk.Frame):
             return False
 
     def _refresh_charts_loop(self):
-        # Auto-redraw while following live data, OR while pinned to a cycle
-        # start - the pin only freezes WHERE the view sits (_redraw_charts'
-        # xlim logic), it shouldn't freeze the data itself, otherwise a
-        # pinned chart would show nothing new until something else happened
-        # to trigger a redraw. A genuine manual pan/zoom (or an in-progress
-        # drag) sets both _chart_follow_live False and clears the pin;
-        # redrawing then would clear+replot the axes out from under the
-        # user's drag every 300ms, snapping the view back mid-gesture - only
-        # that state (paused, unpinned) skips redrawing until "Jump to Live".
         if self._charts_tab_visible() and (self._chart_follow_live
                                            or self._chart_pinned_time is not None):
             self._redraw_charts()
@@ -3130,16 +2686,6 @@ class NanoZPanel(ttk.Frame):
         gx, gy = self._break_gaps(xs, ys)
         ax.plot(gx, gy, label=label, linestyle=linestyle)
 
-    # Graph settings (matches Nanoz_EK.exe's "Sensors"/"Heaters" dropdowns,
-    # manual section V.A): Sensors = Current or Resistance; Heaters =
-    # Voltage, Current, Power or Resistance. R = V(mV)/I(mA) in both cases
-    # (units cancel: mV/mA = V/A = Ohm) - confirmed against real hardware
-    # (2026-08-07, board COM8): Heater 1 reads ~100 Ohm this way, correct
-    # as labeled. But sensor Chip 1 reads ~10 kOhm on real hardware, not
-    # the ~10 Ohm this formula gives - the sensor current field is actually
-    # µA-scale despite being named "_ma" (or an equivalent firmware gauge
-    # factor), so the raw number is already right for kOhm, just needed
-    # relabeling, not a math change. Power(mW) = V(mV)*I(mA)/1000.
     _SENSOR_METRIC_UNITS = {"Current": "mA", "Resistance": "kΩ"}
     _HEATER_METRIC_UNITS = {"Voltage": "mV", "Current": "mA", "Power": "mW", "Resistance": "Ω"}
 
@@ -3154,10 +2700,6 @@ class NanoZPanel(ttk.Frame):
         return self._sensor_metric_value_for(rec, s, self._chart_sensor_metric_var.get())
 
     def _evaluate_die_pass_fail(self, port: str, chip: str) -> "bool | None":
-        """AND all 4 sensors' (S1-S4) most recent reading for this board+chip
-        (i.e. this one physical die - each die has its own S1-S4 pads) against
-        the global Pass/Fail Limits (Setup tab). Returns None if there's no
-        SPL reading yet for this board+chip to check."""
         rec = self._latest_spl.get((port, chip))
         if rec is None:
             return None
@@ -3195,19 +2737,10 @@ class NanoZPanel(ttk.Frame):
     def _on_chart_xlim_changed(self, _ax):
         if self._chart_programmatic_xlim:
             return
-        # A real user pan/zoom (toolbar) moved the view - stop auto-scrolling
-        # so _redraw_charts doesn't yank it back to the live edge every cycle,
-        # and drop any cycle-start pin too so it doesn't fight the user by
-        # snapping back on the next 300ms redraw.
         self._chart_follow_live = False
         self._chart_pinned_time = None
 
     def _on_chart_button_press(self, _event):
-        # Fires on any mouse-down inside the chart canvas, including the
-        # start of a toolbar pan/zoom drag - pausing here (rather than
-        # waiting for xlim_changed) means the 300ms auto-redraw loop can't
-        # sneak in a redraw mid-drag and snap the view back to live before
-        # the drag itself has moved anything yet.
         self._chart_follow_live = False
         self._chart_pinned_time = None
 
@@ -3228,12 +2761,6 @@ class NanoZPanel(ttk.Frame):
         self._redraw_charts()
 
     def _redraw_charts(self, preserve_view: bool = False):
-        # preserve_view=True is for redraws triggered by a settings toggle
-        # (channel/chip checkbox, metric dropdown) rather than by the live
-        # data loop or the Jump to Live button - those should only ever
-        # change which series are drawn, never yank the visible time
-        # window back to the live edge, even while still in live-follow
-        # mode (otherwise every checkbox click felt like an unwanted jump).
         if not _MPL:
             return
         port = self.console_board_var.get()
@@ -3248,16 +2775,6 @@ class NanoZPanel(ttk.Frame):
         self._chart_ax_i.clear()
         self._chart_ax_t.clear()
 
-        # t0 is cached per port and set ONCE, from the first packet ever seen
-        # for it - NOT recomputed from history[0] every redraw, since
-        # _spl_history/_env_history are rolling deques (maxlen=300) whose
-        # oldest entry keeps advancing as new data evicts old. Recomputing
-        # t0 from that rolling oldest-entry made "elapsed seconds" measure
-        # roughly "how deep the rolling window currently is" instead of
-        # actual time since data started - constant-ish once the buffer is
-        # full, which is why a cycle-start pin (elapsed_seconds(pinned_time,
-        # t0)) kept landing at the same spot no matter when the cycle
-        # actually ran.
         if port and port not in self._chart_t0_by_port:
             candidates = [self._pkt_time(h[0]) for h in (*hist_by_chip.values(), env_hist) if h]
             candidates = [t for t in candidates if t is not None]
@@ -3275,7 +2792,7 @@ class NanoZPanel(ttk.Frame):
             any_spl = True
             xs = self._elapsed_seconds(hist, t0)
             t_max = max(t_max, max(xs, default=0.0))
-            chip_disp = self._CHIP_LABELS[chip].split()[0]  # "1"/"2" (Nanoz_EK numbering)
+            chip_disp = self._CHIP_LABELS[chip].split()[0]
             for h in (1, 2):
                 if visible[f"h{h}"].get():
                     self._plot_computed(self._chart_ax_v, xs, hist,
@@ -3324,9 +2841,6 @@ class NanoZPanel(ttk.Frame):
             if self._chart_follow_live and not preserve_view:
                 self._chart_ax_v.set_xlim(max(0.0, t_max - self._CHART_WINDOW_S), max(t_max, self._CHART_WINDOW_S))
             elif self._chart_pinned_time is not None and not preserve_view:
-                # Stay put at whichever cycle most recently started, instead
-                # of drifting with new data or snapping back to wherever the
-                # view happened to be before - only Jump to Live moves it.
                 pin_elapsed = max(0.0, (self._chart_pinned_time - t0).total_seconds())
                 self._chart_ax_v.set_xlim(pin_elapsed, pin_elapsed + self._CHART_WINDOW_S)
             else:
@@ -3367,10 +2881,6 @@ class NanoZPanel(ttk.Frame):
             self.controller.log(f"[NANOZ] {msg}")
 
     def _probe_height(self) -> int:
-        """Current probe head slot count - always read through here, never
-        nzb.DEFAULT_PROBE_HEIGHT directly, so every consumer (wafer-plan
-        window height, position window on the map, slot-assignment range)
-        stays in sync with the Setup tab control and with each other."""
         try:
             n = int(self._probe_height_var.get())
         except (tk.TclError, ValueError):
@@ -3387,13 +2897,6 @@ class NanoZPanel(ttk.Frame):
                 nzb.save_probe_height(folder, n)
             except OSError as e:
                 self._log_main(f"Could not save probe head slot count: {e}")
-        # A currently-loaded wafer plan (if any) was built with the OLD
-        # slot count - re-derive it against the new one immediately rather
-        # than leaving Compute Recipe silently working from a stale window
-        # height until the next Import/Refresh. Electroglas: rebuilds from
-        # the Wafer Builder die map (its actual source of truth); Accretech:
-        # only refreshable by re-importing the .xlsx, so just warn instead
-        # of guessing at a path.
         if self._wafer_plan is not None:
             if self._system == "electroglas":
                 self._eg_refresh_wafer_plan_from_wafer_builder(silent=True)
@@ -3415,10 +2918,6 @@ class NanoZPanel(ttk.Frame):
 
     @staticmethod
     def _synthetic_board_key(serial_number: str) -> str:
-        # Used for a "known" board that isn't currently reachable on any
-        # live COM port (e.g. remembered from a previous session, not yet
-        # plugged in this run) - self._boards still needs some dict key,
-        # but it can't be a real port since there isn't one yet.
         return f"SN:{serial_number}"
 
     @staticmethod
@@ -3431,11 +2930,6 @@ class NanoZPanel(ttk.Frame):
 
     @staticmethod
     def _sn_display(serial_number: str) -> str:
-        """The S/N as saved (e.g. "0002-0008"), with the decimal value of
-        its last 4 hex digits appended (e.g. "0002-0008 (8)") - the hex
-        string is still what's actually matched/saved on everywhere else,
-        this is purely a read-at-a-glance convenience since board S/Ns are
-        otherwise only distinguishable by scanning hex digits."""
         sn = serial_number or ""
         hex_digits = "".join(ch for ch in sn if ch in "0123456789abcdefABCDEF")
         last4 = hex_digits[-4:]
@@ -3447,11 +2941,6 @@ class NanoZPanel(ttk.Frame):
             return sn
 
     def _add_board(self, ident: "nzb.BoardIdentity"):
-        # Match by serial number first, not port - Windows can (and does)
-        # reassign a board to a different COM port across replugs/reboots,
-        # so keying purely on port equality created a second, duplicate
-        # entry (and a duplicate row in ata_nanoz_boards.json) for the same
-        # physical board every time it came back on a different port.
         existing_key = None
         if ident.serial_number:
             for key, b in self._boards.items():
@@ -3463,11 +2952,6 @@ class NanoZPanel(ttk.Frame):
         if existing_key is not None:
             if existing_key == new_key:
                 return None
-            # Same physical board (by S/N), now reachable at a different
-            # key (a real port replacing a placeholder, or a genuine port
-            # change) - migrate the existing NanoZBoard object instead of
-            # creating a duplicate. Slot assignments are kept from
-            # whichever side already had them.
             board = self._boards.pop(existing_key)
             old_iid = self._board_rows.pop(existing_key, None)
             old_identity = board.identity
@@ -3499,9 +2983,6 @@ class NanoZPanel(ttk.Frame):
         except ValueError:
             env_interval_s = 1.0
         board = nzb.NanoZBoard(ident, self._queue, env_interval_s=env_interval_s)
-        # die_provider reads board.port live (not a value captured at
-        # creation time) so it keeps working correctly if this same board
-        # object is later migrated to a different real port above.
         board._die_provider = lambda chip: self._die_provider(board.port, chip)
         self._boards[new_key] = board
         iid = self._board_tree.insert("", "end", values=(
@@ -3538,29 +3019,16 @@ class NanoZPanel(ttk.Frame):
         threading.Thread(target=self._connect_boards_thread, args=(targets,), daemon=True).start()
 
     def _connect_boards_thread(self, targets: list):
-        # Known boards with no live port yet this session (remembered from a
-        # previous ATA folder load) - try connecting on their last-known COM
-        # port directly FIRST, exactly like any other board (no separate
-        # identify/probe pass up front). Only the ones where that actually
-        # fails fall back to a full Discover Boards scan afterward, so
-        # Connect All stays fast in the common case (nothing moved) and only
-        # pays for a real scan when something did.
         no_port = [b for b in targets if not b.port and b.identity.last_port]
         for board in no_port:
             board.port = board.identity.last_port
             board.identity.port = board.identity.last_port
-            # Migrate self._boards/self._board_rows onto the real port key
-            # BEFORE the connect attempt below queues any _set_board_status/
-            # _log calls for that port - those look up self._board_rows by
-            # port, and would silently find nothing (row still under the old
-            # "SN:..." placeholder key) if queued ahead of this migration,
-            # since Tk runs after(0,...) callbacks in the order queued.
             self.after(0, lambda ident=board.identity: self._add_board(ident))
 
         still_missing = []
         for board in targets:
             if not board.port:
-                continue  # known board with no live port and no last-known hint either
+                continue
             was_error = board.state == "error"
             try:
                 board.reconnect() if was_error else board.start()
@@ -3604,10 +3072,6 @@ class NanoZPanel(ttk.Frame):
 
         self.after(0, lambda: self._log_main(
             f"{sum(1 for b in targets if b.state == 'connected')}/{len(targets)} board(s) connected."))
-        # Other tabs (Console/board picker, Charts, NanoZ_EK, Recipe) all
-        # read live board state (port, connected/not) off self._boards - none
-        # of that changes shape here, but the labels/status text they show
-        # do, so they need an explicit refresh, same as after Discover.
         self.after(0, self._refresh_console_boards)
         self.after(0, self._rebuild_recipe_columns)
 
@@ -3651,11 +3115,7 @@ class NanoZPanel(ttk.Frame):
         if not (0 <= col_idx < len(cols)) or cols[col_idx] not in ("slot0", "slot1"):
             return
         chip = "0" if cols[col_idx] == "slot0" else "1"
-        vals_idx = col_idx  # values tuple is built in the same order as cols
-        # Look up by the internal dict key (via the iid), not the displayed
-        # port text - a not-yet-discovered known board shows "—" in the
-        # port column (its real port isn't known yet), which wouldn't
-        # match any real self._boards key.
+        vals_idx = col_idx
         key = next((k for k, v in self._board_rows.items() if v == row_iid), None)
         board = self._boards.get(key) if key is not None else None
         if not board:
@@ -3712,23 +3172,10 @@ class NanoZPanel(ttk.Frame):
                        f"{idle} not connected ({len(self._boards)} known).")
 
     def on_ata_folder_loaded(self, folder_path: str):
-        # Probe head slot count is a per-ATA-folder (effectively per-probe-
-        # card) setting - loaded before anything below that depends on it
-        # (_eg_refresh_wafer_plan_from_wafer_builder's window height).
         self._probe_height_var.set(nzb.load_probe_height(folder_path))
-        # Cassette tab's pass-yield auto-continue threshold - see
-        # _on_cst_yield_edited/cassette_panel.save_yield_threshold.
         self._cst_yield_folder = folder_path
         self._cst_yield_var.set(f"{load_yield_threshold(folder_path):g}")
         if self._system == "electroglas":
-            # No ata_wafer_map_accretech.csv on this side - the Wafer
-            # Builder map is the wafer data here (see
-            # _eg_refresh_wafer_plan_from_wafer_builder), so both the
-            # pickable wafer_map AND self._wafer_plan come from it.
-            # silent=True: this callback can fire for a folder load on a
-            # totally unrelated tab/system (see NanozModeLayout.
-            # on_ata_folder_loaded) - "no Wafer Builder map yet" is routine
-            # here, not something that should pop a blocking dialog.
             self._eg_refresh_wafer_plan_from_wafer_builder(silent=True)
             plan = self._wafer_plan
             dies = ([{"row": r, "col": c, "x_um": float(c), "y_um": -float(r),
@@ -3737,39 +3184,13 @@ class NanoZPanel(ttk.Frame):
             n = self.wafer_map.load_die_list(dies, label="dies")
         else:
             n = self.wafer_map.load_from_ata(folder_path, filename="ata_wafer_map_accretech.csv")
-            # Accretech's own native map file carries no die-ID column at
-            # all (row,col,x_die,y_die,raw_q only - confirmed against the
-            # real file), so without this every label/lookup on this tab
-            # comes back empty even though dies are drawn. The normal
-            # (non-NanoZ) Accretech tab gets its real device IDs from its
-            # own Wafer Builder Overlay instead - reuse THAT SAME result
-            # here rather than re-deriving it, since self._main_layout is
-            # the very same MainLayout instance the normal tab uses (see
-            # nanoz_mode.py), already carrying it once an operator has
-            # pressed Overlay on Map for this folder (there, or via
-            # load_ata_folder's own automatic _exec_reapply_overlay for
-            # a folder that already had a confirmed offset saved). Keyed
-            # by the SAME (row, col) both wafer maps use - this panel's
-            # own map and the normal tab's both load the identical
-            # ata_wafer_map_accretech.csv, so no offset translation is
-            # needed here (only the separate Wafer Plan grid, see
-            # _wafer_plan_offset, needs that).
             overlay_ids = getattr(self._main_layout, "_exec_overlay_die_ids", None)
             if overlay_ids:
                 self.wafer_map.die_ids.update(overlay_ids)
-                # load_from_ata already ran its own on_redraw (via
-                # _draw_from_die_list) before die_ids was merged in above -
-                # re-run it now so the labels this die_ids update enables
-                # actually get drawn, not just left available for the next
-                # unrelated redraw to happen to pick up.
                 self._redraw_overlay_on_run_map()
         if n:
             self._log_main(f"Wafer map auto-loaded from "
                            f"'{os.path.basename(folder_path)}' — {n} die(s).")
-        # Clear any picks left over from whatever was drawn before - die-ID
-        # labels themselves are already drawn as part of the load above,
-        # via wafer_map.on_redraw (see _redraw_overlay_on_run_map), so
-        # there's nothing separate to restore here any more.
         self.wafer_map.clear_picks()
 
         remembered = nzb.load_known_boards(folder_path)
@@ -3796,7 +3217,7 @@ class NanoZPanel(ttk.Frame):
 
         plan_path = nzb.wafer_plan_path_in_folder(folder_path)
         if not os.path.isfile(plan_path) and name:
-            plan_path = nzb.get_recipe_wafer_plan_path(folder_path, name)  # legacy recipes
+            plan_path = nzb.get_recipe_wafer_plan_path(folder_path, name)
         if plan_path and os.path.isfile(plan_path):
             self._autoload_wafer_plan(plan_path)
         else:
@@ -3961,39 +3382,10 @@ class NanoZPanel(ttk.Frame):
         self.after(50, self._check_queue)
 
     def _ensure_csv_paths(self):
-        """A formal run (Full Die/Test Die/Recipe Run) always gets a fresh
-        pair of SPL/ENV CSV paths at start - but Run Cycle (Active), a
-        double-clicked board, and Console's run are all just "fire a cycle
-        right now" actions with no such setup step, so _spl_path stayed
-        None for them and _handle_packet's `if settled and self._spl_path`
-        guard silently never wrote anything - meaning Export Raw had no
-        file to find even though data was clearly flowing (visible on the
-        Results tab, which reads _latest_spl/_spl_history directly, not the
-        CSV). Called from every cycle trigger now so a CSV always exists
-        once ANY cycle has run this session; only assigns once so an
-        already-running formal run's path isn't swapped out from under it."""
         if not self._spl_path:
             self._spl_path, self._env_path = self._new_csv_paths()
 
     def _arm_settling_skip(self, boards: list):
-        """Call right when a cycle is triggered on these boards - their next
-        _SETTLING_SKIP_COUNT SPL packets (both chips) are excluded from the
-        Charts tab, _latest_spl, the Results tab's averages, and the SPL CSV
-        export - lets the sensor settle before anything treats it as real
-        data. Still stored in _spl_history itself (just filtered out when
-        read), so nothing here is actually lost.
-
-        Also the single choke point every cycle trigger (Run Cycle
-        (Active), a double-clicked board, Console's run, a recipe shot,
-        ...) already runs through right before board.run_cycle() - so this
-        is also where each board's die-per-chip gets SNAPSHOT (via
-        set_active_die) from wherever _current_rc/the slot map currently
-        say it is. That snapshot, not a live re-query, is what tags every
-        packet this cycle produces - if the prober/position window has
-        already moved on to the next touchdown by the time this cycle's
-        last few packets actually drain in, they still get tagged with the
-        die they were really measured at, not wherever things have since
-        moved on to."""
         self._ensure_csv_paths()
         for board in boards:
             self._skip_spl_count[(board.port, "0")] = self._SETTLING_SKIP_COUNT
@@ -4020,14 +3412,8 @@ class NanoZPanel(ttk.Frame):
             if not settled:
                 self._skip_spl_count[key] = remaining - 1
             item["_settled"] = settled
-            # Which cycle this reading belongs to - lets Export Raw tell
-            # "this die got cycled twice" apart and keep only the latest
-            # cycle's samples per die, instead of concatenating both.
             item["cycle_start"] = (self._cycle_start_time.isoformat()
                                    if self._cycle_start_time else "")
-            # Tagged (not dropped) here - _spl_history keeps every packet so
-            # nothing's lost, but Charts/_latest_spl/Results/CSV all filter
-            # on this flag so settling data never shows up anywhere.
             self._spl_history.setdefault(
                 key, collections.deque(maxlen=self._CHART_HISTORY_LEN)).append(item)
             if settled:
@@ -4125,15 +3511,6 @@ class NanoZPanel(ttk.Frame):
         self._do_manual_call("First Die", lambda p: p.move_to_start_die(),
                              ">> G  (Position start die)", refresh_xy=True)
 
-    # -- Electroglas-only: datum anchor + die pitch ------------------------
-    # No First Die (G)/native wafer map to fall back on - see
-    # electroglas_2001x.py's own docstring ("THE DIE GRID DEPENDS ENTIRELY
-    # ON WHERE THE DATUM WAS SET"). Same idea as eg_pma_run_panel.py's own
-    # "Set Initial": read the real ?P once the operator says the chuck is
-    # physically on a named die, and store the offset between that and the
-    # wafer plan's own (row, col) for it - every later move (Next Die,
-    # Move to Selected, the eventual automated run) is computed from the
-    # wafer plan's grid plus this one offset.
 
     def refresh_eg_anchor_choices(self):
         if self._system != "electroglas" or not hasattr(self, "_eg_anchor_cb"):
@@ -4183,10 +3560,6 @@ class NanoZPanel(ttk.Frame):
         self.after(0, _finish)
 
     def _eg_pitch_action(self):
-        """One button, two effects: sets the prober's die pitch (SP1) to
-        the entered X/Y, then immediately reads it back via
-        infer_die_size() (the only way to verify SP1 - electroglas_2001x.
-        py has no direct query for it) and reports whether it matches."""
         if self._run_guard("Pitch"):
             return
         try:
@@ -4230,10 +3603,6 @@ class NanoZPanel(ttk.Frame):
                          args=(sites[0],), daemon=True).start()
 
     def _manual_move_to_selected_thread(self, rc):
-        """Separate, jump straight to the one picked die, contact NOT
-        restored afterward - a positioning aid, same contract as
-        Accretech's Run tab button of the same name (see
-        instrument_panel._exec_move_to_selected)."""
         row, col = rc
         if not self._do_manual_call("Separate", lambda p: p.z_down(), ">> D  (Separate)"):
             return
@@ -4268,10 +3637,6 @@ class NanoZPanel(ttk.Frame):
         threading.Thread(target=self._manual_next_die_thread, daemon=True).start()
 
     def _next_recipe_shot_index(self) -> int:
-        """Index into self._shots of the touchdown Next Die should move to:
-        the one after whichever shot _current_rc is currently sitting on, or
-        the first shot if the current position isn't a recognized shot
-        (fresh start, or last move was manual/from a different recipe)."""
         row, col = self._current_rc
         if row is not None and col is not None:
             for i, shot in enumerate(self._shots):
@@ -4280,15 +3645,10 @@ class NanoZPanel(ttk.Frame):
         return 0
 
     def _manual_next_die_thread(self):
-        # Unlike the old plain "J" (cassette next-die) command, this moves
-        # to the next touchdown's actual (die_column, td_start_row) as
-        # computed by Compute Recipe/the imported recipe.
         idx = self._next_recipe_shot_index()
         self._move_to_shot_thread(idx, label="Next Die")
 
     def _goto_shot(self, idx: int):
-        """Jump straight to a specific recipe shot's touchdown position -
-        used by double-clicking a row in the Run tab's Touchdown List."""
         if self._run_guard("Go to Touchdown"):
             return
         if not (0 <= idx < len(self._shots)):
@@ -4301,8 +3661,6 @@ class NanoZPanel(ttk.Frame):
                          kwargs={"label": "Go to Touchdown"}, daemon=True).start()
 
     def _move_to_shot_thread(self, idx: int, label: str = "Next Die"):
-        # Same movement step _recipe_thread_body takes per shot, just one
-        # shot at a time without running any boards.
         prober = self.controller.drivers.get("prober")
         if idx >= len(self._shots):
             self.after(0, lambda: self._log_main(f"{label}: already at the last recipe shot."))
@@ -4371,11 +3729,6 @@ class NanoZPanel(ttk.Frame):
         ok = self._do_manual_call("Unload", lambda p: p.unload_wafer(), ">> U  (Unload wafer)")
         if not ok:
             return
-        # Wafer's off the chuck now - whatever die _current_rc last pointed
-        # at is no longer under the needles, so it's no longer an accurate
-        # "current position". Clear it rather than let a stale die keep
-        # getting reused (e.g. a Run Cycle fired right after Unload, before
-        # anything moves again) until the next real move/Refresh XY.
         self._current_rc = (None, None)
         self.after(0, lambda: self.manual_xy_var.set("X: —  Y: —"))
         self.after(0, lambda: self.die_var.set("Die: —"))
@@ -4390,14 +3743,6 @@ class NanoZPanel(ttk.Frame):
             self._query_xy_thread_body()
 
     def _query_xy_thread_body(self) -> bool:
-        """Query the prober for its current die XY and update
-        _current_rc/the XY label. Runs on a background thread (real prober
-        I/O); returns True on success. Shared by the manual "Refresh XY"/
-        "Sync ?P" button and _ensure_xy_then's auto-refresh for cycle
-        triggers - branches internally on self._system rather than at
-        each call site, so nothing that already calls this (including
-        _ensure_xy_then, used by every cycle trigger) needs to know which
-        prober is active."""
         prober = self.controller.drivers.get("prober")
         if not prober or not prober.inst:
             self.after(0, lambda: self.manual_xy_var.set("X: —  Y: —"))
@@ -4405,21 +3750,6 @@ class NanoZPanel(ttk.Frame):
             return False
         try:
             if self._system == "electroglas":
-                # get_die_position() already returns a parsed (x, y) tuple
-                # of die counts - no ASCII response to parse, unlike
-                # Accretech's Q reply. That (x, y) is the prober's own raw
-                # die-count position, NOT a wafer-plan (row, col) - it only
-                # equals one once translated through the anchor offset
-                # (_eg_set_anchor_thread's inverse), the same way Move to
-                # Selected/Next Die already compute a target FROM (row, col)
-                # + offset. Every other place in this class that sets
-                # _current_rc (the anchor itself, Move to Selected, Next
-                # Die) sets it in wafer-plan terms - this path used to be
-                # the one exception, silently storing raw die counts
-                # instead, which fed _wafer_plan-keyed lookups (e.g.
-                # _active_boards_for_window) the wrong (row, col) as soon as
-                # the operator pressed Sync ?P (or a cycle auto-refreshed)
-                # after anchoring.
                 real_x, real_y = prober.get_die_position()
                 cmd_label = "?P"
                 if self._eg_origin_offset is not None:
@@ -4446,20 +3776,6 @@ class NanoZPanel(ttk.Frame):
             return False
 
     def _ensure_xy_then(self, fn, *args, **kwargs):
-        """Call right where a cycle would otherwise be triggered directly.
-        First waits out any XY refresh already in flight (e.g. the user
-        just pressed Refresh XY and this cycle trigger landed before that
-        query finished) - otherwise the cycle would fire against a stale
-        _current_rc and every reading would get tagged with the die the
-        prober was AT before the move, not where it actually moved to.
-        Then, if XY still isn't known at all (_current_rc is (None, None),
-        e.g. first cycle of the session with no First Die/Refresh XY
-        pressed yet), transparently sends a Refresh XY query to the prober,
-        then runs fn regardless of whether that query succeeded (same
-        best-effort fallback _active_boards_for_window/_die_provider
-        already use for an unknown position). Always hops through a
-        background thread (even when nothing needs querying) so waiting on
-        the lock never blocks the UI."""
         def _run():
             with self._xy_refresh_lock:
                 if self._current_rc == (None, None):
@@ -4506,11 +3822,6 @@ class NanoZPanel(ttk.Frame):
             "Measure complete — chuck still in contact; use Z Down to release."))
 
     def _active_boards_for_window(self) -> list:
-        """Connected boards allowed to run at the current XY's 1x20 touchdown
-        window, per the loaded wafer plan's product/reference/off-wafer
-        classification (same rule Compute Recipe uses). Falls back to every
-        connected board if there's no wafer plan or no known position yet -
-        nothing to check the window against."""
         connected = {b.port: b for b in self._boards.values() if b.state == "connected"}
         if not connected:
             return []
@@ -4636,12 +3947,6 @@ class NanoZPanel(ttk.Frame):
             self._log_main("A run is already active.")
             return
         if self._system == "electroglas":
-            # This walk is Accretech-only (native G/J/STB wafer-map
-            # stepping) - Electroglas has no onboard wafer map and no
-            # equivalent command. Use Next Die (Recipe) + Run Cycle
-            # (Active)/Measure to step through touchdowns manually
-            # instead; the fully automated multi-touchdown walk for
-            # Electroglas is not built yet.
             self._log_main("Test Die:")
             return
         prober = self.controller.drivers.get("prober")
@@ -4756,17 +4061,6 @@ class NanoZPanel(ttk.Frame):
             self.after(0, lambda: self._finish_lot("TEST DIE COMPLETE"))
 
     def _die_id_for(self, row: int, col: int) -> "str | None":
-        """Real die ID for a physical (row, col), if any source knows one -
-        preferred over the prober's own row/col numbering everywhere a
-        measurement is displayed/exported, since that's what the user
-        actually identifies dies by. wafer_map.die_ids already carries the
-        Wafer Builder Overlay match merged in for Accretech (see
-        on_ata_folder_loaded) as well as whatever the CSV/Accretech map
-        file itself provided, so one lookup covers both; falls back to the
-        imported wafer plan's Die Map (translated through the same
-        centroid offset Compute Recipe uses). None if nothing knows an
-        ID for this die; row/col are still recorded either way, this only
-        ever adds an ID on top."""
         die_id = self.wafer_map.die_ids.get((row, col))
         if die_id:
             return die_id
@@ -4778,38 +4072,13 @@ class NanoZPanel(ttk.Frame):
         return None
 
     def _die_provider(self, port: str, chip: "str | None"):
-        """(row, col, die_id) to tag a reading with - the physical die a
-        board+chip was actually testing when it produced this measurement.
-        Anchored at _current_rc, the top of whatever 1x20 position window
-        is/was current - kept in sync by every XY-moving action (manual
-        jog, First/Next Die, Recipe Run's per-shot moves, ...), not just
-        Recipe Run - offset by that board's assigned slot (physical
-        position within the window, 1-20 top to bottom, see the Setup
-        tab's Slot columns) so each chip's reading is tagged with the die
-        it actually contacted, not just the window's anchor die, for ANY
-        cycle trigger (Run Cycle (Active), a double-clicked board,
-        Console's run, Recipe Run, ...) as long as the XY position is
-        known and that board+chip has a slot."""
         row, col = self._current_rc
         if row is None or col is None:
             return (None, None, None)
         board = self._boards.get(port)
-        # chip is "0"/"1" for a per-chip SPL reading, or None for a board-
-        # wide ENV reading - ENV was never anchored to a SLOT (it isn't of
-        # any one physical die within the window to begin with), so it keeps
-        # using the window anchor's own ID unconditionally, same as always.
         if chip in ("0", "1"):
             slot = (board.identity.slot0 if chip == "0" else board.identity.slot1) if board else None
             if not slot:
-                # No slot assigned for this board+chip - we don't know which
-                # of the 20 physical positions in the window it actually
-                # sits at (slot 1 through 20, top to bottom - see the Setup
-                # tab's Slot columns), so tagging it with the window
-                # ANCHOR's die ID would present a guess as fact. row/col
-                # stay at the anchor (still useful in Save CSV/debugging)
-                # but die_id is left blank - see _nz_export_raw, which
-                # excludes exactly these rows, and the Setup tab's Slot
-                # assignment.
                 return (row, col, None)
             row = row + slot - 1
         return (row, col, self._die_id_for(row, col))
@@ -4832,9 +4101,6 @@ class NanoZPanel(ttk.Frame):
             slots = [s for s in ((ident.slot0, ident.slot1) if ident else ()) if s is not None]
             return min(slots) if slots else float("inf")
 
-        # Top to bottom of the die they represent - i.e. by physical probe-
-        # head slot (1..20), not by port string. Boards with no slot
-        # assigned yet (nothing to order by) sort last.
         for port in sorted(self._recipe_ports(), key=_top_slot):
             board = self._boards.get(port)
             ident = board.identity if board else None
@@ -4866,11 +4132,6 @@ class NanoZPanel(ttk.Frame):
         self._run_single_board_cycle(port, context=" (double-clicked in current shot)")
 
     def _run_single_board_cycle(self, port: str, context: str = ""):
-        """Fire a cycle on just one board, using the Run tab's Cycle # field
-        - same one-board diagnostic convenience as Console's ▶ run, just
-        triggered from wherever that board is already in view (double-
-        clicked in Recipe - Current Shot, or ▶ Run Cycle on the Charts tab)
-        instead of picking it from a separate dropdown."""
         if self._run_guard("Run Cycle"):
             return
         board = self._boards.get(port)
@@ -4903,8 +4164,6 @@ class NanoZPanel(ttk.Frame):
             self._log_main("A run is already active.")
             return
         if self._system == "electroglas":
-            # Same Accretech-only walk as _start_test_die - see that
-            # method's own comment.
             self._log_main("Run Recipe:")
             return
         if not self._shots:
@@ -4948,10 +4207,6 @@ class NanoZPanel(ttk.Frame):
         self._lot_thread.start()
 
     def _recipe_thread_body(self, prober, cycle: int, duration_s: float):
-        # idx/shots defined before the try so the finally block can always
-        # tell "ran every shot" (idx >= len(shots)) from "stopped early"
-        # (Stop pressed, STB=81/90, or an exception before/mid-loop) - used
-        # by cassette automation to distinguish a real finish from an abort.
         shots = self._shots
         idx = 0
         try:
@@ -4985,10 +4240,6 @@ class NanoZPanel(ttk.Frame):
                 self.after(0, lambda stb=stb: self._log(f"<< STB={stb}"))
                 self._ensure_separated(prober, stb)
 
-                # Only recorded as the current position once the move is
-                # actually confirmed (STB checked out, not a wafer-end/stop
-                # abort above) - setting this beforehand would claim we're
-                # on the new die even on a move that never completed.
                 self._current_rc = (row, die_col)
                 die_label = f"R{row}C{die_col}"
                 self.after(0, lambda dl=die_label: self.die_var.set(f"Die: {dl}"))
@@ -4998,11 +4249,6 @@ class NanoZPanel(ttk.Frame):
                 ok = self._zup_measure_zdown(prober, active_boards, cycle, duration_s, shot["label"])
                 if not self._running:
                     break
-                # Comms have to have worked at all (ok) - beyond that, each
-                # board+chip in this touchdown is its own physical die with
-                # its own S1-S4 pads, so each gets its own PASS/FAIL against
-                # the global Pass/Fail Limits (Setup tab), not one verdict
-                # for the whole touchdown.
                 for board in active_boards:
                     for chip, slot in board.identity.chip_slots().items():
                         if not slot:
@@ -5067,10 +4313,6 @@ class NanoZPanel(ttk.Frame):
     def _mark_cycle_start(self, pin_chart: bool = False):
         self._cycle_start_time = dt.datetime.now() - dt.timedelta(milliseconds=5)
         if pin_chart:
-            # A real cycle just started on some board - freeze the Charts
-            # tab there (stop live-scrolling, stop drifting) so the user can
-            # actually watch this cycle instead of the view running away
-            # from it; only Jump to Live moves it again.
             self._chart_follow_live = False
             self._chart_pinned_time = self._cycle_start_time
             if hasattr(self, "_chart_canvas"):

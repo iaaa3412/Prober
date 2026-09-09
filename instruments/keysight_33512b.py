@@ -5,21 +5,7 @@ from instruments.gpib_base import GPIBInstrument
 
 class Keysight33512B(GPIBInstrument):
     def __init__(self, config_key='wave_gen'):
-        # Same reason Keithley2400 takes one: the default ('wave_gen')
-        # keeps every existing caller unaffected, but a SECOND 33512B
-        # added as a custom Setup-tab instrument needs to read/write ITS
-        # OWN slot, not collide with the real wave gen's.
         super().__init__(config_key)
-        # Opening the VISA session proves nothing about whether the wave gen
-        # is actually powered on/connected - open_resource() hands back a
-        # handle for any valid GPIB address whether or not anything answers
-        # it, and the write below only fails once it actually hits the bus
-        # (VI_ERROR_NLISTENERS). Unguarded, that exception came straight out
-        # of the constructor - gui/app.py's init_hardware() builds every
-        # driver before it starts handling connect errors, so this crashed
-        # the whole Accretech connect sweep (and hung the GUI) whenever the
-        # wave gen was off, not just left this one instrument red. Same fix
-        # already applied to Keithley2400 - see that file's own comment.
         if self.is_present():
             try:
                 self.reset()

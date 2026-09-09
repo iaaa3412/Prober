@@ -9,13 +9,6 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from typing import Any, Dict, List, Optional, Sequence
 
-# Same sys._MEIPASS-first, dev-checkout-fallback pattern gpib_base.
-# get_resource_path already uses for its own bundled resource lookup -
-# reused here rather than duplicated, so a PyInstaller build only needs
-# to bundle "gds" as a data dir (--add-data) for this import to keep
-# working, instead of also having to ship the folder loose next to the
-# exe (see workdir.py's own _exe_dir()/_PREF_PATH comments for the same
-# "smallest possible deployment" reasoning applied there).
 from instruments.gpib_base import get_resource_path
 
 _GDS_DIR = get_resource_path("gds")
@@ -238,10 +231,6 @@ class GdsParserPanel(ttk.Frame):
 
 
     def export_app_log(self):
-        """Dumps the WHOLE app log panel (every [RUN]/[ERROR]/... line
-        since launch, not just this tab's own GDS parsing log below) to a
-        text file - for sending a full repro trace without having to
-        select/copy out of the log widget by hand."""
         txt = getattr(getattr(self.controller, "ui", None), "log_text", None)
         if txt is None:
             messagebox.showerror("Export App Log", "No active log panel found.")

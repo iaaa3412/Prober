@@ -1,38 +1,4 @@
-"""Switchbox debug panel - one view per card family, following the active bench.
-
-WHY THIS IS NOT ONE FIXED LAYOUT. Two different card families are fitted, they
-behave nothing alike, and all three cards answer *IDN? with the identical
-string. Which card sits at which secondary address also changes with the bench:
-9::15 is an E1345A multiplexer on probe02 and an E1343A on probe03, and
-probe03's wired form C card at 9::10 does not exist on probe02 at all. So the
-card list comes from the active profile, the card TYPE is read back with
-SYST:CTYP?, and the controls drawn depend on what actually answered.
-
-The dangerous version of getting this wrong is quiet: present form C controls
-for a multiplexer and closing "channel 3" appears to work while connecting
-nothing, because a mux channel reaches the outside world only through its tree
-switch. That looks exactly like a healthy open circuit.
-
-  MULTIPLEXER (E1343A / E1345A)
-    16 channels of High/Low/Guard in two banks, reaching the AT / BT / AT2 tree
-    switches - themselves channels 90, 91 and 92:
-
-      ch00..07  Bank 0 --[ AT 90 ]-- analog bus H / L / G     (sense)
-                              |
-                         [ AT2 92 ]
-                              |
-      ch08..15  Bank 1 --[ BT 91 ]-- analog bus I+ / I- / IG  (source)
-
-    2-wire  = AT + one Bank 0 channel.
-    4-wire  = AT + BT + channel N + channel N+8.
-
-  FORM C (E1364A)
-    16 independent SPDT relays. Closed = Common to NO, open = Common to NC.
-    The relays LATCH, so the card powers up however it was left; nothing may be
-    assumed until *RST has actually been sent. On probe03 every NC is chained
-    to ground, so an open channel GROUNDS its probe pin and all-open is a
-    guarded state rather than a floating one.
-"""
+"""Switchbox debug panel."""
 
 import threading
 import tkinter as tk
@@ -48,11 +14,9 @@ from instruments.hp_switchbox import (
     describe_channel_on, die_of_channel, die_of_channel_on, fres_partner,
 )
 
-# Driver keys, in the order the profile lists them.
 _RELAY_KEYS = ("relay1_eg", "relay2_eg", "relay3_eg")
 _DRIVER_KEY = {"relay1_eg": "relay1", "relay2_eg": "relay2", "relay3_eg": "relay3"}
 
-# Canvas palette, matching the Accretech routing matrix so the two read alike.
 _C_BG = "#8c9688"
 _C_OPEN = "#6b7566"
 _C_CLOSED = "#22c55e"
@@ -75,11 +39,11 @@ class SwitchboxTestPanel(ttk.Frame):
         super().__init__(parent)
         self.controller = controller
         self._busy = False
-        self._key = None            # active profile key, e.g. "relay1_eg"
+        self._key = None
         self._family = None
         self._card_type = ""
-        self._state = {}            # channel -> bool
-        self._dots = {}             # channel -> (body, spec)
+        self._state = {}
+        self._dots = {}
         self._walk_order = [c for c in CHANNELS if c in COAX_OF_CHANNEL]
 
         self.columnconfigure(0, weight=1)
@@ -93,14 +57,12 @@ class SwitchboxTestPanel(ttk.Frame):
         self._refresh_assignments()
 
     def _layout(self):
-        """The Electroglas MainLayout, for reaching the active probe card."""
         try:
             return self.controller._by_system["electroglas"]["ui"]
         except Exception:
             return None
 
     def _card_die_pins(self) -> dict:
-        """{slot: (hi, lo)} from the active probe card, or {}."""
         layout = self._layout()
         wiring = getattr(layout, "pin_wiring", None) if layout else None
         getter = getattr(wiring, "get_die_pins", None)
@@ -120,12 +82,6 @@ class SwitchboxTestPanel(ttk.Frame):
             return []
 
     def _pins_for_channel(self, bench: str, channel: int) -> str:
-        """The probe-card PINS this channel lands on, via the die it serves.
-
-        Pins rather than pad labels: a pin is the physical contact wired to
-        the relay, and it still identifies the same thing on the next probe
-        card. "BRU" only means something inside one project's drawing.
-        """
         die = die_of_channel_on(bench, channel)
         if die is None:
             return ""
@@ -134,14 +90,6 @@ class SwitchboxTestPanel(ttk.Frame):
             return ""
         return f"{pair[0]} / {pair[1]}"
 
-    # -- channel assignments ------------------------------------------------
-    #
-    # Every channel of every fitted card, not just the ones this project
-    # wired. BENCH_WIRING knows probe02's CH00-03 and probe03's eight; the
-    # rest are physically present, unused, and invisible - so claiming one for
-    # a new project meant working out from scratch which were free. The table
-    # lists all of them, pre-filled with what is already known, and anything
-    # typed in is kept per bench.
 
     def _build_assignments(self):
         lf = ttk.LabelFrame(self, text="Channel assignments (all cards)",
@@ -206,8 +154,6 @@ class SwitchboxTestPanel(ttk.Frame):
                 tree.insert("", "end", iid=iid,
                             values=(name, f"{ch:02d}", pins, known,
                                     saved.get(iid, "")))
-        # Tree switches are addressable channels too, and forgetting that is
-        # how a "spare" channel turns out to be the thing routing a bank.
         if wiring.get("family") == FAMILY_MUX and wired_key in fitted:
             name = (inst.get(wired_key, {}) or {}).get("name") or wired_key
             for tree_ch in TREE_SWITCHES:
@@ -237,7 +183,6 @@ class SwitchboxTestPanel(ttk.Frame):
         self._log(f"[SETUP] {card} ch{chan} assigned to "
                   f"{new.strip() or '(cleared)'}")
 
-    # -- plumbing -----------------------------------------------------------
 
     def _log(self, msg: str):
         self.controller.log(msg)
@@ -279,7 +224,6 @@ class SwitchboxTestPanel(ttk.Frame):
 
         threading.Thread(target=_work, daemon=True).start()
 
-    # -- layout -------------------------------------------------------------
 
     def _build_topbar(self):
         bar = tk.Frame(self, bg="#c8c8c8")
@@ -334,10 +278,8 @@ class SwitchboxTestPanel(ttk.Frame):
         self._actions = ttk.Frame(self)
         self._actions.grid(row=3, column=0, sticky="ew", padx=8, pady=(0, 8))
 
-    # -- card discovery -----------------------------------------------------
 
     def _reload_cards(self):
-        """Rebuild the card list from the active bench profile."""
         try:
             bench = eg_profiles.active_name()
             inst = eg_profiles.instruments(bench)
@@ -356,9 +298,6 @@ class SwitchboxTestPanel(ttk.Frame):
 
         self._card_cb.config(values=[label for _k, label in self._cards])
         if self._cards:
-            # Prefer the card the profile calls WIRED - on a bench where only
-            # one card goes anywhere, opening on a spare wastes a click and
-            # invites poking at the wrong thing.
             default = next((lab for _k, lab in self._cards
                             if "WIRED" in lab.upper()), self._cards[0][1])
             self._card_var.set(default)
@@ -375,7 +314,7 @@ class SwitchboxTestPanel(ttk.Frame):
         self._card_type = ""
         self._state = {}
         self._note.set("")
-        self._draw()                       # placeholder until the type is read
+        self._draw()
         drv = self._drv()
         if not drv:
             self._note.set(f"{self._key} is not connected — connect on the "
@@ -401,7 +340,6 @@ class SwitchboxTestPanel(ttk.Frame):
         self._log(f"[INSTRUMENT] {self._key}: {card_type} -> {family}"
                   + (f", SCAN:PORT {scan_port}" if scan_port else ""))
 
-    # -- drawing ------------------------------------------------------------
 
     def _draw(self):
         c = self._canvas
@@ -459,7 +397,6 @@ class SwitchboxTestPanel(ttk.Frame):
                               font=("Consolas", 9),
                               text=f"ch{ch:02d}")
                 self._dot(col_ch, y, closed, ch)
-                # channel -> bank common
                 c.create_line(col_ch + _DOT_R, y, col_tree - 18, y,
                               fill=_C_PATH if closed else _C_DIM,
                               width=3 if closed else 1)
@@ -476,14 +413,12 @@ class SwitchboxTestPanel(ttk.Frame):
                 y += _ROW_H
             bottom = y - _ROW_H
             mid = (top + bottom) // 2
-            # bank common bus
             c.create_line(col_tree - 18, top, col_tree - 18, bottom,
                           fill=_C_DIM, width=2)
             c.create_line(col_tree - 18, mid, col_tree - _DOT_R, mid,
                           fill=_C_DIM, width=2)
             c.create_text(col_tree - 22, top - 16, anchor="e", fill=_C_TEXT,
                           font=("Segoe UI", 8, "bold"), text=f"Bank {bank}")
-            # tree switch
             self._dot(col_tree, mid, tree_closed, tree, tree=True)
             c.create_text(col_tree, mid - _DOT_R - 9, anchor="s", fill=_C_TEXT,
                           font=("Consolas", 8),
@@ -493,15 +428,12 @@ class SwitchboxTestPanel(ttk.Frame):
                           width=3 if tree_closed else 1)
             bus_text = bus
             if wiring and not wiring.get("uses_analog_bus", True):
-                # Measured, not assumed: closing a tree alone or with a channel
-                # moved the reading by less than the noise on this bench.
                 bus_text = bus + "   — NOT in the path on this bench"
             c.create_text(col_bus + 8, mid, anchor="w",
                           fill=_C_TEXT if tree_closed else _C_DIM,
                           font=("Segoe UI", 8), text=bus_text)
             y += 22
 
-        # AT2 sits between the banks
         at2_closed = bool(self._state.get(TREE_AT2))
         self._dot(col_tree + 74, y, at2_closed, TREE_AT2, tree=True)
         c.create_text(col_tree + 92, y, anchor="w", fill=_C_TEXT,
@@ -563,29 +495,20 @@ class SwitchboxTestPanel(ttk.Frame):
             return ""
 
     def _wiring(self) -> dict:
-        """The active bench's wiring, but ONLY when the selected card is the
-        one that wiring describes. Every bench has spare cards that go
-        nowhere; drawing a die map against one of those would be inventing
-        connections."""
         wiring = bench_wiring(self._bench())
         if wiring.get("driver_key") and self._key == wiring["driver_key"]:
             return wiring
         return {}
 
     def _is_probe03_card(self) -> bool:
-        """probe03's form-C coax map specifically - the E1364A drawing needs
-        the coax numbers, which no other bench has."""
         return self._bench() == "probe03" and bool(self._wiring())
 
-    # -- family-specific buttons -------------------------------------------
 
     def _build_family_actions(self):
         for w in self._actions.winfo_children():
             w.destroy()
         wiring = self._wiring()
         if self._family == FAMILY_MUX and wiring:
-            # This card is the wired one - lead with the die buttons, which is
-            # what anyone actually wants, and keep the raw routing behind them.
             ttk.Label(self._actions,
                       text=f"{self._bench()} 2×2 shot:").pack(side="left")
             for die in sorted(wiring["die_sets"]):
@@ -628,7 +551,6 @@ class SwitchboxTestPanel(ttk.Frame):
             ttk.Label(self._actions,
                       text="Click a channel to toggle it.").pack(side="left")
 
-    # -- actions ------------------------------------------------------------
 
     def _on_click(self, event):
         x = self._canvas.canvasx(event.x)
@@ -720,13 +642,6 @@ class SwitchboxTestPanel(ttk.Frame):
         self._run(f"4-wire ch{ch:02d}", _work)
 
     def _route_die_mux(self, die):
-        """Select one die on a multiplexer bench (probe02-style).
-
-        Exactly one channel closed at a time. Closing two does not short
-        anything here - a mux channel switches a whole HI/LO pair - but it
-        puts two dies in parallel, so the reading would be the pair, not the
-        die. Opening the others first is what makes the number mean something.
-        """
         wiring = self._wiring()
         channels = wiring["die_sets"][die]
         others = [c for d, chans in wiring["die_sets"].items()

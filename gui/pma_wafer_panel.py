@@ -37,7 +37,6 @@ except ImportError:
     _MPL = False
 
 
-
 _MAIN_MENU_PARAMS_FIRST_ROW1 = 35
 _MAIN_MENU_PARAMS_LAST_ROW1 = 300
 
@@ -185,12 +184,6 @@ def read_moves_grid(book, sheet_name: str = "MajorMoves") -> Dict[str, Any]:
                 "included": not excluded,
                 "raw_text": "", "dies": [],
             }
-            # The cell text is read whether or not the shot is included:
-            # "included" means "this recipe probes it", not "this die exists".
-            # A sampled workbook (the electrical gauge marks 15 of 634) still
-            # describes the whole wafer, and the map is drawn from all of it.
-            # Only the auto-numbering of BLANK cells stays included-only, so
-            # existing recipes keep the same generated IDs.
             text = _cell_text(sheet, row0, col0)
             shot["raw_text"] = text
             if text:
@@ -249,17 +242,11 @@ def parse_legacy_workbook(path: str) -> Dict[str, Any]:
     }
 
 
-# Each of the three wafer-map sources (PMA touchdowns, Recipe Generator
-# workbook, plain CSV import) is stored independently in the ATA folder under
-# its own filename and never combined with the others.
 ATA_XLS_FILENAME = "ata_wafer_map_pma.csv"
 ATA_PMA_TOUCHDOWN_FILENAME = "ata_wafer_map_pma_touchdowns.csv"
 ATA_CSV_MAP_FILENAME = "ata_wafer_map_csv_import.csv"
 _ATA_SHOT_META_FIELDS = ("recipe_name", "die_size_x", "die_size_y",
                          "x_move_first", "y_move_first", "align_die",
-                         # How the dies sit inside one touchdown. Persisted so
-                         # a 1x5 strip does not silently reload as the 2x2 quad
-                         # that shot_geometry() assumes for four dies.
                          "shot_rows", "shot_cols")
 
 
@@ -267,21 +254,12 @@ def save_shots_to_ata(data: Dict[str, Any], folder: str, filename: str) -> str:
     path = os.path.join(folder, filename)
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        # As many die columns as the widest shot needs, not a hardcoded four.
-        # A 1x5 strip lost its fifth die on every save, and because this file
-        # IS the wafer once the source is closed, the die simply ceased to
-        # exist. Four stays the minimum so quad files keep their usual shape.
         n_die_cols = max(4, max((len(s.get("dies") or [])
                                  for s in data.get("shots", [])), default=4))
         die_cols = [f"die{i}" for i in range(1, n_die_cols + 1)]
         w.writerow([*_ATA_SHOT_META_FIELDS, "row", "col", "x_um", "y_um",
                    "included", *die_cols])
         for s in data.get("shots", []):
-            # Every shot naming real dies, not only the probed ones, and the
-            # 'included' flag alongside. Once the workbook is closed THIS FILE
-            # IS THE WAFER: filtering here persisted a 634-shot wafer as the
-            # 15 shots the gauge probes, so after a restart the map reloaded
-            # as touchdowns only and took the Run tab's grid with it.
             if not (s.get("included") or real_die_ids(s)):
                 continue
             dies = (list(s["dies"]) + [""] * n_die_cols)[:n_die_cols]
@@ -307,18 +285,12 @@ def load_shots_from_ata(folder: str, filename: str) -> Optional[Dict[str, Any]]:
                 x_um, y_um = float(row["x_um"]), float(row["y_um"])
             except (KeyError, ValueError):
                 continue
-            # Read every die column the file actually has, in order - a 1x5
-            # wafer writes die1..die5 and stopping at four would drop the last
-            # die of every shot on the way back in.
             dies = []
             i = 1
             while f"die{i}" in row:
                 dies.append(row.get(f"die{i}") or "")
                 i += 1
             dies = [d for d in dies if d != ""]
-            # Files written before 'included' was persisted contain probed
-            # shots only, so a missing column has to mean True or they would
-            # all reload as unprobed.
             raw_inc = row.get("included")
             included = (True if raw_inc in (None, "") else
                         str(raw_inc).strip().lower() not in ("0", "false", "no"))
@@ -331,14 +303,6 @@ def load_shots_from_ata(folder: str, filename: str) -> Optional[Dict[str, Any]]:
     na_count = sum(len(s["dies"]) - len(real_die_ids(s)) for s in shots)
     x_headers = sorted({s["x_um"] for s in shots})
     y_headers = sorted({s["y_um"] for s in shots})
-    # Rebase row/col onto those headers. The stored numbers are absolute
-    # positions in whatever grid the wafer was authored in, so a wafer whose
-    # first CSV line is empty starts at row 1 while its columns start at 0 -
-    # two different bases in one record. The headers are built from occupied
-    # coordinates only, so indexing them by the raw row walked off the end.
-    # save_csv_map_to_ata sizes its grid from these same header counts and
-    # skips anything outside, which is how the last row of a wafer could go
-    # missing on export without a word.
     x_at = {v: i for i, v in enumerate(x_headers)}
     y_at = {v: i for i, v in enumerate(y_headers)}
     for s in shots:
@@ -364,15 +328,11 @@ def save_csv_map_to_ata(data: Dict[str, Any], folder: str, filename: str) -> str
     for s in data.get("shots", []):
         r, c = s["row"], s["col"]
         if 0 <= r < rows and 0 <= c < cols and s.get("dies"):
-            # The whole shot, slash-separated, the same way the importer reads
-            # it. Writing only dies[0] turned a 1x5 strip back into a
-            # single-die wafer on the next round-trip.
             grid[r][c] = "/".join(s["dies"])
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerows(grid)
     return path
-
 
 
 def pma_shots_to_grid(data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -443,15 +403,6 @@ def centroid_offset(pma_grid: List[Dict[str, Any]], accretech_rc) -> tuple:
 
 
 def parse_plain_csv_wafer_map(path: str) -> Dict[str, Any]:
-    """A wafer laid out as a grid of cells, one cell per TOUCHDOWN.
-
-    A cell holding one ID is a single-die shot. A cell holding several,
-    slash-separated ("A1/A2/A3/A4/A5"), is a multi-die shot listed in the same
-    order a .PMA lists them - so a plain CSV can describe a 1x5 strip or a 2x2
-    quad without a legacy workbook. Blank cells are off-wafer.
-
-    Die IDs are free text: letters, digits, dashes. Nothing here parses them.
-    """
     with open(path, newline="", encoding="utf-8-sig") as f:
         rows = list(csv.reader(f))
     shots = []
@@ -473,26 +424,17 @@ def parse_plain_csv_wafer_map(path: str) -> Dict[str, Any]:
 
 
 _COLOR_EXCLUDED = "#374151"
-# On the wafer but not probed by this recipe. Needs its own colour: a sampled
-# recipe like the electrical gauge probes 15 of 634 shots, and painting the
-# other 619 the same flat "excluded" tone left a map that read as touchdowns
-# only even though the whole wafer was drawn.
 _COLOR_UNPROBED = "#9aa5b1"
 _COLOR_FULL     = "#16a34a"
 _COLOR_PARTIAL  = "#d97706"
 _COLOR_EMPTY    = "#dc2626"
 _COLOR_SELECTED = "#38bdf8"
 
-# Matches WaferMapPanel (wafer_map_view.py), which every other wafer map in
-# the GUI is drawn with, so the Electroglas map reads the same way: a wafer
-# disc with a notch at the bottom rather than a bare grid on labelled axes.
 _WAFER_FILL     = "#f5f5f0"
 _WAFER_EDGE     = "#333333"
 _EDGE_EXCL      = "#aaaaaa"
 _CROSSHAIR      = "#cccccc"
 _DIE_EDGE       = "#4a7090"
-# The touchdown outline drawn over the dies it covers - darker than the die
-# edge so the shot boundary reads through a block of same-coloured dies.
 _SHOT_EDGE      = "#0f172a"
 
 
@@ -508,9 +450,6 @@ class PmaWaferPanel(ttk.Frame):
         self._csv_shot_data: Optional[Dict[str, Any]] = None
         self._loaded_ata_folder: Optional[str] = None
         self._show_labels_var = tk.BooleanVar(value=True)
-        # Dies per touchdown and how they sit inside it. 0 means "work it out"
-        # - shot_geometry then treats four dies as the historical 2x2 quad and
-        # anything else as a single row.
         self._shot_rows_var = tk.StringVar(value="0")
         self._shot_cols_var = tk.StringVar(value="0")
         self._source_var = tk.StringVar(value="pma")
@@ -524,8 +463,6 @@ class PmaWaferPanel(ttk.Frame):
         self._label_artists: List[Any] = []
         self._label_hint = None
         self._view_debounce_id = None
-        # "You are here" overlay, driven by the Electroglas PMA run panel so the
-        # operator can match the map against what is under the scope.
         self._current_artists: List[Any] = []
         self._map_die_um = (1.0, 1.0)
 
@@ -573,13 +510,6 @@ class PmaWaferPanel(ttk.Frame):
                         command=self._on_source_change).pack(side="left")
         ttk.Radiobutton(ctl, text="CSV Wafer Map", variable=self._source_var, value="csv",
                         command=self._on_source_change).pack(side="left")
-        # The Import Legacy buttons used to live here, hidden behind
-        # "main_layout is not None" - and both call sites passed None, so they
-        # were never drawn. Using the layout reference as a visibility flag
-        # meant the panel could not reach the rest of the GUI either, which is
-        # why the Build / Edit page never followed this one. The buttons are
-        # gone (the same pair was removed from the Recipe tab) and the layout
-        # reference is now a real reference.
         ttk.Label(ctl, textvariable=self.path_var, foreground="gray").pack(
             side="left", padx=10)
         ttk.Checkbutton(ctl, text="🏷 Die Labels", variable=self._show_labels_var,
@@ -633,7 +563,6 @@ class PmaWaferPanel(ttk.Frame):
         legend = ttk.Frame(right)
         legend.grid(row=1, column=0, sticky="w", pady=(8, 4))
         self._legend_labels: Dict[str, ttk.Label] = {}
-        # One square is one die now, so the legend describes dies.
         for key, color, text in [
             ("full", _COLOR_FULL, "probed"),
             ("unprobed", _COLOR_UNPROBED, "on wafer, not probed"),
@@ -720,8 +649,6 @@ class PmaWaferPanel(ttk.Frame):
                  "raw_text": s.get("raw_text") or "/".join(s["dies"])}
                  for s in raw["shots"]]
         name = os.path.splitext(os.path.basename(raw["path"]))[0]
-        # An imported CSV carries no shot layout of its own, so honour whatever
-        # the tab is set to and fall back to shot_geometry's default.
         n_dies = int(raw.get("dies_per_shot") or 1)
         s_rows, s_cols = shot_geometry(n_dies, self._shot_rows_setting(),
                                        self._shot_cols_setting())
@@ -741,7 +668,6 @@ class PmaWaferPanel(ttk.Frame):
         }
 
     def shot_layout(self) -> tuple:
-        """(rows, cols) of the die block a touchdown covers, for the loaded map."""
         data = self.workbook_data or {}
         widest = max((len(s.get("dies") or []) for s in data.get("shots", [])),
                      default=1)
@@ -750,18 +676,6 @@ class PmaWaferPanel(ttk.Frame):
                              int(data.get("shot_cols") or self._shot_cols_setting()))
 
     def _reshot(self):
-        """Regroup the SAME dies into touchdowns of a different size.
-
-        How many dies a touchdown covers is set by the probe card, not by
-        preference - so moving a 1x5 wafer onto a 4-up card is not a relabel,
-        it is a re-grouping. The dies and their IDs are untouched; what changes
-        is which of them come down together, and therefore how many touchdowns
-        the wafer has.
-
-        Only defined for single-row shots, where "next die along" is
-        unambiguous. A 2x2 regrouped into 1x3 would need to know how the block
-        folds, and guessing that would silently move dies.
-        """
         data = self.workbook_data
         if not data or not data.get("shots"):
             messagebox.showinfo("No Data", "Load a wafer map first.")
@@ -783,11 +697,6 @@ class PmaWaferPanel(ttk.Frame):
         self._reshot_to(n)
 
     def _reshot_to(self, n: int):
-        """The regrouping itself, without asking. See _reshot for the rules.
-
-        Split out so the Wafer Builder's shot-layout box can drive it: typing
-        a smaller shot there IS a request to regroup, and it already asks.
-        """
         data = self.workbook_data
         if not data or not data.get("shots"):
             return
@@ -814,8 +723,6 @@ class PmaWaferPanel(ttk.Frame):
         pitch_y = float(data.get("die_size_y") or 1) or 1.0
         old_cols = max((s["col"] for s in data["shots"]), default=0) + 1
         new_cols = max(s["col"] for s in new_shots) + 1
-        # One die keeps its width, so a wider shot steps further between
-        # touchdowns. Derive the new pitch from the old rather than reusing it.
         die_w = pitch_x / max(1, int(self.shot_layout()[1]))
         new_pitch_x = die_w * n
         for s in new_shots:
@@ -846,7 +753,6 @@ class PmaWaferPanel(ttk.Frame):
         self._save_source_to_ata("csv")
 
     def _apply_shot_layout(self):
-        """Re-stamp every loaded source with the layout typed in the boxes."""
         rows, cols = self._shot_rows_setting(), self._shot_cols_setting()
         touched = []
         for label, attr in (("PMA", "_pma_shot_data"),
@@ -914,21 +820,9 @@ class PmaWaferPanel(ttk.Frame):
         result_q: "queue.Queue" = queue.Queue()
         threading.Thread(target=self._load_worker, args=(path, result_q),
                          daemon=True).start()
-        # Polling started here, from the caller's own (main) thread, rather
-        # than the worker calling self.after() itself once done. This panel's
-        # own autoload (ATA folder -> pma_process.scan_ata_folder() ->
-        # here) runs during AtomicaDashboard.__init__(), before app.mainloop()
-        # is ever called - a worker finishing fast enough to call self.after()
-        # from ITS thread before mainloop starts raised "RuntimeError: main
-        # thread is not in main loop", straight into _load_failed() below as
-        # a "Could not load workbook" popup with that message. Scheduling the
-        # poll from the main thread has no such race: self.after() queuing a
-        # callback on the thread that owns the Tcl interpreter is always
-        # safe, mainloop running or not - it just waits to fire.
         self._poll_load_result(result_q)
 
     def _load_worker(self, path: str, result_q: "queue.Queue"):
-        # Pure computation only - no Tk calls here. See load_workbook_path().
         try:
             result_q.put(("ok", parse_legacy_workbook(path)))
         except Exception as exc:
@@ -1029,9 +923,6 @@ class PmaWaferPanel(ttk.Frame):
         return self._normalize_csv_data(raw)
 
     def load_from_ata(self, folder: str):
-        """Independently autoload each of the three sources from this ATA
-        folder's own saved files. Switching folders always starts clean —
-        nothing from the previous folder is left showing."""
         if not folder:
             return
         self.reset_view()
@@ -1041,11 +932,6 @@ class PmaWaferPanel(ttk.Frame):
         self._csv_shot_data = self._load_csv_ata_file(folder)
         loaded = [self._SOURCE_LABELS[s] for s in ("pma", "xls", "csv")
                  if self._data_for_source(s)]
-        # Open on whatever describes the whole WAFER, falling back to the
-        # touchdowns only when nothing does. The old rule kept the current
-        # source unless it was empty - and the default is "pma" - so with a
-        # .PMA saved in the folder this tab always opened on the 15 touchdowns
-        # even though the 634-shot wafer was sitting right beside it.
         for s in ("xls", "csv", "pma"):
             if self._data_for_source(s):
                 self._source_var.set(s)
@@ -1056,10 +942,6 @@ class PmaWaferPanel(ttk.Frame):
 
     def show_touchdowns(self, data: Dict[str, Any]):
         self._pma_shot_data = data
-        # Only claim the view if nothing yet describes the whole wafer. The
-        # .PMA is a subset of the .xls, and LOAD ALL loads the PMA last, so
-        # switching here replaced a full 634-die wafer with the 15 touchdowns
-        # the gauge probes - which is what the tab then drew.
         if not (self._xls_shot_data or self._csv_shot_data):
             self._source_var.set("pma")
         self._log(
@@ -1086,13 +968,6 @@ class PmaWaferPanel(ttk.Frame):
         self._refresh_view()
 
     def show_wafer_definition(self) -> bool:
-        """Switch the view to whatever describes the whole wafer, if anything.
-
-        LOAD ALL loads the .PMA last, so this tab was left showing the
-        touchdown subset even when the workbook it built the map from was
-        sitting right there. Returns False when only a .PMA is loaded, which
-        is the one case where the touchdown view is all there is.
-        """
         for source, data in (("xls", self._xls_shot_data),
                              ("csv", self._csv_shot_data)):
             if data:
@@ -1116,7 +991,6 @@ class PmaWaferPanel(ttk.Frame):
         source = self._source_var.get()
         data = self._data_for_source(source)
         self.workbook_data = data
-        # Keep the Build / Edit page in step - same wafer, same fields.
         gen = getattr(self._main_layout, "recipe_gen", None)
         adopt = getattr(gen, "adopt_from_wafer_view", None)
         if callable(adopt):
@@ -1149,7 +1023,6 @@ class PmaWaferPanel(ttk.Frame):
             self._draw_map(data)
 
     def clear_current_shot(self):
-        """Remove the 'you are here' overlay."""
         for art in self._current_artists:
             try:
                 art.remove()
@@ -1160,12 +1033,6 @@ class PmaWaferPanel(ttk.Frame):
             self.canvas.draw_idle()
 
     def mark_current_shot(self, x_um: float, y_um: float, label: str = ""):
-        """Ring the shot the chuck is on, in the map's own micron frame.
-
-        Called after every move of a PMA run. The coordinates are the
-        touchdown's own x/y, which is the same frame the shot rectangles are
-        drawn in, so no conversion is needed.
-        """
         if not _MPL:
             return
         self.clear_current_shot()
@@ -1198,9 +1065,6 @@ class PmaWaferPanel(ttk.Frame):
         dies = [d for d in shot.get("dies", []) if d.strip().upper() != "NA"]
         return "/".join(dies)
 
-    # Counted in dies, not touchdowns - a 1x5 wafer has five times the labels
-    # it used to for the same zoom, so the old shot-based ceiling would have
-    # blanked maps that were perfectly readable.
     _MAX_VISIBLE_LABELS = 2500
 
     def _connect_view_callbacks(self):
@@ -1230,25 +1094,11 @@ class PmaWaferPanel(ttk.Frame):
                 float(self.workbook_data.get("die_size_y") or 1) or 1.0)
 
     def _current_label_shots(self) -> List[Dict[str, Any]]:
-        # Any die that really exists, not just the probed ones. "included"
-        # means "this recipe probes it", so labelling only those left the
-        # electrical gauge's 619 other dies anonymous on a map that does
-        # describe them. One entry per die: the box carries its own size, so
-        # a 1x5 strip gets five labels rather than one slash-joined smear.
         return [b for b in (self._die_boxes_drawn or []) if b["present"]]
 
-    # Below this the IDs are a grey smear rather than text, so they are not
-    # drawn at all - zoom in and they appear. The old code clamped at 3pt and
-    # drew them anyway, which is what made the full-wafer view unreadable.
     _MIN_LABEL_FONT = 5.5
 
     def _fit_fontsize(self, box_w_px: float, box_h_px: float, text_len: int) -> float:
-        """Largest point size that fits this die box, UNCLAMPED at the bottom.
-
-        The caller needs the honest value to decide whether the label is worth
-        drawing; capped only at the top so a deep zoom does not produce
-        absurdly large text.
-        """
         text_len = max(text_len, 1)
         dpi = self.fig.dpi
         by_width = box_w_px * 72.0 / dpi / (0.62 * text_len)
@@ -1340,8 +1190,6 @@ class PmaWaferPanel(ttk.Frame):
 
     def _shot_color(self, shot: Dict[str, Any]) -> str:
         if not shot["included"]:
-            # A shot naming real dies exists on the wafer whether or not this
-            # recipe probes it. Only a cell with no dies at all is "excluded".
             return _COLOR_UNPROBED if real_die_ids(shot) else _COLOR_EXCLUDED
         n_real = len(real_die_ids(shot))
         if n_real == len(shot["dies"]) and n_real > 0:
@@ -1352,19 +1200,10 @@ class PmaWaferPanel(ttk.Frame):
 
     def _die_color(self, box: Dict[str, Any]) -> str:
         if not box["present"]:
-            # An NA slot is a position the shot covers where no die exists.
             return _COLOR_EMPTY
         return _COLOR_FULL if box["shot"].get("included") else _COLOR_UNPROBED
 
     def _die_boxes(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """One box per DIE, not per touchdown.
-
-        This view used to draw a touchdown as a single square, so a 1x5 shot
-        looked like one die and the map disagreed with the Run tab, which has
-        always drawn dies. The die is the thing that gets an ID and a result,
-        so it is the thing that gets a square; the touchdown is recoverable
-        from ["shot"] and is what the selection outline still shows.
-        """
         dx = float(data.get("die_size_x") or 1) or 1.0
         dy = float(data.get("die_size_y") or 1) or 1.0
         rows, cols = self.shot_layout()
@@ -1388,12 +1227,6 @@ class PmaWaferPanel(ttk.Frame):
         return out
 
     def _wafer_disc(self, shots, dx: float, dy: float):
-        """Centre and radius of the wafer outline, in map microns.
-
-        Same construction WaferMapPanel uses on the canvas maps: centre the
-        die extent, then push the edge out by most of a die pitch so the
-        outermost dies sit inside the disc rather than on it.
-        """
         cxs = [s["x_um"] + dx / 2 for s in shots]
         cys = [s["y_um"] + dy / 2 for s in shots]
         cx_d = (max(cxs) + min(cxs)) / 2.0
@@ -1408,9 +1241,6 @@ class PmaWaferPanel(ttk.Frame):
         self.ax.add_patch(Circle((cx_d, cy_d), r * 0.95, facecolor="none",
                                  edgecolor=_EDGE_EXCL, linewidth=0.9,
                                  linestyle=(0, (4, 4)), zorder=1))
-        # The y axis is inverted, so screen-bottom is the HIGH-y side of the
-        # data - that is where the notch belongs, and the half-disc has to
-        # point back toward lower y to bite into the wafer.
         notch_r = max(r * 0.04, max(dx, dy) * 0.35)
         self.ax.add_patch(Wedge((cx_d, cy_d + r), notch_r, 180, 360,
                                 facecolor=_WAFER_EDGE, edgecolor="none", zorder=2))
@@ -1429,16 +1259,10 @@ class PmaWaferPanel(ttk.Frame):
         dx = float(data["die_size_x"] or 1) or 1.0
         dy = float(data["die_size_y"] or 1) or 1.0
         self._map_die_um = (dx, dy)
-        # Click lookup keeps every cell; drawing keeps only what is on the
-        # wafer. The grid is a bounding rectangle, so the cells naming no dies
-        # are the corners outside the disc - drawing them squared off the
-        # wafer and swamped the dies that are really there.
         self._shots_by_rc = {(s["row"], s["col"]): s for s in data["shots"]}
         shots = [s for s in data["shots"]
                  if s.get("included") or real_die_ids(s)]
         disc = self._draw_wafer(shots, dx, dy) if shots else None
-        # One rectangle per die. The touchdown is still drawn, as the thin
-        # outline around its dies, so you can see what lands together.
         self._die_boxes_drawn = [b for b in self._die_boxes(data)
                                  if b["shot"].get("included")
                                  or real_die_ids(b["shot"])]
@@ -1470,9 +1294,6 @@ class PmaWaferPanel(ttk.Frame):
                 self.ax.set_xlim(min(x_headers) - dx, max(x_headers) + 2 * dx)
                 self.ax.set_ylim(min(y_headers) - dy, max(y_headers) + 2 * dy)
         self.ax.invert_yaxis()
-        # Both numbers, because they differ and the difference is the point:
-        # a sampled recipe describes the whole wafer but probes a fraction of
-        # it. A title reading "15 shots" over a 634-shot map looked like a bug.
         on_wafer = sum(1 for s in shots if real_die_ids(s))
         probed_dies = sum(1 for b in self._die_boxes_drawn
                           if b["present"] and b["shot"].get("included"))
@@ -1480,8 +1301,6 @@ class PmaWaferPanel(ttk.Frame):
             f"{data['recipe_name']} — {data['real_die_count']} dies in "
             f"{on_wafer} shots, {probed_dies} dies probed by this recipe "
             f"({data['included_shot_count']} touchdowns)")
-        # No axis furniture, matching the canvas wafer maps on the other tabs.
-        # The navigation toolbar still reports the cursor's micron position.
         self.ax.set_axis_off()
         self.ax.set_aspect("equal")
         self._connect_view_callbacks()
@@ -1502,11 +1321,6 @@ class PmaWaferPanel(ttk.Frame):
     def _on_map_click(self, event):
         if not self.workbook_data or event.xdata is None or event.ydata is None:
             return
-        # Hit test the die boxes directly. Going through x_headers/y_headers
-        # meant trusting a shot's row index to address them, and the .xls
-        # reader numbers rows from 1 while columns start at 0 - so a click
-        # resolved to the wrong shot, or to none. The boxes carry their own
-        # micron rectangle and their own shot, which settles it.
         die = next((b for b in self._die_boxes_drawn
                     if b["x"] <= event.xdata < b["x"] + b["w"]
                     and b["y"] <= event.ydata < b["y"] + b["h"]), None)
@@ -1535,9 +1349,6 @@ class PmaWaferPanel(ttk.Frame):
                         pass
                 setattr(self, attr, None)
             dx, dy = self._current_die_size()
-            # Both outlines: the touchdown, because that is what the prober
-            # moves to, and the die inside it, because that is what was
-            # clicked and what carries the result.
             hl = Rectangle((shot["x_um"], shot["y_um"]), dx, dy, fill=False,
                           edgecolor=_COLOR_SELECTED, linewidth=2.0, zorder=7)
             self.ax.add_patch(hl)

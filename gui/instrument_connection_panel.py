@@ -40,19 +40,6 @@ def build_address_panel(parent, instruments, log_fn, reconnect_fn, height=220):
                   foreground="red").pack(anchor="w")
         current = {}
 
-    # Callers may pass (name, key), (name, key, id_queries) or
-    # (name, key, id_queries, fitted).
-    #   id_queries - ID strings to try once the instrument has answered a serial
-    #                poll. Pass () for pre-SCPI gear like the Electroglas 2001X
-    #                so ping never writes a command it cannot parse.
-    #   fitted     - False for an instrument this prober does not have. It stays
-    #                listed and its own Ping button still works, but Ping All
-    #                skips it. The EG probers are not all fitted alike, so use
-    #                Scan Bus to see what is actually plugged into this one.
-    #   write_probe - a harmless query to try writing. A serial poll is answered
-    #                by the GPIB interface chip alone, so it can pass on an
-    #                instrument whose software is not servicing the bus; only a
-    #                write proves commands will actually get through.
     entries = [(e[0], e[1],
                 e[2] if len(e) > 2 else _DEFAULT_ID_QUERIES,
                 e[3] if len(e) > 3 else True,
@@ -82,14 +69,8 @@ def build_address_panel(parent, instruments, log_fn, reconnect_fn, height=220):
             log_fn(f"[INSTRUMENT] {name} ({address}): {text}")
         threading.Thread(target=_run, daemon=True).start()
 
-    # Tkinter is not thread-safe. Every StringVar.get() below happens on the
-    # main thread before the worker starts, and every write back goes through
-    # inner.after(); reading a Tk variable from the worker reaches into the Tcl
-    # interpreter off-thread and deadlocks the whole UI.
 
     def _ping_all():
-        # One instrument at a time on a single worker. A GPIB bus has one
-        # controller, so firing every ping at once just makes them contend.
         targets = []
         for name, key, id_queries, fitted, write_probe in entries:
             if not fitted:
@@ -118,9 +99,6 @@ def build_address_panel(parent, instruments, log_fn, reconnect_fn, height=220):
         threading.Thread(target=_run, daemon=True).start()
 
     def _scan_bus():
-        # Identifies everything actually answering, including instruments that
-        # are not in instruments.yaml - the point being that the EG probers are
-        # fitted differently, so this reports the bench rather than the config.
         log_fn("[INSTRUMENT] Identifying every instrument on the bus…")
         configured = {addr_vars[key].get().strip().upper(): name
                       for name, key, _, _, _ in entries if addr_vars[key].get().strip()}

@@ -1,26 +1,4 @@
-"""Bench panel for the HP 3458A on its own — every function, one click each.
-
-Two things about this meter that the panel cannot paper over:
-
-FRONT/REAR IS A MECHANICAL SWITCH. The manual: "the 3458's input terminals
-cannot be controlled from remote". TERM is accepted only for compatibility with
-older meters and errors if you try to set it. So the panel READS the switch with
-TERM? and shows it - it cannot move it. On probe03 the relay wiring goes to the
-REAR terminals, so a reading taken with the switch on FRONT is measuring an
-empty front panel, which looks exactly like a perfect open circuit. That is the
-single easiest way to get a convincing wrong answer here, hence the readback
-sitting at the top of the panel.
-
-RESISTANCE IS A SOURCED-CURRENT MEASUREMENT. Every ohms range drives a known
-current (10 mA on the 10 Ohm range down to 500 nA at 1 GOhm) and reads the
-resulting voltage. Picking a range therefore picks how much current goes through
-whatever is connected, which is worth knowing before probing a device - so the
-range buttons show it.
-
-4-wire (OHMF) only means anything with the sense pair actually run to the
-device. With two pins per die on probe03 there is nowhere to sense from, so
-OHMF there returns a meaningless number rather than a merely imprecise one.
-"""
+"""Bench panel for the HP 3458A on its own — every function, one click each."""
 
 import threading
 import tkinter as tk
@@ -30,7 +8,6 @@ from instruments.hp3458a import DCI_SHUNT, FUNCTIONS, OHMS_TEST_CURRENT
 
 
 def _eng(value: float, unit: str) -> str:
-    """1.2e-9 -> '1.2 n'. Keeps the range buttons readable."""
     if value == 0:
         return f"0 {unit}"
     for scale, prefix in ((1e9, "G"), (1e6, "M"), (1e3, "k"), (1, ""),
@@ -58,7 +35,6 @@ class HP3458ADebugPanel(ttk.Frame):
         self._build_config()
         self._build_readout()
 
-    # -- plumbing -----------------------------------------------------------
 
     def _log(self, msg: str):
         self.controller.log(msg)
@@ -74,7 +50,6 @@ class HP3458ADebugPanel(ttk.Frame):
             pass
 
     def _run(self, label: str, fn):
-        """Run `fn` off the UI thread, one at a time."""
         if self._busy:
             self._log(f"[INSTRUMENT] Busy — {label} ignored")
             return
@@ -100,7 +75,6 @@ class HP3458ADebugPanel(ttk.Frame):
 
         threading.Thread(target=_work, daemon=True).start()
 
-    # -- layout -------------------------------------------------------------
 
     def _build_top(self):
         lf = ttk.LabelFrame(self, text="Meter", padding=6)
@@ -236,7 +210,6 @@ class HP3458ADebugPanel(ttk.Frame):
         entry.bind("<Return>", lambda _e: self._send_raw())
         ttk.Button(raw, text="Send", command=self._send_raw).pack(side="left")
 
-    # -- helpers ------------------------------------------------------------
 
     def _emit(self, text: str):
         self._log(f"[INSTRUMENT] {text}")
@@ -252,7 +225,6 @@ class HP3458ADebugPanel(ttk.Frame):
         self._on_range()
 
     def _selected_range(self):
-        """The numeric range for the current function, or None for AUTO."""
         text = self._range_var.get()
         if text == "AUTO":
             return None
@@ -273,7 +245,6 @@ class HP3458ADebugPanel(ttk.Frame):
             note = "autorange picks the sourced current"
         self._range_note.set(note)
 
-    # -- actions ------------------------------------------------------------
 
     def _simple(self, label, fn):
         self._run(label, lambda d: (fn(d), (lambda: self._emit(f"{label} sent")))[1])

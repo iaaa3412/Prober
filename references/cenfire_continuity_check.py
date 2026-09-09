@@ -1,15 +1,4 @@
-"""
-Cenfire probe-card continuity check - DMM only, zero SMU bias.
-
-Assumes the chuck is ALREADY UP (pins in contact) - this script does not
-touch the prober at all. Sweeps all pairs of the probe-card pins (pin 14
-excluded - irrelevant) through the switch matrix, reads 2-wire resistance
-on the DMM, and reports which pairs are open, which are connected but
-too high, and which look normal.
-
-Usage:
-    python cenfire_continuity_check.py
-"""
+"""Cenfire probe-card continuity check."""
 import sys, os, time, itertools
 
 ROOT = r"c:\automationproject\Probe08"
@@ -20,14 +9,10 @@ for p in (ROOT, os.path.join(ROOT, "gui")):
 from instruments.keithley_707b import Keithley707B
 from instruments.keysight_34461a import Keysight34461A
 
-# --- tune these ---
-OPEN_OHM = 1e5     # at/above this the DMM is reading overload (~9.9e37) -> no connection
-SAME_PAD_MAX_OHM = 20   # same-pad pairs should read a real short, well under this
-SETTLE_S = 0.4      # settle time after closing crosspoints, before reading
+OPEN_OHM = 1e5
+SAME_PAD_MAX_OHM = 20
+SETTLE_S = 0.4
 
-# pairs that land on the same physical pad - these SHOULD read a near-short.
-# everything else should NOT be anywhere near this low (real per-die values
-# vary die to die, roughly 0.5-5 ohm on some, 100-500 ohm on others).
 SAME_PAD_PAIRS = {frozenset((12, 13)), frozenset((1, 24)), frozenset((11, 2))}
 
 PINS = {

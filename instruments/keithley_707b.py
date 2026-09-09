@@ -5,12 +5,6 @@ from instruments.gpib_base import GPIBInstrument
 
 class Keithley707B(GPIBInstrument):
     def __init__(self, config_key='switch_matrix'):
-        # Same reason Keithley2400 takes one (see that file): the default
-        # ('switch_matrix') keeps every existing caller unaffected, but a
-        # SECOND 707B added as a custom Setup-tab instrument (Accretech's
-        # "+ Add Instrument", reusing an already-coded driver instead of
-        # the driverless Generic fallback) needs to read/write ITS OWN
-        # slot, not silently collide with the real switch matrix's.
         super().__init__(config_key)
 
     def open_all(self):

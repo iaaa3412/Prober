@@ -70,17 +70,6 @@ CSV_SOURCE_FIELDS = {
 SOURCE_FIELDS_BY_TYPE = {"sql": SQL_SOURCE_FIELDS, "csv": CSV_SOURCE_FIELDS}
 
 LAMP_FORMAT: Dict[str, Any] = {
-    # Renamed from the older "LaMP Electrical (tblLampElectricalMeasurements)" -
-    # that one's fldDieID carried just the ONE die a given switch position
-    # measured (e.g. "92-64"), one row per die per switch. The real LaMP
-    # export (see references/FLUSH_LampElectrical_92986.SQL) instead
-    # repeats the WHOLE quad's die string (e.g. "A3-01/93-71/A3-02/93-72")
-    # across all 4 of that quad's rows - "quad_group_size" below is what
-    # produces that; see build_insert_statements. Hardcoded specifically
-    # for this format (not a generic engine feature) - LaMP's recipe
-    # structure is the one place this codebase measures 4 dies per
-    # touchdown in a fixed switch order, see the "lamp electrical gauge"/
-    # lampaccr recipes' own STEP rows (first/second/third/fourth, die 1-4).
     "name": "LaMP Electrical Quad (tblLampElectricalMeasurements)",
     "table": "tblLampElectricalMeasurements",
     "type": "sql",
@@ -125,15 +114,6 @@ _lookup_cache_by_key: Dict[tuple, Dict[str, Dict[str, str]]] = {}
 
 def load_lookup_table_by_field(folder: str, filename: str,
                                lookup_key_col: str) -> Dict[str, Dict[str, str]]:
-    """Same idea as load_lookup_table, but keyed by one string column (e.g.
-    a die-ID string like "2-7-7-1") instead of a (row, col) coordinate pair.
-    Exists for cases where this app already trusts a per-die ID string
-    coming out of the run itself (see "key_field" on an export format's
-    "lookup") - joining on that directly sidesteps needing this app's own
-    (row, col) grid to agree with the reference table's own coordinate
-    convention (sign, origin, rotation - a project's own table is free to
-    use whatever convention it wants), which a position-based join has no
-    way to verify or correct for on its own."""
     path = os.path.join(folder, filename)
     cache_key = (path, lookup_key_col)
     if cache_key in _lookup_cache_by_key:
@@ -153,19 +133,6 @@ def load_lookup_table_by_field(folder: str, filename: str,
 
 def load_lookup_table(folder: str, filename: str,
                       lookup_row_col: str, lookup_col_col: str) -> Dict[tuple, Dict[str, str]]:
-    """A generic per-die reference table any project can supply - a plain
-    CSV with its own header row and whatever extra columns that project's
-    own siting/ID convention needs, keyed by two of its own columns that
-    hold this app's real (row, col) (see an export format's own "lookup"
-    key - {file, lookup_row_col, lookup_col_col, our_row_field,
-    our_col_field}). Exists so a project's own authoritative die-numbering
-    table (which this app cannot re-derive on its own - it may be an
-    arbitrary, historical convention) drives an export's columns directly,
-    without teaching this file anything about that convention.
-
-    Cached per (path, lookup_row_col, lookup_col_col) for the process
-    lifetime - an export run reads it once per row otherwise, and the
-    table does not change while the GUI is open."""
     path = os.path.join(folder, filename)
     cache_key = (path, lookup_row_col, lookup_col_col)
     if cache_key in _lookup_cache:
@@ -186,26 +153,6 @@ def load_lookup_table(folder: str, filename: str,
 
 
 def apply_lookup(fmt: Dict[str, Any], folder: str, row: Dict[str, Any]) -> Dict[str, Any]:
-    """`row` (a per-reading SQL row, or a per-die CSV group) with its
-    matching lookup-table row's columns merged in. Two join modes:
-
-    - "key_field" set: joins on a trusted string ID already attached to
-      the row (e.g. "die_id") against the table's own lookup_key_col
-      column. Use this whenever the run itself already knows which die
-      it measured (Minor Moves recipes attribute die_id per-die - see
-      instrument_panel._exec_slot_identity) - it can't drift out of sync
-      with the table's own coordinate convention the way a position join
-      can.
-    - otherwise: matched by this app's own real (row, col) - a CSV-type
-      row already carries that under "abs_row"/"abs_col" (see
-      group_results_by_die), a SQL-type one under "row"/"col" directly.
-      Only reliable when this app's (row, col) grid and the table's own
-      coordinate columns use the exact same origin/sign/rotation
-      convention - prefer key_field when a trustworthy ID is available.
-
-    Unchanged (no lookup configured, no folder, or no match found) is
-    returned as-is - a column sourced from the lookup table just resolves
-    blank the same as any other missing source."""
     lookup = fmt.get("lookup")
     if not lookup or not folder:
         return row
@@ -253,11 +200,6 @@ def sql_num(value, default: float = 0.0) -> str:
         f = default
     if f == int(f) and abs(f) < 1e15:
         return str(int(f))
-    # Below about a nanoamp, fixed-point at 15 decimals starts discarding
-    # significant figures, and anything under 1e-15 collapsed to a flat "0.0" -
-    # silently turning a real leakage reading into zero. Leakage currents live
-    # exactly here. The original LaMP export switched to scientific at the same
-    # sort of magnitude (e.g. -3.265189E-10), so this matches it.
     if f != 0 and abs(f) < 1e-9:
         return f"{f:.6E}"
     s = f"{f:.15f}".rstrip("0")
@@ -304,7 +246,7 @@ def save_formats(folder: str, formats: List[Dict[str, Any]], system: str = "accr
         except (OSError, ValueError):
             pass
     if default is not None and default not in {f["name"] for f in formats}:
-        default = None  # the format that was default got removed
+        default = None
     out = {"formats": formats, "default": default}
     if export_path is not None:
         out["export_path"] = export_path
@@ -360,12 +302,6 @@ def set_default_format_name(folder: str, name: Optional[str], system: str = "acc
 
 
 def get_default_export_path(folder: str, system: str = "accretech") -> Optional[str]:
-    """This project's own remembered export directory - separate from the
-    fixed system-wide fallback (Downloads / PROBE08's RAWDATA share),
-    since different projects legitimately land their data in different
-    places. Lives in the same per-folder/per-system file as the export
-    format default (ata_export_formats.json), not a new file, since the
-    two are always set together (see set_default_export_path)."""
     path = os.path.join(folder, _formats_filename(system))
     if os.path.exists(path):
         try:
@@ -391,10 +327,6 @@ def set_default_export_path(folder: str, export_path: str, system: str = "accret
 
 
 class _BlankMissing(dict):
-    """dict that formats an unknown/blank {placeholder} as "" instead of
-    raising - a template referencing a field this row/recipe never set
-    (e.g. shot_row on a non-Minor-Moves run) should produce a blank
-    piece of the string, not fail the whole export."""
     def __missing__(self, key):
         return ""
     def __getitem__(self, key):
@@ -407,11 +339,6 @@ def resolve_source(source: str, row: Dict[str, Any], context: Dict[str, Any]):
         return context.get("test_serial", 0)
     if source == "iteration":
         return 1
-    # A raw (SQL-type) results_data row stores these under "row"/"col" -
-    # "abs_row"/"abs_col" are the documented, less ambiguous names offered
-    # in the format editor; a CSV-type row (from group_results_by_die) has
-    # them under the "abs_row"/"abs_col" keys directly already, so this
-    # only ever fires for the SQL path.
     if source == "abs_row" and "abs_row" not in row:
         return row.get("row", "")
     if source == "abs_col" and "abs_col" not in row:
@@ -425,13 +352,6 @@ def resolve_column_value(col: Dict[str, Any], row: Dict[str, Any], context: Dict
     if "constant" in col and col["constant"] not in (None, ""):
         return col["constant"]
     if col.get("template"):
-        # Composes several already-available source/context fields into one
-        # string (e.g. a composite die ID, or a timestamp with a fixed
-        # suffix) - "{intra_col}-{intra_row}-{shot_col}-{shot_row}" reads
-        # straight off row/context the same way a plain "source" column
-        # would, just several of them at once. A referenced name with no
-        # value resolves to "" rather than raising, so a template does not
-        # blow up a whole export over one blank field.
         values = {**context, **row}
         try:
             return col["template"].format_map(_BlankMissing(values))
@@ -447,24 +367,9 @@ def resolve_column_value(col: Dict[str, Any], row: Dict[str, Any], context: Dict
             val = float(raw)
             if has_mult:
                 val *= float(mult)
-            # Fixed decimal places (".{n}f"), not the usual ".6g" - "round
-            # to N decimals" means a caller wants exactly N digits after
-            # the point on every row (e.g. a readable nA column after a
-            # 1e9 multiply), not however many significant figures .6g
-            # happens to keep. Independent of multiply - a column can ask
-            # for either, both, or neither.
             raw = f"{val:.{int(rnd)}f}" if has_round else f"{val:.6g}"
         except (TypeError, ValueError):
             return raw
-    # Report resistance as a magnitude, matching a reference system's own
-    # export (see an export format's own "abs" column key) - which lead a
-    # DMM's HI/LO happens to land on is a wiring convention, not something
-    # that should leak a sign into a physical quantity that has none. Kept
-    # as a per-column, per-format opt-in (like "multiply" above) rather
-    # than changed in compute_target_derived itself, which every project's
-    # Target-derived resistance shares - a project-specific polarity
-    # quirk on one project's DMM channel has no business changing another
-    # project's numbers.
     if col.get("abs") and raw not in (None, ""):
         try:
             val = abs(float(raw))
@@ -497,18 +402,6 @@ def rows_for_format(fmt: Dict[str, Any],
 
 
 def _with_quad_die_id(rows: List[Dict[str, Any]], group_size: int) -> List[Dict[str, Any]]:
-    """Every `group_size` CONSECUTIVE rows (in their original, already-
-    correct run order - not re-sorted or re-grouped by die identity) get a
-    new "quad_die_id" key: their own die_id values joined with "/", same
-    joined string stamped on all of them. This is what lets a column
-    source "quad_die_id" (see LAMP_FORMAT) show the whole quad's die
-    string on every one of that quad's switch readings, matching the real
-    LaMP export - see build_insert_statements/LAMP_FORMAT's own comments.
-
-    Shallow-copies each row rather than mutating results_data in place -
-    the caller's own data (what feeds the CSV export, the Results tab
-    table, everything else) must come out of this untouched, only this
-    function's OWN return value carries the extra column."""
     out = []
     for i in range(0, len(rows), group_size):
         chunk = rows[i:i + group_size]
@@ -541,7 +434,6 @@ def build_insert_statements(fmt: Dict[str, Any], results_data: List[Dict[str, An
     return out
 
 
-
 _DIE_RC_RE = re.compile(r"R(\d+)C(\d+)")
 
 
@@ -556,11 +448,6 @@ _ID_ROW_COL_RE = re.compile(r"^(\d+)([A-Za-z]+)$")
 
 
 def _parse_id_row_col(die_id: str):
-    """Split a real die ID like "02E" (2-digit row + column letter, the
-    format WaferMapPanel.die_ids/export "ChipID" values already use) into
-    its own (row_str, col_letter) — so exported Row/Column always agree with
-    ChipID exactly, instead of being independently (and differently)
-    computed from the internal, arbitrary row/col grid indices."""
     m = _ID_ROW_COL_RE.match(die_id or "")
     if not m:
         return None, None
@@ -587,18 +474,6 @@ def _combined_connection(rows: List[Dict[str, Any]]) -> str:
 
 
 def _die_group_key(r: Dict[str, Any]):
-    """Group readings by real physical identity (row, col) when known,
-    falling back to the "die" text label only when it is not (an older
-    export, or a system/step that never resolved a real position).
-
-    Grouping by label alone broke as soon as two DIFFERENT dies shared
-    the same fallback label (e.g. both blank/"—" because neither had a
-    real ID yet) - their readings silently merged into one row. Real
-    (row, col) is the one thing that is always unique per physical die,
-    now that every measurement is attributed to the die it actually
-    measured (see instrument_panel._exec_slot_identity / the Minor
-    Moves per-die attribution fix) rather than a shot's landing square
-    for all of them."""
     row, col = r.get("row"), r.get("col")
     if row is not None and col is not None:
         return ("rc", row, col)
@@ -618,15 +493,8 @@ def group_results_by_die(results_data: List[Dict[str, Any]]) -> List[Dict[str, A
     out = []
     for key in order:
         rows = rows_by_key[key]
-        # The display/export "die" label still comes from whichever row
-        # actually carries one (they should all agree, since they share
-        # a group key) - a blank/placeholder label is fine to keep as
-        # the label even though it is no longer what grouped them.
         die = next((r.get("die") for r in rows if r.get("die")), rows[0].get("die") or "")
         row_num, col_num = ((key[1], key[2]) if key[0] == "rc" else _parse_die_rc(die))
-        # Prefer the real overlay die ID (same field the SQL "die_id" source
-        # reads) over the synthesized row/col label, so CSV exports' ChipID
-        # matches what the wafer map overlay actually shows for this die.
         overlay_die_id = next((r.get("die_id") for r in rows if r.get("die_id")), "")
         id_row, id_col_letter = _parse_id_row_col(overlay_die_id) if overlay_die_id else (None, None)
         current_row = next((r for r in rows if r.get("type") == "current"), None)
@@ -636,19 +504,6 @@ def group_results_by_die(results_data: List[Dict[str, Any]]) -> List[Dict[str, A
         dmm_voltage_row = next(
             (r for r in rows if r.get("type") == "voltage" and r.get("mode") == "measure"
              and r.get("instrument") == "DMM"), None)
-        # A step's own type stays whatever it was configured as
-        # (voltage/current) even when its Target combines it with an
-        # earlier apply step into a resistance - see
-        # instrument_panel._exec_apply_target/recipe_panel.
-        # compute_target_derived. That combination changes the UNIT to
-        # "ohm", not the step's type, so a plain type == "resistance"
-        # check misses every Target-derived resistance and falls through
-        # to voltage_val / current_val - the wrong pair of readings
-        # (typically the FORCE step's own voltage readback divided by its
-        # own current, not the actual sense measurement) once a project
-        # actually uses Target this way. Recognizing the unit directly
-        # catches both a genuine "resistance" step type and a Target-
-        # combined one.
         resistance_row = next(
             (r for r in rows if r.get("type") == "resistance"
              or (r.get("unit") or "").strip().lower() in ("ohm", "ohms", "Ω".lower())), None)
@@ -687,9 +542,6 @@ def group_results_by_die(results_data: List[Dict[str, Any]]) -> List[Dict[str, A
             "voltage_dmm": dmm_voltage_row.get("value") if dmm_voltage_row else "",
             "compliance": "FALSE",
             "time_stamp": rows[0].get("timestamp", "") if rows else "",
-            # Blank on any run that never set them (non-Minor-Moves, or a
-            # system/recipe with no shot concept at all) - _first below
-            # just takes whichever row in this die's group has a value.
             "abs_row": _first(rows, "row"),
             "abs_col": _first(rows, "col"),
             "shot_row": _first(rows, "shot_row"),
@@ -709,16 +561,6 @@ def build_csv_rows(fmt: Dict[str, Any], results_data: List[Dict[str, Any]],
                    lot_id: str, wafer_id: str, folder: str = "") -> List[Dict[str, Any]]:
     context = {"lot_id": lot_id, "wafer_id": wafer_id,
               "test_serial": compute_test_serial(lot_id, wafer_id)}
-    # per_step: opt-in, off by default (every format saved before this
-    # existed has no such key, so it keeps exactly today's one-row-per-die
-    # behavior below). group_results_by_die picks only the FIRST
-    # current-type and FIRST resistance-type reading it finds per die -
-    # correct for a recipe with one measurement per die, but silently
-    # drops every other reading on a recipe like Peanut's FULL that runs
-    # several differently-named tests per die. per_step instead emits one
-    # row per raw measurement (same uncollapsed rows an "sql" format
-    # already uses via rows_for_format), so a column can read the row's
-    # own "step"/"type"/"value"/"unit" directly and nothing gets dropped.
     if fmt.get("per_step"):
         out = []
         for r in rows_for_format(fmt, results_data):

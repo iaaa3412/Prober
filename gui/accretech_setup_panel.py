@@ -1,18 +1,4 @@
-"""Setup tab (Accretech) - add/edit prober benches, their instrument
-addresses, and (new) which MODEL occupies a given slot, without hand-editing
-GUI System/accretech_probers.yaml.
-
-Same shape as gui/eg_setup_panel.py on purpose - Accretech used to be one
-hardcoded bench with no per-instrument model choice at all (see
-instruments/accretech_profiles.py's own module docstring for why MODEL is
-the one real difference from the Electroglas version: eg profiles only vary
-which keys are fitted, never what class a key resolves to). Editing a
-bench's addresses/models here only pushes into instruments.yaml (the file
-the actual drivers open) for the bench that is currently ACTIVE - an
-already-open session keeps its old handle regardless, same "restart/Refresh
-Connections to take effect live" caveat the old single-bench version of this
-panel already carried.
-"""
+"""Setup tab (Accretech)."""
 
 import os
 import tkinter as tk
@@ -46,7 +32,6 @@ class AccretechSetupPanel(ttk.Frame):
         except Exception:
             pass
 
-    # -- bench bar ----------------------------------------------------------
 
     def _build_bench_bar(self):
         bar = ttk.Frame(self, padding=6)
@@ -85,11 +70,6 @@ class AccretechSetupPanel(ttk.Frame):
         self._refresh_table()
 
     def refresh_active_bench(self):
-        """Called by AtomicaDashboard after the TOOLBAR's bench picker
-        switches - this panel's own picker stays wherever the operator left
-        it (it can edit a bench other than the live one, see the module
-        docstring), but the '(currently active)' annotation has to track
-        whichever bench is now actually connected."""
         self._update_active_label()
 
     def _add_prober(self):
@@ -111,11 +91,6 @@ class AccretechSetupPanel(ttk.Frame):
             messagebox.showerror("Add Prober Failed", str(exc))
             return
         self._log(f"[SETUP] Added Accretech prober {name!r} (copy of {source!r})")
-        # Recipes written for `source` (e.g. lampaccr, tagged bench=source)
-        # would otherwise be invisible on the new bench - see
-        # RecipePanel._visible_recipe_names. Wafer Builder maps need no
-        # equivalent step: they are keyed by system, not bench, so every
-        # bench already sees the same ones.
         try:
             from wafer_map_view import clone_bench_recipes
             cloned = clone_bench_recipes(source, name)
@@ -155,18 +130,11 @@ class AccretechSetupPanel(ttk.Frame):
         self._log(f"[SETUP] Renamed Accretech prober {old!r} -> {new!r}")
         self._bench_var.set(new)
         self._refresh_benches()
-        # Only matters if the bench just renamed was the one actually
-        # connected - the toolbar's own picker (var/label/values) would
-        # otherwise keep showing the old name until something else forced
-        # it to refresh. No reconnect needed: instruments.yaml is keyed by
-        # SLOT (prober/smu/...), not bench name, and addresses didn't
-        # change - see rename_profile's own docstring.
         try:
             self.controller._refresh_bench_picker()
         except Exception:
             pass
 
-    # -- instrument table -----------------------------------------------------
 
     def _build_table(self):
         frame = ttk.Frame(self, padding=(6, 0, 6, 6))
@@ -264,16 +232,6 @@ class AccretechSetupPanel(ttk.Frame):
         if not bench:
             messagebox.showerror("No Bench", "Pick a prober bench first.")
             return
-        # ONE dialog (name, model, address, timeout, fitted) instead of the
-        # old name-prompt-then-separately-opened-Edit-dialog flow - that
-        # second dialog carried the model dropdown, and more than one
-        # report came back as "I don't see a dropdown" even after making
-        # it center/raise itself, which points at the two-step handoff
-        # itself (easy to not notice a second popup appeared at all) more
-        # than window placement. "__new__" is not a real slot key - it's
-        # just never in MODEL_CHOICES, which is what makes
-        # model_choices_for return the full Generic-plus-every-coded-model
-        # list a genuinely new custom slot should offer.
         dlg = _InstrumentDialog(
             self, title=f"Add Instrument to {bench!r}", key="__new__",
             initial=(accretech_profiles.GENERIC_MODEL, "", "", 3000, True))
@@ -316,9 +274,6 @@ class AccretechSetupPanel(ttk.Frame):
 
     def _after_edit(self, bench: str):
         self._refresh_table()
-        # Only the ACTIVE bench's addresses feed the real drivers - editing a
-        # bench that is not currently selected in the toolbar just saves to
-        # the YAML for next time it IS selected.
         if bench == accretech_profiles.active_name():
             try:
                 accretech_profiles.apply_to_instruments_yaml(bench)
@@ -328,16 +283,6 @@ class AccretechSetupPanel(ttk.Frame):
 
 
 class _InstrumentDialog(tk.Toplevel):
-    """Edit form for one instrument slot - model, name, GPIB address,
-    timeout, fitted. `key` fixes which slot this is (a MANDATORY_KEYS slot
-    - prober, switch_matrix - is always present on every bench and can
-    only be marked unfitted, not removed; every other slot, including the
-    historical smu/dmm/wave_gen ones, can be both edited and removed same
-    as a slot from + Add Instrument), so only the model dropdown's own
-    choices vary by key - a key with no real driver (custom, or a slot set
-    to GENERIC_MODEL) only ever offers GENERIC_MODEL, same as a single-
-    choice slot (DMM/prober/switch matrix) already renders as a disabled
-    combobox."""
 
     def __init__(self, parent, title: str, key: str, initial: tuple):
         super().__init__(parent)
@@ -389,13 +334,6 @@ class _InstrumentDialog(tk.Toplevel):
         ttk.Button(btns, text="Cancel", command=self.destroy).pack(side="left", padx=4)
         ttk.Button(btns, text="OK", command=self._on_ok).pack(side="left")
 
-        # transient(parent) alone doesn't guarantee this lands ON TOP of
-        # (or even near) the main window - with no explicit geometry a
-        # fresh Toplevel can be placed off to a corner by the window
-        # manager, especially right after the "+ Add Instrument" name
-        # prompt (a separate Toplevel) just closed. Center over parent and
-        # force focus so a freshly-added instrument's model dropdown is
-        # never mistaken for "nothing happened".
         self.update_idletasks()
         px, py = parent.winfo_rootx(), parent.winfo_rooty()
         pw, ph = parent.winfo_width(), parent.winfo_height()

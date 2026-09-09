@@ -26,32 +26,12 @@ from instruments.gpib_base import GPIBInstrument
 import export_formats as xfmt
 import app_settings
 
-# Every display name _EG_DRIVERS can produce, in the order eg_profiles.EG_KEYS
-# connects them, so the sidebar reads top-to-bottom as the sweep progresses.
-# A name missing from here has no status label, and the connect loop cannot
-# report on it - keep the two in step.
 ELECTROGLAS_INSTRUMENT_NAMES = ["Electroglas 2001X", "Keithley 2400", "HP 3458A",
                                 "HP E1326B (VXI)", "HP Switchbox 1", "HP Switchbox 2",
                                 "HP Switchbox 3", "Agilent 6634B"]
 
-# Accretech is one machine for now. Electroglas benches come from
-# GUI System/eg_probers.yaml instead, because they genuinely differ.
 ACCRETECH_BENCHES = ("probe08",)
 
-# Driver classes per (slot, model) - resolved against the active bench's
-# accretech_profiles.py profile in init_hardware(), the Accretech analogue
-# of _EG_DRIVERS below. instruments/accretech_profiles.py's MODEL_CHOICES
-# holds the same model NAMES as plain strings (no driver imports there,
-# same separation eg_profiles.py keeps from this file's _EG_DRIVERS).
-#
-# Every factory takes the SLOT KEY it's being built for and passes it on as
-# config_key - each driver defaults that to its own original hardcoded slot
-# (e.g. Keithley2636B() still means 'smu' with no argument), so nothing
-# existing changes, but a SECOND one of the same model added as a custom
-# Setup-tab instrument (Accretech's "+ Add Instrument", picking an already-
-# coded driver instead of the driverless Generic fallback) reads/writes ITS
-# OWN slot instead of colliding with the original's. See each driver's own
-# file for why (same reasoning Keithley2400 already needed for Electroglas).
 _ACCRETECH_MODELS = {
     "prober":        {"AccretechUF200R": lambda key: AccretechUF200R(config_key=key)},
     "smu":           {"Keithley2636B": lambda key: Keithley2636B(config_key=key),
@@ -61,30 +41,13 @@ _ACCRETECH_MODELS = {
     "wave_gen":      {"Keysight33512B": lambda key: Keysight33512B(config_key=key)},
 }
 
-# Flat model-name -> factory, derived from the table above - lets a CUSTOM
-# slot (not one of the five core keys, so not itself a key in
-# _ACCRETECH_MODELS) still resolve to a real driver if its chosen model
-# matches one already coded for some OTHER slot (e.g. a second 707B added
-# as a spare switch matrix), instead of always falling back to the
-# driverless Generic wrapper. See init_hardware().
 _ALL_ACCRETECH_MODEL_FACTORIES = {}
 for _slot_models in _ACCRETECH_MODELS.values():
     _ALL_ACCRETECH_MODEL_FACTORIES.update(_slot_models)
 
-# A recipe step's "instrument" field ("SMU"/"DMM"/"WGEN" - see
-# recipe_panel._INSTRUMENTS) -> the _ACCRETECH_MODELS family key it maps
-# to. Used by AtomicaDashboard.slots_for_family, not by init_hardware
-# itself (which already has its own per-slot model lookup).
 _ACCRETECH_FAMILY_KEYS = {"SMU": "smu", "DMM": "dmm", "WGEN": "wave_gen"}
 
-# Same idea for Electroglas, in AtomicaDashboard._EG_DRIVERS profile-key
-# terms - a DMM step can already be satisfied by either the 3458A or the
-# E1326B VXI on a bench that has both fitted.
 _EG_FAMILY_KEYS = {"SMU": ("smu_eg",), "DMM": ("dmm_eg", "dmm_vxi_eg")}
-# (display label, controller.drivers key) per slot - the drivers-dict key is
-# an app-internal name unrelated to instruments.yaml's own key naming
-# (switch_matrix has always been "switch" here, everywhere else in the GUI
-# looks it up that way - kept exactly as before).
 _ACCRETECH_SLOT_INFO = {
     "prober":        ("UF200R Prober",      "prober"),
     "smu":           ("SMU",                "smu"),
@@ -93,18 +56,6 @@ _ACCRETECH_SLOT_INFO = {
     "wave_gen":      ("Wave Gen",           "wave_gen"),
 }
 
-# Every display name init_hardware()'s connections list can produce -
-# "{display} ({model})" for every model a slot can ever hold, generated from
-# the two dicts above rather than hand-listed, so a status row exists for
-# every model a bench might be switched to (see Setup tab's Model dropdown),
-# not just whichever one happened to be active when this list was last
-# edited. This IS the sidebar's actual row set (status_labels is built from
-# it once at startup) - a name produced by init_hardware() that isn't in
-# here has no row to update and silently never appears, which is exactly
-# what happened before this was generated: the sidebar was still built from
-# a hand-written list ("SMU (2636B)") that predated the "{display} ({model})"
-# naming init_hardware() switched to ("SMU (Keithley2636B)") - nothing
-# matched, so the whole Instruments panel showed no rows at all.
 ACCRETECH_INSTRUMENT_NAMES = [
     f"{display} ({model})"
     for key, (display, _drv_key) in _ACCRETECH_SLOT_INFO.items()
@@ -112,20 +63,8 @@ ACCRETECH_INSTRUMENT_NAMES = [
 ]
 
 ACCRETECH_REQUIRED_DRIVERS = ("prober", "smu", "dmm", "switch", "wave_gen")
-# Fallback only - used when the active bench's own profile can't be read
-# (see _accretech_required_drv_keys). Now that a bench can freely drop
-# smu/dmm/wave_gen or carry several of one kind (drivers/flexible-setup
-# work), the REAL required set is computed per bench from whichever slots
-# it actually has fitted right now, not this fixed five.
-# No "smu"/"power_supply" for the same reason - requiring them would hold the
-# Electroglas tab at PENDING forever.
 ELECTROGLAS_REQUIRED_DRIVERS = ("prober", "dmm", "relay1", "relay2", "relay3")
 
-# Just-for-fun splash screen shown while the main window builds and the
-# startup instrument sweep runs. Flip to False to go straight back to the
-# old plain-launch behavior - nothing else needs to change; every splash
-# call below already no-ops harmlessly when this is off (see
-# _build_splash_screen/_dismiss_splash_screen).
 SHOW_SPLASH_SCREEN = True
 
 
@@ -134,22 +73,6 @@ class AtomicaDashboard(tk.Tk):
         super().__init__()
         self.title("Electrical Prober")
         self.geometry("1400x800")
-        # Taskbar/title-bar icon - a live Tk window property, separate
-        # from the exe's own embedded icon (see AtomicaATA.spec's EXE
-        # icon=). Without this call the window (and so the taskbar
-        # button/preview, which some Windows builds source from the
-        # window itself rather than the exe resource) falls back to Tk's
-        # own default feather icon, no matter what the exe file's icon
-        # is set to.
-        #
-        # iconphoto(), not iconbitmap() - iconbitmap() on Windows hands
-        # Tk a single .ico and Tk picks (or Windows scales) one baked-in
-        # bitmap from it, which came out blurry at taskbar/preview size
-        # on the bench. iconphoto() instead gets several real, freshly-
-        # resampled PhotoImages and Windows chooses the sharpest one for
-        # whatever context it's rendering (small taskbar button vs large
-        # Alt-Tab preview) - True applies it to every Toplevel this root
-        # spawns too, not just the root window.
         try:
             icon_path = os.path.join(os.path.dirname(__file__), "app_icon.png")
             if os.path.exists(icon_path):
@@ -164,13 +87,6 @@ class AtomicaDashboard(tk.Tk):
             pass
         self.protocol("WM_DELETE_WINDOW", self._on_close_request)
         self._check_machine_config_folder()
-        # Self-healing, independent of the dialog above: accretech_probers.yaml
-        # is new (this machine's GUI System folder predates it), and
-        # ensure_default_file() never guesses or overwrites - it either
-        # migrates real addresses already sitting in instruments.yaml or
-        # writes a blank probe08 shell. Without this, declining/missing that
-        # one-time dialog silently left profile_names() empty forever, which
-        # is why the Setup tab's bench picker had no probe08 to show.
         try:
             accretech_profiles.ensure_default_file()
         except Exception:
@@ -185,11 +101,6 @@ class AtomicaDashboard(tk.Tk):
         self.test_queue = []
         self.active_system = "accretech"
         self._by_system = {
-            # die_status: (row, col) -> "PASS"/"FAIL", set by
-            # instrument_panel._exec_update_die_color as a run paints the
-            # wafer map - the only record of per-die verdicts outside the
-            # map widgets themselves, so cmd_save_csv can write them out
-            # and cmd_import_results_csv can repaint them on import.
             "accretech":   {"drivers": {}, "results": [], "ui": None,
                             "total": 0, "tested": 0, "passed": 0, "failed": 0,
                             "die_status": {}},
@@ -197,27 +108,12 @@ class AtomicaDashboard(tk.Tk):
                             "total": 0, "tested": 0, "passed": 0, "failed": 0,
                             "die_status": {}},
         }
-        # False until the startup sweep has run, so a bench selected during
-        # construction does not connect twice.
         self._startup_done = False
-        # Which systems have had a connect sweep run at least once - a
-        # system is only pinged when it is actually selected (at startup,
-        # or the first time the operator switches to it), never both, so
-        # switching to Accretech does not also probe an Electroglas rig
-        # that may not even be powered on, and vice versa.
         self._connected_systems = set()
         self._sys_ready_prev = None
         self._prober_ready = None
         self._prober_stb = None
-        # workdir.get_current_working_dir() decides the actual starting
-        # value (temporarily forced to proberautomation - see workdir.py);
-        # this is just the Tk variable the UI reads/writes.
         self.working_dir_var = tk.StringVar(value=workdir.get_current_working_dir())
-        # Keep workdir's own notion of "current" in sync with the UI,
-        # whatever changes it (preset dropdown, Browse, or code) - every
-        # module that resolves "GUI System" (app_settings, switch_topology,
-        # gpib_base) reads workdir.get_current_working_dir(), not this Tk
-        # variable directly, since they may run before any GUI exists.
         self.working_dir_var.trace_add(
             "write", lambda *_: workdir.set_current_working_dir(self.working_dir_var.get()))
         self._build_brand_header()
@@ -231,13 +127,6 @@ class AtomicaDashboard(tk.Tk):
             init_hardware_fn=self.init_hardware, system="accretech")
         self._by_system["accretech"]["ui"] = self.instrument_panel
         self._main_pane.add(self.instrument_panel, weight=1)
-        # Whichever top-level widget is actually attached to _main_pane
-        # right now - self.ui always points at the active SYSTEM's
-        # MainLayout regardless of display (NanoZ mode still needs it as a
-        # data holder, see nanoz_mode.py), so this tracks the DISPLAYED
-        # widget separately. cmd_set_active_system/cmd_set_gui_mode both
-        # forget/add against this, not self.ui, so a mode swap and a
-        # system swap never fight over which widget is actually attached.
         self._displayed_widget = self.instrument_panel
 
         self.instrument_panel_eg = MainLayout(
@@ -246,10 +135,6 @@ class AtomicaDashboard(tk.Tk):
             init_hardware_fn=self.init_hardware_eg, system="electroglas")
         self._by_system["electroglas"]["ui"] = self.instrument_panel_eg
 
-        # "normal" (the regular tabbed workspace) or "nanoz" (see
-        # gui/nanoz_mode.py) - built lazily by cmd_set_gui_mode the first
-        # time it's actually needed, not here, since most stations never
-        # use it.
         self.gui_mode = "normal"
         self._nanoz_mode_ui = None
 
@@ -257,26 +142,10 @@ class AtomicaDashboard(tk.Tk):
         if getattr(self, "_pending_setup_log", None):
             self.log(self._pending_setup_log)
             self._pending_setup_log = None
-        # What working directory this launch actually resolved to - read
-        # fresh here rather than from working_dir_var (set earlier, at
-        # __init__'s very start, before this had anywhere to log to), so it
-        # reflects workdir.get_current_working_dir()'s real fallback
-        # behavior (saved pref -> proberautomation preset -> a reachable
-        # local fallback) exactly as it applies right now, not just
-        # whatever was configured.
         self.log(f"[SYSTEM] Working directory: {workdir.get_current_working_dir()}")
         self._autoload_default_ata_folders()
-        # After the folders, so switching system finds its folder already
-        # loaded; before init_hardware, so the first connect sweep runs
-        # against the bench that was actually chosen.
         self._apply_default_prober()
         self._apply_default_gui_mode()
-        # Only the active system (Accretech unless a default prober says
-        # otherwise, applied just above) sweeps at startup - pinging the
-        # other rig's instruments when nobody selected it just produces
-        # "not connected" log noise for hardware that may not even be
-        # powered on. The other system connects itself the first time the
-        # operator actually switches to it - see cmd_set_active_system.
         self.after(500, self._startup_sweep)
         self.update_statistics_visuals()
         self.check_system_ready()
@@ -284,15 +153,6 @@ class AtomicaDashboard(tk.Tk):
         self.after(1500, self._poll_prober_ready)
 
     def _check_machine_config_folder(self):
-        """First thing on startup: does this machine actually have a GUI
-        System folder, and does it have all four setup files in it? A fresh
-        machine (or one where GUI System was declined/deleted) has neither -
-        warn about it up front and offer to either browse to a working
-        directory that already has one (e.g. a network share or a cloned
-        ProberFolders-style checkout), or scaffold blank versions, rather
-        than let the app silently run with nothing connected and no obvious
-        reason why, or crash reaching for a config file that was never
-        written."""
         status = app_settings.machine_config_status()
         missing = [name for name, present in status.items()
                   if name != "folder" and not present]
@@ -324,9 +184,6 @@ class AtomicaDashboard(tk.Tk):
                     self._pending_setup_log = (
                         f"[SYSTEM] Working directory set to '{selected}'.")
                     return
-                # Still missing something at the newly-picked location -
-                # loop back and show the (now updated) prompt again rather
-                # than silently falling through to blank-scaffold it.
                 continue
             elif choice == "create":
                 created = app_settings.create_basic_machine_config()
@@ -345,11 +202,6 @@ class AtomicaDashboard(tk.Tk):
                 return
 
     def _ask_missing_config_action(self, prompt: str) -> str:
-        """Modal choice for _check_machine_config_folder: "browse" (point at
-        an existing working directory that already has a GUI System folder),
-        "create" (scaffold a blank one here), or "skip" (continue without).
-        A plain custom dialog rather than messagebox.askyesno since there
-        are three distinct outcomes, not two."""
         dlg = tk.Toplevel(self)
         dlg.title("GUI System Folder")
         dlg.transient(self)
@@ -388,9 +240,6 @@ class AtomicaDashboard(tk.Tk):
         return result["choice"]
 
     def _autoload_default_ata_folders(self):
-        """One default ATA folder for the whole project, set via the ⭐ Set
-        as Default button on the ATA Folder tab — load it into both systems
-        now so switching system doesn't need a manual load."""
         folder = app_settings.get_default_ata_folder()
         if not (folder and os.path.isdir(folder)):
             return
@@ -461,17 +310,6 @@ class AtomicaDashboard(tk.Tk):
         self._by_system[self.active_system]["failed"] = value
 
     def set_run_lock(self, locked: bool):
-        """Locks/unlocks the chrome a run doesn't own directly but could
-        still pull hardware out from under it - the Accretech/Electroglas
-        toggle (switching system tears down and rebuilds self.ui mid-run),
-        the ATA folder picker, and the prober bench picker (both reconnect
-        instruments on selection). Called from
-        instrument_panel._exec_set_running_buttons (Accretech/EG runs) and
-        cassette_panel's own lock (cassette automation) - one place so a
-        run started from either doesn't leave the other's entry points
-        live. Real per-run controls (Recipe tab, Run tab's own buttons)
-        lock themselves; this is only the app-level chrome those panels
-        can't reach."""
         for btn in getattr(self, "_system_buttons", {}).values():
             try:
                 btn.config(state="disabled" if locked else "normal")
@@ -501,10 +339,6 @@ class AtomicaDashboard(tk.Tk):
         self.active_system = system
         self.title("Electrical Prober")
         if self.gui_mode == "nanoz" and self._nanoz_mode_ui is not None:
-            # Same widget object stays attached to _main_pane - NanoZ mode
-            # is one container that shows whichever system is active
-            # internally (see nanoz_mode.NanozModeLayout.refresh_for_system),
-            # so there is nothing to forget/re-add here.
             self._nanoz_mode_ui.refresh_for_system()
         else:
             self._main_pane.forget(old_widget)
@@ -514,30 +348,12 @@ class AtomicaDashboard(tk.Tk):
                 self._main_pane.add(self.ui, weight=1)
             self._displayed_widget = self.ui
         self._style_system_toggle()
-        # Only auto-load anything here when this system has NEVER had a
-        # folder loaded (self.ui._ata_folder is still empty) - each
-        # system's MainLayout already remembers its own _ata_folder
-        # independently, so a system that already has one loaded (whatever
-        # it is) must be left exactly as it is on every later toggle. This
-        # used to re-check the global default folder (or the OTHER
-        # system's folder) on EVERY switch and force-reload it whenever it
-        # differed from what was currently showing - so switching
-        # Accretech (folder A) -> Electroglas (folder B, picked by hand) ->
-        # back to Accretech silently reloaded Electroglas back onto
-        # whatever the default/other-system's folder was, wiping the
-        # operator's own pick and resetting that system's results/stats -
-        # same "switching X should only SELECT, never silently change
-        # state" class of bug already fixed for recipe-vs-wafer-map.
         if not self.ui._ata_folder:
             default_folder = app_settings.get_default_ata_folder()
             if default_folder and os.path.isdir(default_folder):
                 self._do_load_ata_folder(default_folder)
             elif carry_over_folder:
                 self._do_load_ata_folder(carry_over_folder)
-        # _do_load_ata_folder (above) already syncs the label/picker when it
-        # runs - but if this system's folder was already correctly loaded
-        # (e.g. pre-loaded at startup), neither branch above fires, so do it
-        # unconditionally here too.
         if self.ui._ata_folder:
             folder_name = os.path.basename(self.ui._ata_folder)
             self._ata_lbl.config(text=f"ATA: {folder_name}", foreground="#1d4ed8")
@@ -546,7 +362,6 @@ class AtomicaDashboard(tk.Tk):
         else:
             self._ata_lbl.config(text="No ATA loaded", foreground="gray")
             self._ata_picker_var.set("")
-        # The prober list is per-system, so it has to follow the toggle.
         self._refresh_bench_picker()
         self._refresh_routing_button()
         self._refresh_buzzer_clear_button()
@@ -554,16 +369,9 @@ class AtomicaDashboard(tk.Tk):
         self.check_system_ready()
         self.log(f"[SYSTEM] Switched active system to {system.capitalize()} "
                  f"— prober {self._active_bench()}.")
-        # init_hardware() (below, for a first-time connect) already does its
-        # own Refresh XY once the prober answers - this covers switching
-        # BACK to an Accretech that was already connected, where
-        # init_hardware never runs again.
         if system == "accretech" and system in self._connected_systems \
                 and hasattr(self.ui, "_exec_get_xy"):
             self.ui._exec_get_xy()
-        # First time this system is actually selected, connect its own
-        # instruments - not before, and never the other system's. Deferred
-        # so the tab swap above finishes redrawing first.
         if system not in self._connected_systems:
             fn = self.init_hardware_eg if system == "electroglas" else self.init_hardware
             self._show_switch_splash(f"Connecting to {system.capitalize()}…")
@@ -577,13 +385,6 @@ class AtomicaDashboard(tk.Tk):
             self.after(100, _run_and_dismiss)
 
     def cmd_set_gui_mode(self, mode: str):
-        """Swap the WHOLE window's main section between "normal" (the
-        regular MainLayout tab set) and "nanoz" (gui/nanoz_mode.py's
-        NanozModeLayout) - same forget/add-on-_main_pane technique
-        cmd_set_active_system already uses to swap MainLayout instances,
-        just one level up: here the two things being swapped are entire
-        modes rather than the two systems within one mode.
-        """
         if mode not in ("normal", "nanoz") or mode == self.gui_mode:
             return
         old_widget = self._displayed_widget
@@ -595,13 +396,6 @@ class AtomicaDashboard(tk.Tk):
             else:
                 self._nanoz_mode_ui.refresh_for_system()
             new_widget = self._nanoz_mode_ui
-            # Used to force-load NAUTATA here on every switch into NanoZ
-            # mode, regardless of what was already active - removed.
-            # NanoZPanel already mirrors whatever ATA folder this system's
-            # own MainLayout currently has loaded (_nanoz_ata_folder reads
-            # main_layout._ata_folder live), so entering NanoZ mode now
-            # shows the SAME folder normal mode was just on, instead of
-            # silently jumping to Nautilus.
         else:
             new_widget = self.ui
 
@@ -630,18 +424,11 @@ class AtomicaDashboard(tk.Tk):
                 pass
 
     def _apply_default_gui_mode(self):
-        """Startup only, mirrors _apply_default_prober. Silent when nothing
-        is set - "normal" stays the fallback."""
         mode = app_settings.get_default_gui_mode()
         if mode and mode != self.gui_mode:
             self.cmd_set_gui_mode(mode)
 
     def notify_nanoz_ata_folder_loaded(self, folder_path: str):
-        """Called by MainLayout.load_ata_folder (whichever system's) after
-        a folder finishes loading, so NanoZPanel - no longer nested inside
-        MainLayout, see gui/nanoz_mode.py - still hears about it. A no-op
-        until NanoZ mode has actually been entered at least once (nothing
-        to forward to before then)."""
         if self._nanoz_mode_ui is not None:
             try:
                 self._nanoz_mode_ui.on_ata_folder_loaded(folder_path)
@@ -675,12 +462,6 @@ class AtomicaDashboard(tk.Tk):
         ui = self.ui
         if getattr(ui, "_exec_running", False):
             return True
-        # CassettePanel never sets a "_running" attribute of its own - the
-        # actual per-wafer run is one of the _exec_running/eg_run checks
-        # above/below, this only tracks the automation LOOP watching for
-        # wafers to finish (armed, or paused waiting on a yield/error
-        # decision) - all three still mean "don't let go of this folder/
-        # system/window right now" just as much as a run actually moving.
         cassette = getattr(ui, "cassette_panel", None)
         if cassette is not None and (
                 getattr(cassette, "_armed", False)
@@ -693,26 +474,12 @@ class AtomicaDashboard(tk.Tk):
         eg_run = getattr(ui, "eg_pma_run", None)
         if eg_run is not None and getattr(eg_run, "_running", False):
             return True
-        # NanoZ is no longer a MainLayout tab (see gui/nanoz_mode.py) - its
-        # panel, when one exists, hangs off the NanoZ-mode container
-        # instead, and a run there can still be in progress even if the
-        # operator has switched back to normal mode mid-run, OR toggled
-        # the Accretech/Electroglas switch while still in NanoZ mode (both
-        # systems have their own real, run-capable NanoZPanel now - see
-        # NanozModeLayout.any_running, which checks every built holder,
-        # not just whichever one is currently on screen).
         nanoz_mode_ui = getattr(self, "_nanoz_mode_ui", None)
         if nanoz_mode_ui is not None and nanoz_mode_ui.any_running():
             return True
         return False
 
     def _on_close_request(self):
-        """Bound to the window's WM_DELETE_WINDOW (title-bar X / Alt-F4) -
-        a plain self.destroy() would otherwise kill the process mid-run
-        with no warning, leaving the prober wherever it was and the
-        results file half-written. Only asks when something is actually
-        going; closing an idle window still works with no popup, exactly
-        as before."""
         if self._any_run_in_progress():
             if not messagebox.askyesno(
                     "Run In Progress",
@@ -724,19 +491,6 @@ class AtomicaDashboard(tk.Tk):
         self.destroy()
 
     def _release_all_to_local_on_exit(self):
-        """Hand every instrument's front panel back before the window goes.
-
-        Addressing an instrument over GPIB with REN asserted puts it in
-        REMOTE and locks out its own keys, and nothing releases that on the
-        way out - so closing the app used to leave the prober's panel dead
-        until someone power-cycled it or another program addressed it. One
-        GTL per instrument (see gpib_base.go_to_local), across BOTH systems:
-        self.drivers is only the ACTIVE system's, and the other one's
-        instruments are just as locked.
-
-        Best-effort by design: this runs on the way to destroy(), so a
-        failure here must never stop the window closing.
-        """
         released = []
         for system, state in self._by_system.items():
             for key, drv in (state.get("drivers") or {}).items():
@@ -760,33 +514,14 @@ class AtomicaDashboard(tk.Tk):
         self.check_system_ready()
 
     def _build_splash_screen(self):
-        """A small always-on-top window shown (logo + "Electrical Prober")
-        while the main window builds and the startup instrument sweep runs -
-        see _dismiss_splash_screen, called once _startup_sweep finishes.
-
-        Self-contained and off the SHOW_SPLASH_SCREEN switch at the top of
-        this file: with it False, this just returns and self._splash stays
-        None, so _dismiss_splash_screen's deiconify() is the only thing that
-        still runs - harmless on a window that was never withdrawn.
-        """
         if not SHOW_SPLASH_SCREEN:
             return
         self.withdraw()
         self._splash = self._make_splash_toplevel("Starting up…")
 
     def _make_splash_toplevel(self, message):
-        """Build one always-on-top logo splash window, shared by the
-        startup splash (_build_splash_screen) and the bench/system/ATA-
-        folder switch splash (_show_switch_splash) - same look, different
-        caller and message. Does not touch the main window's own
-        withdraw/deiconify state; the caller decides that."""
         splash = tk.Toplevel(self)
-        # No title() - overrideredirect windows show no title bar anyway,
-        # and this keeps it out of _find_other_instance_window's title match.
         splash.overrideredirect(True)
-        # overrideredirect windows get no OS border, so the black border is
-        # faked here: the Toplevel itself is black, and an inner frame in
-        # the real splash colour is packed inset by BORDER px on every side.
         BORDER = 3
         splash.configure(bg="black")
         w, h = 420, 260
@@ -810,9 +545,6 @@ class AtomicaDashboard(tk.Tk):
                 pil_img = pil_img.resize(
                     (max(1, int(pil_img.width * scale)), target_h))
                 img = ImageTk.PhotoImage(pil_img)
-                # bg matches the splash background exactly - the PNG's own
-                # transparent areas are the same colour, so this makes the
-                # edges disappear instead of showing a mismatched box.
                 lbl_img = tk.Label(body, image=img, bg="#374558", bd=0,
                                    highlightthickness=0)
                 lbl_img.image = img
@@ -840,17 +572,6 @@ class AtomicaDashboard(tk.Tk):
         self.lift()
 
     def _show_switch_splash(self, message):
-        """Same splash window as startup, but for a bench/system switch or
-        an ATA folder (re)load - anything that pings hardware or reads a
-        folder off the network share on the UI thread and would otherwise
-        leave the window looking frozen with no explanation. Unlike
-        _build_splash_screen this never withdraws the main window - it's
-        already up and the user is actively looking at it.
-
-        Reentrant: nested show/dismiss calls (e.g. a system switch that
-        itself triggers an ATA folder reload) share one window and a depth
-        counter, so the splash only actually closes once the outermost
-        caller is done."""
         if not SHOW_SPLASH_SCREEN:
             return
         self._switch_splash_depth = getattr(self, "_switch_splash_depth", 0) + 1
@@ -882,19 +603,6 @@ class AtomicaDashboard(tk.Tk):
         hdr = tk.Frame(self, bg="#374558", height=55)
         hdr.grid(row=0, column=0, sticky="ew")
         hdr.grid_propagate(False)
-        # Atomica logo first (left), Otto logo right after it - two
-        # separate files (logo2.jpg / logo_otto.jpg) since the splash
-        # screen only shows the Otto one. Otto's own file is pre-cropped
-        # to its actual content (gui/logo_otto.jpg, cropped from
-        # references/ottologo4.png - a version with no background at all
-        # - down to its own ~379x212 bounding box) so scaling it to a
-        # given height shows a visibly bigger mark instead of mostly
-        # resizing blank margin. Otto's label bg has to match this bar's
-        # own background colour exactly (#374558, not the old #0E0E0F)
-        # for its transparent PNG edges to actually disappear instead of
-        # showing a mismatched box. Atomica's own size is bumped up a
-        # little too, just enough to fill the bar instead of looking
-        # small/flush against it.
         for filename, target_h, pad in (("logo2.jpg", 44, (10, 4)),
                                         ("logo_otto.jpg", 36, (0, 6))):
             logo_path = os.path.join(os.path.dirname(__file__), filename)
@@ -961,12 +669,6 @@ class AtomicaDashboard(tk.Tk):
             return []
 
     def apply_prober(self, system: str, bench: str):
-        """Switch the whole GUI to a prober: system first, then bench.
-
-        Order matters - cmd_set_eg_profile reconnects instruments and pokes
-        the Electroglas UI, so the Electroglas side has to be the active one
-        before it runs.
-        """
         if system not in self._by_system:
             self.log(f"[SYSTEM] Unknown system {system!r}")
             return
@@ -987,8 +689,6 @@ class AtomicaDashboard(tk.Tk):
         self._refresh_bench_picker()
 
     def _apply_default_prober(self):
-        """Startup only. Silent when nothing is set - Accretech stays the
-        fallback, which is what the app did before this setting existed."""
         system, bench = app_settings.get_default_prober()
         if not system:
             return
@@ -996,7 +696,6 @@ class AtomicaDashboard(tk.Tk):
         self.apply_prober(system, bench)
 
     def _refresh_buzzer_clear_button(self):
-        """Accretech-only - see create_toolbar's comment on this button."""
         btn = getattr(self, "_buzzer_clear_btn", None)
         if btn is None:
             return
@@ -1006,10 +705,6 @@ class AtomicaDashboard(tk.Tk):
             btn.pack(side="left", padx=(0, 6), pady=2, after=self._abort_btn)
 
     def _refresh_routing_button(self):
-        """Switch Routing is an Accretech-only view, so hide its toggle on the
-        Electroglas side rather than leaving a button that opens a pane with
-        nothing relevant in it. Collapses the pane first if it is open,
-        otherwise it would be stranded with no way to close it."""
         btn = getattr(self, "_routing_toggle_btn", None)
         if btn is None:
             return
@@ -1071,10 +766,6 @@ class AtomicaDashboard(tk.Tk):
         if txt is None:
             print(message)
             return
-        # Only auto-scroll if the view was already at (or effectively at)
-        # the bottom before this line arrived - otherwise every new log
-        # line yanked the user back down to "live", making it impossible
-        # to scroll up and read past output during a run.
         at_bottom = txt.yview()[1] >= 0.999
         txt.configure(state="normal")
         txt.insert(tk.END, message + "\n")
@@ -1083,15 +774,6 @@ class AtomicaDashboard(tk.Tk):
         txt.configure(state="disabled")
 
     def _set_status(self, ui, name, mark, colour):
-        """Update one roster row, tolerating a name with no label.
-
-        The status labels are built from a fixed name list while the sweep
-        works off the bench profile, so the two can drift. A KeyError here used
-        to escape the connect loop's own except clause - which repeats the
-        lookup - and abort the whole sweep, leaving every instrument after the
-        missing one stuck on its previous result. A drifted name is a bug worth
-        logging, but never one worth losing the rest of the bench over.
-        """
         lbl = ui.status_labels.get(name)
         if lbl is None:
             self.log(f"[SYSTEM] {name} has no status row — add it to the "
@@ -1101,9 +783,6 @@ class AtomicaDashboard(tk.Tk):
 
     def _connect_instruments(self, ui, drivers, connections):
         ui.set_visible_instruments([name for name, _key, _drv in connections])
-        # Reset the text, not just the colour. Leaving the previous sweep's
-        # tick or cross showing meant an orange row was ambiguous - it could be
-        # "not pinged yet" or a stale result from another bench entirely.
         for inst_name, lbl in ui.status_labels.items():
             lbl.config(text=f"⏳ {inst_name}", foreground="orange")
         self.update_idletasks()
@@ -1121,27 +800,7 @@ class AtomicaDashboard(tk.Tk):
                 self.log(f"[ERROR] {name}: {e}")
 
     def _connect_instruments_eg(self, ui, drivers, connections):
-        """Electroglas connect. Takes driver *factories*, not instances.
-
-        Separate from _connect_instruments so the Accretech path keeps its
-        existing behaviour untouched. Two things differ here:
-
-        - Each driver is built inside the try. The 2400 sends *RST from its
-          __init__, which raises when it is switched off, and with the whole
-          list built up front that single failure aborted the sequence before
-          any status label was updated - the tab just sat on "Pinging...".
-        - Presence is settled by a serial poll before any ID query. It answers
-          in milliseconds, where an absent instrument otherwise costs a full
-          ID-query timeout; this loop runs on the UI thread, so that froze the
-          window for ~30s whenever something on the bench was powered off.
-        """
-        # Only what this bench actually carries. Unfitted instruments used to
-        # sit here as permanently grey "(not fitted)" rows; they are now simply
-        # absent, and the Instruments tab still reports the full roster.
         ui.set_visible_instruments([name for name, _key, _factory in connections])
-        # Reset the text, not just the colour. Leaving the previous sweep's
-        # tick or cross showing meant an orange row was ambiguous - it could be
-        # "not pinged yet" or a stale result from another bench entirely.
         for inst_name, lbl in ui.status_labels.items():
             lbl.config(text=f"⏳ {inst_name}", foreground="orange")
         self.update_idletasks()
@@ -1160,22 +819,11 @@ class AtomicaDashboard(tk.Tk):
             except Exception as e:
                 self._set_status(ui, name, "❌", "red")
                 self.log(f"[ERROR] {name}: {e}")
-            # Each row settles as it is pinged rather than all at the end, so a
-            # slow instrument reads as "still going" instead of "hung".
             self.update_idletasks()
         if "prober" in drivers and hasattr(ui, "_exec_refresh_die_size"):
             ui._exec_refresh_die_size()
 
     def _startup_sweep(self):
-        """Connect whichever system is active (Accretech, unless a default
-        prober picked Electroglas above) - not both. See cmd_set_active_system
-        for how the other one connects on demand, the first time it is
-        actually selected.
-
-        Skips the system if it is already in _connected_systems - a default
-        prober set at startup switches the active system via
-        cmd_set_active_system before this runs, which already scheduled its
-        own connect; sweeping again here would just ping the bus twice."""
         try:
             if self.active_system in self._connected_systems:
                 pass
@@ -1188,17 +836,6 @@ class AtomicaDashboard(tk.Tk):
             self._dismiss_splash_screen()
 
     def slots_for_family(self, family: str) -> list:
-        """Every currently-fitted slot (on whichever system is active)
-        whose model belongs to `family` ("SMU"/"DMM"/"WGEN") -
-        (drivers_dict_key, model_name, display_label) tuples, in profile
-        order. Feeds the Recipe tab's Instrument dropdown so a step can
-        target a SPECIFIC instrument when more than one of the same
-        family is fitted (a second SMU added via Setup tab's + Add
-        Instrument on Accretech, or Electroglas's existing dual-DMM case
-        - 3458A and E1326B VXI can both be fitted on the same bench). A
-        bench with exactly one instrument of a family still returns
-        exactly one entry - same shape either way, nothing downstream
-        has to special-case "only one."""
         if self.active_system == "electroglas":
             try:
                 fitted = set(eg_profiles.fitted_keys())
@@ -1230,10 +867,6 @@ class AtomicaDashboard(tk.Tk):
             entry = profile_instruments.get(key) or {}
             model = entry.get("model") or accretech_profiles.DEFAULT_MODEL.get(
                 key, accretech_profiles.GENERIC_MODEL)
-            # The core slot itself always counts toward its own family,
-            # whatever model happens to be registered there - a custom
-            # slot only counts if its model is one of this family's
-            # known models (see _ACCRETECH_MODELS).
             if key != family_key and model not in family_models:
                 continue
             if key in _ACCRETECH_SLOT_INFO:
@@ -1247,11 +880,6 @@ class AtomicaDashboard(tk.Tk):
         self._connected_systems.add("accretech")
         bench = accretech_profiles.active_name() or ACCRETECH_BENCHES[0]
         self.log(f"[SYSTEM] Pinging Accretech hardware connections ({bench})...")
-        # accretech_probers.yaml is the source of truth (address AND model
-        # per slot); instruments.yaml's flat Accretech keys are derived from
-        # it, same relationship Electroglas's profile has to instruments.yaml
-        # - make sure it matches the active bench before any driver reads an
-        # address out of it.
         try:
             accretech_profiles.apply_to_instruments_yaml(bench)
         except Exception as e:
@@ -1264,47 +892,18 @@ class AtomicaDashboard(tk.Tk):
         except Exception as e:
             self.log(f"[SYSTEM] Could not read Accretech profile {bench!r}: {e}")
             profile_instruments, fitted = {}, []
-        # fitted_keys() already excludes anything marked not-fitted (Setup
-        # tab's own Fitted checkbox - e.g. a disconnected wave gen on a
-        # bench that genuinely doesn't have one) - those are skipped
-        # entirely here, not pinged and not shown red in the sidebar.
         for key in fitted:
             entry = profile_instruments.get(key) or {}
             model = entry.get("model") or accretech_profiles.DEFAULT_MODEL.get(
                 key, accretech_profiles.GENERIC_MODEL)
-            # This slot's own registered model first (the normal case for
-            # one of the five core keys); otherwise fall back to ANY known
-            # model with that exact name, wherever it's normally used - a
-            # custom slot set to e.g. "Keithley707B" (Setup tab offers
-            # every already-coded model, not just Generic - see
-            # accretech_profiles.model_choices_for) resolves to the real
-            # driver this way, config_key-bound to ITS OWN slot.
             slot_factory = (_ACCRETECH_MODELS.get(key, {}).get(model)
                             or _ALL_ACCRETECH_MODEL_FACTORIES.get(model))
             if key in _ACCRETECH_SLOT_INFO:
                 display, drv_key = _ACCRETECH_SLOT_INFO[key]
             else:
-                # A custom slot (Setup tab's "+ Add Instrument") - no fixed
-                # display/drivers-dict entry exists for it, so use the
-                # slot's own key/name for both.
                 display, drv_key = entry.get("name") or key, key
             if slot_factory is None:
-                # No real driver class for this (slot, model) at all - the
-                # driverless Generic model, or a core slot set to an
-                # unrecognized one. Either way, still worth trying: a bare
-                # GPIBInstrument opens the address and answers *IDN?/serial-
-                # poll (see _connect_instruments's driver.get_id() fallback)
-                # without anyone having written a real driver for it yet -
-                # see accretech_profiles.GENERIC_MODEL's own comment.
                 slot_factory = GPIBInstrument
-            # Never let one instrument's constructor take the whole connect
-            # sweep down - see Keysight33512B/Keithley2636B/Keysight34461A's
-            # own comments (VI_ERROR_NLISTENERS out of an unguarded reset()
-            # used to do exactly this, hanging the GUI, whenever that
-            # instrument was simply powered off). A driver that raises here
-            # shows up as failed-to-connect below, same as any other
-            # connect failure, instead of aborting every OTHER instrument
-            # still left to try.
             try:
                 driver = slot_factory(key)
             except Exception as e:
@@ -1320,9 +919,6 @@ class AtomicaDashboard(tk.Tk):
         self._connect_instruments(acc_ui,
                                   self._by_system["accretech"]["drivers"], connections)
         self.check_system_ready()
-        # A fresh connect should never inherit whatever crosspoints were left
-        # closed from a previous session/run - start every connect from a
-        # known, fully-open state.
         switch_drv = self._by_system["accretech"]["drivers"].get("switch")
         if switch_drv and switch_drv.inst:
             try:
@@ -1334,16 +930,8 @@ class AtomicaDashboard(tk.Tk):
                 and hasattr(acc_ui, "_exec_get_xy"):
             acc_ui._exec_get_xy()
 
-    # Driver per profile key. Which of these actually get connected depends on
-    # the active bench profile - see GUI System/eg_probers.yaml. A key marked
-    # not-fitted there is skipped rather than reported as a failure, because the
-    # benches genuinely differ: probe02 has a Keithley 2400 and a working VXI
-    # multimeter, probe03 has neither.
     _EG_DRIVERS = {
         "prober_eg":     ("Electroglas 2001X",  "prober",  Electroglas2001X),
-        # Keithley2400.__init__ takes no config key - it hardcodes 'smu_eg'.
-        # Passing one raised TypeError inside the connect loop, so the SMU went
-        # red on a bench where it answers perfectly well.
         "smu_eg":        ("Keithley 2400",      "smu",     Keithley2400),
         "dmm_eg":        ("HP 3458A",           "dmm",     HP3458A),
         "dmm_vxi_eg":    ("HP E1326B (VXI)",    "dmm_vxi", lambda: HPE1326B("dmm_vxi_eg")),
@@ -1357,8 +945,6 @@ class AtomicaDashboard(tk.Tk):
         self._connected_systems.add("electroglas")
         profile = eg_profiles.active_name()
         self.log(f"[SYSTEM] Pinging Electroglas hardware — {eg_profiles.label(profile)}")
-        # instruments.yaml is derived from the profile, so make sure it matches
-        # the active bench before any driver reads an address out of it.
         try:
             eg_profiles.apply_to_instruments_yaml(profile)
         except Exception as e:
@@ -1385,14 +971,11 @@ class AtomicaDashboard(tk.Tk):
         self.check_system_ready()
 
     def cmd_set_eg_profile(self, name: str):
-        """Switch the Electroglas bench and reconnect against it."""
         try:
             changed = eg_profiles.set_active(name)
         except Exception as e:
             self.log(f"[SYSTEM] Could not switch to {name!r}: {e}")
             return
-        # Old sessions point at the previous bench's addresses; drop them rather
-        # than leave stale handles that would talk to the wrong instrument.
         drivers = self._by_system["electroglas"]["drivers"]
         for drv in list(drivers.values()):
             try:
@@ -1403,8 +986,6 @@ class AtomicaDashboard(tk.Tk):
         self.log(f"[SYSTEM] Electroglas bench -> {eg_profiles.label(name)}"
                  + (f" ({len(changed)} address(es) updated)" if changed else ""))
         self.log(eg_profiles.summary(name))
-        # The Recipe tab only offers instruments the bench actually has, so it
-        # has to be told the bench changed.
         ui = self._by_system["electroglas"]["ui"]
         panel = getattr(ui, "recipe_panel", None)
         refresh = getattr(panel, "refresh_bench_instruments", None)
@@ -1413,15 +994,6 @@ class AtomicaDashboard(tk.Tk):
                 refresh()
             except Exception as e:
                 self.log(f"[SYSTEM] Recipe tab instrument refresh failed: {e}")
-        # refresh_bench_instruments() above only updates the Recipe TAB's
-        # own display (it already re-picks/clears itself for the new
-        # bench via _refresh_picker). The Run tab keeps its own separate
-        # cached copy (_exec_steps/_exec_recipe_var, loaded once when a
-        # recipe was picked from ITS OWN dropdown) that nothing was
-        # telling to reload - so switching probe02 -> probe03 left the
-        # Run tab still armed with probe02's recipe/steps, runnable
-        # against the wrong bench, even though the Recipe tab itself had
-        # already moved on.
         active_recipe = ""
         try:
             active_recipe = panel.get_active_recipe() if panel else ""
@@ -1440,8 +1012,6 @@ class AtomicaDashboard(tk.Tk):
                         ui._exec_steps_var.set(f"No recipe for bench '{name}' yet")
             except Exception as e:
                 self.log(f"[SYSTEM] Run tab recipe refresh failed: {e}")
-        # During startup the scheduled sweep has not run yet and will pick this
-        # bench up, so connecting here as well would just sweep the bus twice.
         if self._startup_done:
             self._show_switch_splash(f"Connecting to {eg_profiles.label(name)}…")
             try:
@@ -1450,15 +1020,6 @@ class AtomicaDashboard(tk.Tk):
                 self._dismiss_switch_splash()
 
     def cmd_set_accretech_bench(self, name: str):
-        """Switch the Accretech bench and reconnect against it - same shape
-        as cmd_set_eg_profile. Probe cards themselves are shared (one
-        probe_cards\\ folder, not per-bench), but individual RECIPEs on a
-        card CAN be bench-tagged (see RecipePanel._visible_recipe_names -
-        lampaccr_probe08new and friends exist precisely because probe08's
-        recipes aren't automatically valid on probe08new's single-channel
-        2400/no-wave-gen wiring), so the Recipe tab's picker and the Run
-        tab's separately-cached steps both need telling, same as
-        Electroglas already does here."""
         try:
             changed = accretech_profiles.set_active(name)
         except Exception as e:
@@ -1474,16 +1035,7 @@ class AtomicaDashboard(tk.Tk):
         self.log(f"[SYSTEM] Accretech bench -> {accretech_profiles.label(name)}"
                  + (f" ({len(changed)} address(es) updated)" if changed else ""))
         self.log(accretech_profiles.summary(name))
-        # switch_topology is bench-scoped too (probe08new's single-channel
-        # 2400 is wired nothing like probe08's dual-channel 2636B) - the
-        # Switch Routing view has to follow the newly active bench's own
-        # row wiring, not whatever it last drew for the previous one.
         self.refresh_probe_routing_panels()
-        # Any panel with its own "which bench is active" label/highlight -
-        # Setup tab and Switch Settings both let you EDIT a bench other than
-        # the live one, so their pickers stay put, but the "(currently
-        # active)" annotation next to whichever entry matches the toolbar
-        # has to track it.
         acc_ui = self._by_system["accretech"]["ui"]
         for attr in ("setup_panel", "switch_settings"):
             panel = getattr(acc_ui, attr, None)
@@ -1493,8 +1045,6 @@ class AtomicaDashboard(tk.Tk):
                     refresh()
                 except Exception as e:
                     self.log(f"[SYSTEM] {attr} active-bench refresh failed: {e}")
-        # The Recipe tab only offers recipes tagged for the active bench (or
-        # untagged). See cmd_set_eg_profile's identical block.
         panel = getattr(acc_ui, "recipe_panel", None)
         refresh = getattr(panel, "refresh_bench_instruments", None)
         if refresh:
@@ -1502,14 +1052,6 @@ class AtomicaDashboard(tk.Tk):
                 refresh()
             except Exception as e:
                 self.log(f"[SYSTEM] Recipe tab instrument refresh failed: {e}")
-        # refresh_bench_instruments() above only updates the Recipe TAB's
-        # own display. The Run tab keeps its own separate cached copy
-        # (_exec_steps/_exec_recipe_var, loaded once when a recipe was
-        # picked from ITS OWN dropdown) that nothing was telling to
-        # reload - so switching probe08 -> probe08new left the Run tab
-        # still armed with probe08's recipe/steps, runnable against the
-        # wrong bench, even though the Recipe tab itself had already
-        # moved on.
         active_recipe = ""
         try:
             active_recipe = panel.get_active_recipe() if panel else ""
@@ -1528,8 +1070,6 @@ class AtomicaDashboard(tk.Tk):
                         acc_ui._exec_steps_var.set(f"No recipe for bench '{name}' yet")
             except Exception as e:
                 self.log(f"[SYSTEM] Run tab recipe refresh failed: {e}")
-        # During startup the scheduled sweep has not run yet and will pick this
-        # bench up, so connecting here as well would just sweep the bus twice.
         if self._startup_done:
             self._show_switch_splash(f"Connecting to {accretech_profiles.label(name)}…")
             try:
@@ -1538,13 +1078,6 @@ class AtomicaDashboard(tk.Tk):
                 self._dismiss_switch_splash()
 
     def refresh_probe_routing_panels(self):
-        """Redraw every live Switch Routing view from the active bench's
-        current switch_topology - called after a Switch Settings save/reset
-        and after switching Accretech bench (see cmd_set_accretech_bench).
-        There are two instances alive at once: the bottom collapsible panel
-        (system-agnostic, built once in _build_bottom_routing) and the
-        Accretech tab's own Debug > Switch Routing (only ever built for the
-        Accretech MainLayout - Electroglas has no switch matrix)."""
         panels = [getattr(self, "bottom_routing", None)]
         acc_ui = self._by_system.get("accretech", {}).get("ui")
         panels.append(getattr(acc_ui, "probe_routing", None))
@@ -1557,20 +1090,6 @@ class AtomicaDashboard(tk.Tk):
                 self.log(f"[SYSTEM] Switch Routing refresh failed: {exc}")
 
     def accretech_required_drivers(self, bench: str = None) -> tuple:
-        """Which controller.drivers keys a RUN on `bench` (default: the
-        active one) actually needs right now - the drv_key
-        (_ACCRETECH_SLOT_INFO, see init_hardware's connections.append)
-        for every slot accretech_profiles.fitted_keys(bench) says this
-        bench has fitted, not the fixed ACCRETECH_REQUIRED_DRIVERS five
-        unconditionally. A bench with wave_gen marked not-fitted (Setup
-        tab's Fitted checkbox - e.g. probe08new, which has no wave gen
-        wired at all) or with it removed entirely (this "drivers" branch's
-        flexible Setup tab - a bench can drop a slot, or carry more than
-        one of a kind, e.g. a second DMM) must not need it connected to be
-        READY or to start a run - see check_system_ready and
-        instrument_panel._exec_can_start, which both call this instead
-        of hardcoding the five. Falls back to the fixed list if the
-        profile can't be read at all."""
         try:
             fitted = accretech_profiles.fitted_keys(bench)
         except Exception:
@@ -1629,11 +1148,6 @@ class AtomicaDashboard(tk.Tk):
         self._abort_btn = ttk.Button(toolbar, text="⏹ Abort", style="Abort.TButton",
                                      command=self.cmd_abort)
         self._abort_btn.pack(side="left", padx=6, pady=2)
-        # Accretech-only: "E + es" (buzzer_clear) is a UF200R mnemonic with
-        # no Electroglas equivalent at all (the EG driver has no
-        # buzzer_clear method - error handling there is ?E, read-and-
-        # clear, a different mechanism). Left hidden rather than shown-but-
-        # broken - see _refresh_buzzer_clear_button.
         self._buzzer_clear_btn = ttk.Button(
             toolbar, text="🔕 Buzzer Clear", command=self.cmd_buzzer_clear)
         self._buzzer_clear_btn.pack(side="left", padx=(0, 6), pady=2)
@@ -1648,21 +1162,9 @@ class AtomicaDashboard(tk.Tk):
         self._ata_picker.bind("<<ComboboxSelected>>",
                               lambda _e: self._on_ata_picker_selected())
 
-        # Moved to the Internal tab's own toolbar, next to Load/New ATA
-        # Folder.
-        # Not packed - the "ATA Folder:" picker above already names the
-        # loaded folder, so this text was a second copy of the same
-        # information. Left instantiated (just not shown) rather than
-        # removed outright, so nothing has to change everywhere else in
-        # this file that updates it via .config().
         self._ata_lbl = ttk.Label(toolbar, text="No ATA loaded", foreground="gray",
                                   font=("Segoe UI", 9))
 
-        # Which physical prober the active system is pointed at. The Electroglas
-        # benches carry different instruments at different addresses, so this
-        # decides what gets connected - see GUI System/eg_probers.yaml.
-        # Accretech has only probe08 for now, so its list is a single entry and
-        # the control is inert rather than hidden, to keep the toolbar stable.
         ttk.Separator(toolbar, orient="vertical").pack(side="left", fill="y",
                                                        padx=4, pady=3)
         ttk.Label(toolbar, text="Prober:").pack(side="left", padx=(2, 2), pady=2)
@@ -1701,9 +1203,6 @@ class AtomicaDashboard(tk.Tk):
 
     @staticmethod
     def _ata_display_name(name: str) -> str:
-        """Toolbar picker shows the trailing "ata" (case-insensitive)
-        stripped, e.g. "NautATA" -> "Naut" - display only, the real folder
-        name is still what's stored/opened everywhere else."""
         if name and name.lower().endswith("ata"):
             return name[:-3] or name
         return name
@@ -1713,11 +1212,6 @@ class AtomicaDashboard(tk.Tk):
         self._ata_picker_label_to_name = {self._ata_display_name(n): n for n in names}
         self._ata_picker.configure(values=list(self._ata_picker_label_to_name.keys()))
 
-    # -- prober bench picker ------------------------------------------------
-    #
-    # Only Electroglas has real profiles today. Accretech is a single machine,
-    # so its "list" is one entry - the control still shows which prober you are
-    # on, which is the point, and it grows the day a second Accretech appears.
 
     def _bench_names(self) -> list:
         if self.active_system == "electroglas":
@@ -1765,8 +1259,6 @@ class AtomicaDashboard(tk.Tk):
                 self._bench_lbl.config(text="", foreground="gray")
         else:
             self._bench_lbl.config(text="", foreground="gray")
-        # A single-entry list is not a choice; make that visible rather than
-        # letting someone click at it expecting something to happen.
         self._bench_picker.configure(
             state="readonly" if len(names) > 1 else "disabled")
 
@@ -1784,7 +1276,6 @@ class AtomicaDashboard(tk.Tk):
             return
         self.cmd_set_eg_profile(name)
         self._refresh_bench_picker()
-        # Keep the Instruments tab's own copy of this selector in step.
         panel = getattr(self._by_system["electroglas"]["ui"], "instruments_eg", None)
         for method in ("_refresh_bench_label", "_rebuild_addresses"):
             fn = getattr(panel, method, None)
@@ -1805,18 +1296,6 @@ class AtomicaDashboard(tk.Tk):
         self._do_load_ata_folder(folder)
 
     def update_statistics_visuals(self):
-        # total_dies is the wafer-map SQUARE count (set from the loaded map/
-        # recipe's touchdown list at run start) - on a Minor Moves recipe
-        # each square is a SHOT, and dies_tested counts individual die
-        # measurements, several per shot, so it can legitimately end up
-        # bigger than total_dies well before the run is actually done.
-        # Displaying total_dies - dies_tested there gives a negative
-        # "Untested" count and a >100% progress fraction - not a real
-        # problem with the run/count data itself, just this display doing
-        # arithmetic against the wrong-shaped total. Grow the displayed
-        # total to whatever's actually bigger so neither ever goes
-        # negative/over 100%, without touching total_dies or how tested/
-        # passed/failed are actually counted.
         display_total = max(self.total_dies, self.dies_tested)
         untested = display_total - self.dies_tested
         self.ui.lbl_stats_text.config(text=f"Pass: {self.dies_passed}  |  Fail: {self.dies_failed}\nUntested: {untested}")
@@ -1935,41 +1414,17 @@ class AtomicaDashboard(tk.Tk):
             self._refresh_after_working_dir_change()
 
     def cmd_pick_working_dir_preset(self, label: str):
-        """The Working Directory dropdown's named presets (see
-        workdir.PRESETS) - a plain label like "proberautomation", not a
-        path, since the dropdown shows names, not full UNC paths."""
         path = workdir.PRESETS.get(label)
         if path:
             self.ui.working_dir_var.set(path)
             self._refresh_after_working_dir_change()
 
     def _refresh_after_working_dir_change(self):
-        """Make a Working Directory switch (dropdown preset, Browse, or Set
-        Default) actually visible right away, not just next launch -
-        working_dir_var's own trace (see __init__) already updated
-        workdir's in-memory "current" directory by the time this runs, but
-        nothing was re-reading it: the toolbar/ATA folder stayed on
-        whatever was loaded from the OLD directory, since only a fresh
-        launch used to re-run this. Re-loads the NEW directory's own
-        default ATA folder (app_settings.json, itself inside the new
-        directory's own GUI System) the same way startup does - a no-op if
-        that location has none configured yet, same as a fresh launch
-        there would be. Deliberately does NOT touch instrument connections
-        - those stay whatever they already are."""
         self.log(f"[SYSTEM] Working directory switched to: "
                 f"{workdir.get_current_working_dir()}")
         self._autoload_default_ata_folders()
 
     def cmd_set_default_working_dir(self):
-        """Persist the CURRENT working directory as this PC's own default -
-        stored next to the app itself (not inside GUI System), since GUI
-        System now lives inside whichever working directory is picked and
-        can't record which one to start with on its own. Also refreshes
-        the ATA folder/toolbar from that directory right now (see
-        _refresh_after_working_dir_change) - previously this only
-        persisted the preference for the NEXT launch and visibly changed
-        nothing about the current session, which read as "did that even
-        do anything"."""
         path = self.ui.working_dir_var.get()
         if not path:
             return
@@ -1978,19 +1433,6 @@ class AtomicaDashboard(tk.Tk):
                 "working directory (also applies to future launches).")
         self._refresh_after_working_dir_change()
 
-    # kind=META rows use these (one row, none repeated per RESULT/DIE row -
-    # see cmd_import_results_csv for the matching read side). kind=RESULT
-    # and kind=DIE share the rest of the header, each only filling in its
-    # own columns - same multi-kind-rows-in-one-CSV shape recipe_panel's
-    # RECIPE/STEP/SITE rows already use elsewhere in this codebase.
-    #
-    # die/type/value lead the header (the three columns someone skimming
-    # the file actually wants first) - everything else follows in its old
-    # order. Purely a WRITE-side change: cmd_import_results_csv (and
-    # anything else that reads this file) goes through csv.DictReader,
-    # keyed by column NAME, so column order here has zero effect on
-    # reading a file back - old exports with the old column order still
-    # import fine.
     _RESULTS_CSV_FIELDS = [
         "die", "type", "value",
         "kind", "system", "ata_folder", "map_source", "probe_card", "recipe",
@@ -2002,17 +1444,6 @@ class AtomicaDashboard(tk.Tk):
     ]
 
     def cmd_save_csv(self):
-        """Writes <Lot>[_<Wafer>]_results.csv - self-contained enough for
-        cmd_import_results_csv to rebuild the whole Results tab (wafer map,
-        recipe, results table, pass/fail counts and colours) from this file
-        alone, even after the GUI has been relaunched. One META row carries
-        what would otherwise repeat identically down every line (system,
-        ATA folder, active recipe/probe card, running totals); RESULT rows
-        are the measurement history (same data "Save to CSV" always wrote,
-        now with row/col/die_id kept instead of dropped); DIE rows are the
-        per-die PASS/FAIL verdicts painted onto the wafer maps, which never
-        used to be saved anywhere.
-        """
         export_dir = self.ui.export_path_var.get()
         current_lot = self.ui.lot_id.get()
         if not os.path.exists(export_dir):
@@ -2028,13 +1459,6 @@ class AtomicaDashboard(tk.Tk):
         name_parts = [current_lot] + ([wafer_id] if wafer_id else []) + ["results"]
         filepath = os.path.join(export_dir, "_".join(name_parts) + ".csv")
         try:
-            # Explicit utf-8: without it Python uses the Windows locale
-            # encoding (cp1252 here), which wrote an em-dash (used as a die
-            # placeholder) as a lone 0x97 byte - not valid UTF-8, so
-            # cmd_import_results_csv's own explicit utf-8 read failed on
-            # it and the whole import silently came back empty. Same class
-            # of bug cmd_export_sql's CSV path already carries this fix
-            # for - this path just never got it.
             with open(filepath, mode='w', newline='', encoding='utf-8') as file:
                 writer = csv.DictWriter(file, fieldnames=self._RESULTS_CSV_FIELDS,
                                         extrasaction="ignore")
@@ -2073,17 +1497,6 @@ class AtomicaDashboard(tk.Tk):
             return None
 
     def cmd_import_results_csv(self):
-        """The reverse of cmd_save_csv - reads one of its files and puts the
-        GUI back the way it looked right after that run: ATA folder and
-        wafer map source reloaded, probe card and recipe reselected, the
-        results table and pass/fail totals rebuilt, and every die's
-        PASS/FAIL colour repainted on both wafer maps.
-
-        Best-effort on each piece independently (wrapped so one missing
-        probe card or moved ATA folder does not abort the rest) - this is
-        explicitly for a machine that may not have any of that state left,
-        per the "all you have is the CSV" scenario this exists for.
-        """
         path = filedialog.askopenfilename(
             title="Import Results CSV",
             filetypes=[("Results CSV", "*.csv"), ("All files", "*.*")])
@@ -2115,20 +1528,6 @@ class AtomicaDashboard(tk.Tk):
                 return False
             return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
 
-        # If this ATA folder is ALREADY the one loaded, the wafer map on
-        # screen right now is already correct - do not touch it at all.
-        # Otherwise, load it exactly the way picking it from the toolbar
-        # dropdown would - load_ata_folder() draws its own correct map
-        # (confirmed: this is the same call an ordinary folder load/app
-        # relaunch makes, gaps between dies and all) with no help needed.
-        # This used to ALSO force the map onto the CSV's own saved
-        # map_source afterward - a second pass that kept coming out
-        # looking wrong (dies packed with no gaps, overlay labels no
-        # longer centered on their square) instead of identical. Not
-        # worth chasing why a specific redraw sometimes disagrees with
-        # itself when simply never doing one main this function does not
-        # need sidesteps it entirely - a plain load is enough to get a
-        # correct map, on the folder this file names or any other.
         if folder and _same_folder(folder, getattr(ui, "_ata_folder", "")):
             pass
         elif folder and os.path.isdir(folder):
@@ -2178,12 +1577,6 @@ class AtomicaDashboard(tk.Tk):
                                     "probe_card", "lot_id", "wafer_id",
                                     "total_dies", "dies_tested", "dies_passed",
                                     "dies_failed", "status") and v != ""}
-                # csv.DictReader hands back every field as a string, but
-                # _results_show_die (the Results tab's per-die click table)
-                # compares "row"/"col" against the wafer map's own integer
-                # row/col with == - a die's readings never matched after an
-                # import, even though the die's PASS/FAIL colour did (that
-                # path already casts to int explicitly below).
                 for key in ("row", "col"):
                     if key in clean:
                         try:
@@ -2249,14 +1642,6 @@ class AtomicaDashboard(tk.Tk):
             return None
         wafer_id = self.ui.wafer_id_var.get().strip()
         fmt_type = fmt.get("type", "sql")
-        # Export formats (unlike "Save as CSV", which dumps the whole
-        # session's history) only ever cover the most recently started run —
-        # re-running shouldn't silently pile old runs' rows into a new export.
-        # A run that never actually started (e.g. the Full Die/Minor Moves
-        # refusal - see _exec_start_full_die) leaves this at zero rows,
-        # which lands here and returns None with no file written - if a
-        # caller (cassette_panel) expected a run to have happened for this
-        # wafer and didn't get one, this is silently why nothing exported.
         last_run_results = self.ui.get_last_run_results()
         if not xfmt.has_data_for_format(fmt, last_run_results):
             if fmt_type == "csv":
@@ -2269,19 +1654,11 @@ class AtomicaDashboard(tk.Tk):
                 f"this format needs {reason}.")
             return None
         ext = "csv" if fmt_type == "csv" else "sql"
-        # "Lot+Wafer join" lets a format join them directly (e.g. "-w", to
-        # match Cenfire's LabVIEW-generated "LOTID-wWAFERID" convention)
-        # instead of always splitting them into two separate "_"-joined
-        # name parts - every other format's saved JSON has no "wafer_join"
-        # key at all, so it keeps exactly its previous two-part behavior.
         wafer_join = fmt.get("wafer_join") or "_"
         if wafer_join == "_" or not wafer_id:
             name_parts = [current_lot] + ([wafer_id] if wafer_id else [])
         else:
             name_parts = [f"{current_lot}{wafer_join}{wafer_id}"]
-        # A table name is sometimes itself written with a trailing "_" (so
-        # its own text reads correctly right up against the timestamp) -
-        # stripped here so joining below can't ever double it up into "__".
         name_parts.append((fmt["table"] or "export").strip("_"))
         if fmt.get("append_recipe"):
             recipe_panel = getattr(self.ui, "recipe_panel", None)
@@ -2299,9 +1676,6 @@ class AtomicaDashboard(tk.Tk):
             if fmt_type == "csv":
                 rows = xfmt.build_csv_rows(fmt, last_run_results, current_lot, wafer_id, ata_folder)
                 fieldnames = [c["field"] for c in fmt["columns"]]
-                # Explicit utf-8: without it Python uses the Windows locale
-                # encoding (cp1252 here), which wrote an em-dash as a lone
-                # 0x97 byte - not valid UTF-8, so the export would not reopen.
                 with open(filepath, "w", newline="", encoding="utf-8") as f:
                     writer = csv.DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
@@ -2312,9 +1686,6 @@ class AtomicaDashboard(tk.Tk):
             else:
                 statements = xfmt.build_insert_statements(
                     fmt, last_run_results, current_lot, wafer_id, ata_folder)
-                # Explicit utf-8: without it Python uses the Windows locale
-                # encoding (cp1252 here), which wrote an em-dash as a lone
-                # 0x97 byte - not valid UTF-8, so the export would not reopen.
                 with open(filepath, "w", newline="", encoding="utf-8") as f:
                     f.write("\n".join(statements) + "\n")
                 self.log(

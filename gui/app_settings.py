@@ -3,11 +3,6 @@ import os
 
 import workdir
 
-# "GUI System" now lives inside whichever working directory is active
-# (workdir.gui_system_dir()) rather than at one fixed local path - it's a
-# shared network folder multiple computers can have open at once, not a
-# per-PC folder next to this project anymore. See workdir.py.
-
 
 def _settings_dir() -> str:
     return workdir.gui_system_dir()
@@ -18,8 +13,6 @@ def _settings_path() -> str:
 
 
 def load_settings() -> dict:
-    # If "GUI System" hasn't been created yet, there is nothing to load -
-    # start blank rather than creating it just to read from it.
     try:
         with open(_settings_path(), "r", encoding="utf-8") as f:
             return json.load(f)
@@ -28,31 +21,16 @@ def load_settings() -> dict:
 
 
 def save_settings(data: dict) -> None:
-    # Saving is an explicit user action (e.g. "Set as Default"), so it's
-    # fine to create the folder here even though loading never does.
     os.makedirs(_settings_dir(), exist_ok=True)
     with open(_settings_path(), "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
 
 def _this_machine(data: dict) -> dict:
-    """This computer's own slice of app_settings.json - defaults (ATA
-    folder, prober) are per-machine now that GUI System is a shared network
-    folder several computers can open at once: two stations picking
-    different benches/projects should not overwrite each other's default
-    every time either one saves. Keyed by computer name.
-
-    channel_assignments is NOT in here on purpose - it describes a bench's
-    physical wiring, the same kind of fact switch_topology.yaml records, so
-    it stays one shared value for everyone, same as before."""
     return data.setdefault("by_computer", {}).setdefault(workdir.computer_name(), {})
 
 
 def machine_config_status() -> dict:
-    """Which pieces of this machine's setup exist on disk yet - the startup
-    check's source of truth for whether to prompt, and for which files
-    specifically to create. Imported lazily to dodge an import cycle
-    (instruments.gpib_base has no reason to import this gui/ module)."""
     from instruments import gpib_base
     import switch_topology
     return {
@@ -69,10 +47,6 @@ def machine_config_status() -> dict:
 
 
 def create_basic_machine_config() -> list:
-    """Create whichever of this machine's setup files are missing, each
-    with a blank/no-defaults starter shape - never guesses a real address,
-    just the key structure the Setup tab expects to edit. Leaves anything
-    that already exists untouched. Returns the filenames actually created."""
     from instruments import gpib_base
     import switch_topology
     os.makedirs(_settings_dir(), exist_ok=True)
@@ -92,10 +66,6 @@ def create_basic_machine_config() -> list:
     return created
 
 
-# One default ATA folder for the whole project - not per system. Only one
-# prober is ever actually running against real data at a time, and having
-# Accretech/Electroglas remember different defaults was extra state nobody
-# asked for. Per-computer (see _this_machine) now that GUI System is shared.
 def get_default_ata_folder() -> "str | None":
     return _this_machine(load_settings()).get("default_ata_folder")
 
@@ -106,13 +76,6 @@ def set_default_ata_folder(folder: str) -> None:
     save_settings(data)
 
 
-# The prober the GUI should come up on. Stored as (system, bench) together
-# rather than just a bench name, because the system is what decides which
-# whole UI is shown and a bench name alone would need a lookup to resolve -
-# one that would break the moment a bench is renamed or removed. Per-
-# computer (see _this_machine) now that GUI System is shared - the physical
-# prober a PC is wired to obviously does not change based on who else has
-# the network folder open.
 def get_default_prober() -> "tuple[str, str] | tuple[None, None]":
     entry = _this_machine(load_settings()).get("default_prober") or {}
     system, bench = entry.get("system"), entry.get("bench")
@@ -131,13 +94,6 @@ def clear_default_prober() -> None:
     save_settings(data)
 
 
-# Which top-level GUI mode this machine should come up in - "normal" (the
-# regular Accretech/Electroglas tabbed workspace) or "nanoz" (the alternate
-# whole-window NanoZ workspace, see gui/nanoz_mode.py). Per-computer (see
-# _this_machine) for the same reason as default_prober: whether a station
-# is actually wired up for NanoZ hardware is a physical fact about that PC,
-# not something every computer sharing the network GUI System folder should
-# inherit from whichever one last changed it.
 def get_default_gui_mode() -> str:
     return _this_machine(load_settings()).get("default_gui_mode") or "normal"
 
@@ -148,19 +104,6 @@ def set_default_gui_mode(mode: str) -> None:
     save_settings(data)
 
 
-# Per-channel assignments for the Electroglas relay cards. The GUI only knows
-# what the CURRENT project wired (hp_switchbox.BENCH_WIRING covers probe02's
-# CH00-03 and probe03's eight); every other channel on all three cards is
-# physically there and unused. Recording what a channel is for, per bench,
-# keeps that knowledge with the machine instead of in someone's memory - and a
-# future project can claim spare channels without re-deriving which are free.
-#
-# Keyed bench -> "driver_key/NN" -> label, so a channel's meaning survives a
-# card being swapped between secondary addresses. Deliberately NOT per-
-# computer (unlike the defaults above) - this describes a bench's physical
-# wiring, not a per-PC preference, so every computer sharing the network
-# GUI System folder should see the same assignments.
-
 def get_channel_assignments(bench: str) -> dict:
     data = load_settings().get("channel_assignments", {})
     return dict(data.get(str(bench), {}))
@@ -169,8 +112,6 @@ def get_channel_assignments(bench: str) -> dict:
 def set_channel_assignments(bench: str, assignments: dict) -> None:
     data = load_settings()
     store = data.setdefault("channel_assignments", {})
-    # Drop blanks rather than storing empty strings: "no assignment" and
-    # "assigned to nothing" should not be two different states in the file.
     store[str(bench)] = {k: v.strip() for k, v in assignments.items()
                          if (v or "").strip()}
     save_settings(data)

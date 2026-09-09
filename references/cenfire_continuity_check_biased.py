@@ -1,19 +1,4 @@
-"""
-Cenfire probe-card continuity check - SMU BIASED version.
-
-Same idea as cenfire_continuity_check.py, but instead of the DMM's small
-built-in test current, the SMU forces the real production current
-(10 mA, 7V compliance - matching the Cenfire recipe) across each pair
-and resistance is computed from the SMU's own combined V/I read. Useful
-for comparing against the DMM-only (near-zero current) sweep to see if
-contact resistance changes under real load.
-
-Assumes the chuck is ALREADY UP (pins in contact) - this script does not
-touch the prober at all.
-
-Usage:
-    python cenfire_continuity_check_biased.py
-"""
+"""Cenfire probe-card continuity check."""
 import sys, os, time, itertools
 
 ROOT = r"c:\automationproject\Probe08"
@@ -24,16 +9,12 @@ for p in (ROOT, os.path.join(ROOT, "gui")):
 from instruments.keithley2400 import Keithley2400
 from instruments.keithley_707b import Keithley707B
 
-# --- tune these ---
-FORCE_CURRENT = 0.01   # 10 mA, matches the Cenfire recipe
-VOLTAGE_LIMIT = 7.0    # matches the Cenfire recipe
-OPEN_CURRENT_A = 1e-4  # if measured current stays under this, SMU hit compliance -> open
-SAME_PAD_MAX_OHM = 20  # same-pad pairs should read a real short, well under this
-SETTLE_S = 0.4         # settle time after closing crosspoints + turning output on
+FORCE_CURRENT = 0.01
+VOLTAGE_LIMIT = 7.0
+OPEN_CURRENT_A = 1e-4
+SAME_PAD_MAX_OHM = 20
+SETTLE_S = 0.4
 
-# pairs that land on the same physical pad - these SHOULD read a near-short.
-# everything else should NOT be anywhere near this low (real per-die values
-# vary die to die, roughly 0.5-5 ohm on some, 100-500 ohm on others).
 SAME_PAD_PAIRS = {frozenset((12, 13)), frozenset((1, 24)), frozenset((11, 2))}
 
 PINS = {
@@ -76,7 +57,6 @@ def main():
             slot_b, col_b, _, _ = PINS[b]
             same_pad = frozenset((a, b)) in SAME_PAD_PAIRS
 
-            # row A = SMU HI, row B = SMU LO
             switch.close_crosspoint(f"{slot_a}A", col_a)
             switch.close_crosspoint(f"{slot_b}B", col_b)
             smu.turn_output_on("smua")

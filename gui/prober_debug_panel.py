@@ -349,16 +349,6 @@ class ProberDebugPanel(ttk.Frame):
         stb_canvas.bind("<Configure>",
                         lambda e: (stb_canvas.configure(scrollregion=stb_canvas.bbox("all")),
                                    stb_canvas.itemconfig(_win, width=e.width)))
-        # bind_all with no scope/removal used to capture EVERY MouseWheel
-        # event in the whole app for the rest of its life, on whichever tab
-        # was active at the time - e.g. scrolling the NanoZ Recipe tab's
-        # own content silently scrolled this (usually off-screen) STB list
-        # instead. Bound/unbound on Enter/Leave of this canvas instead, the
-        # standard Tk pattern for "capture the wheel only while the mouse
-        # is actually over this widget" - bind_all is still needed (not a
-        # plain .bind()) since the wheel has to reach the canvas even when
-        # a child label under the cursor would otherwise eat the event, but
-        # only for as long as the mouse is really here.
         def _stb_wheel(e):
             stb_canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
         def _stb_wheel_bind(_e=None):
@@ -652,9 +642,6 @@ class ProberDebugPanel(ttk.Frame):
         self._auto_buzzer_job = None
         if not self._auto_buzzer_var.get():
             return
-        # Silent (no popups, no STB re-read/UI flash) - this fires
-        # unattended, possibly while the operator is looking at a different
-        # tab entirely. Only the log line records that it happened.
         def _run():
             drv = self._drv(silent=True)
             if drv is None:

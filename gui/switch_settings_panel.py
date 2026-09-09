@@ -9,17 +9,6 @@ class SwitchSettingsPanel(ttk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
-        # Which bench this panel is EDITING - independent of whichever bench
-        # the toolbar currently has live, same relationship
-        # AccretechSetupPanel already has to the active bench (see its own
-        # module docstring). probe08 and probe08new are wired completely
-        # differently now (probe08new's single-channel 2400 has no row C/D,
-        # and no wave gen at all - see instruments/accretech_profiles.py),
-        # so editing one must never silently apply to the other - that
-        # silent cross-application through one shared global file/cache is
-        # exactly what made "save settings" feel broken when switching
-        # between the two probers before switch_topology.py became
-        # bench-scoped.
         self._bench_var = tk.StringVar(value=self._active_bench())
         self._slots: list = []
         self._roles: dict = {}
@@ -75,11 +64,6 @@ class SwitchSettingsPanel(ttk.Frame):
         self._status_var.set("")
 
     def refresh_active_bench(self):
-        """Called by AtomicaDashboard after the TOOLBAR's bench picker
-        switches - this panel's own bench picker stays wherever the
-        operator left it (it edits whichever bench it's set to, independent
-        of the live one), but the '(currently active)' note has to track
-        reality."""
         self._refresh_bench_choices()
 
     def _row_letters(self) -> list:

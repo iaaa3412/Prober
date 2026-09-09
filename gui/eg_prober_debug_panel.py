@@ -27,17 +27,9 @@ _ZERO_ARG_MOTION = [
      "Send HO?\n\nReturns the chuck to its mechanical home position."),
 ]
 
-# Z values are in 0.1-mil units (command = mils x 10). This machine's limits:
-# 2000 = 200.0 mils = Z DOWN LIMIT, 4000 = 400.0 mils = Z UP LIMIT. ZM is the
-# one that actually moves the axis - ZU/ZD are no-ops without a wafer profile.
 _ONE_ARG_MOTION = [
-    # ZM is open-loop: it goes to a commanded height with no contact sensing.
-    # Fine for bench work with nothing fitted; NOT the way to approach a probe
-    # card. Touchdown is found by PZ/auto-profile via the edge sensor.
     ("Z Absolute (ZM) — open loop, no contact sensing", "move_z_absolute", "Z"),
     ("Z Relative (ZR) — 0.1 mil steps", "move_z_relative", "dZ"),
-    # Verified: MT rotates the chuck and ?T reports the angle, 1:1 with the
-    # command value. The physical unit per count is NOT established.
     ("Theta Relative (MT) — ?T tracks 1:1, unit unknown", "move_theta_relative", "dθ"),
 ]
 
@@ -73,9 +65,6 @@ _LIMIT_COMMANDS = [
     ("Z Overtravel (SP5Z)", "set_z_overtravel", _INT1, ("Z",)),
     ("Z Undertravel (SP10Z)", "set_z_undertravel", _INT1, ("Z",)),
     ("Zprofile Height (PH)", "set_zprofile_height", _NONE, ()),
-    # LaMP sets 2 = Auto Profile, which is why ZU/ZD do nothing without a
-    # profiled wafer. Other values are undocumented - read them off the
-    # prober's SET MODE page rather than guessing.
     ("Z Travel Mode (SM5E)  2=auto profile", "set_z_travel_mode", _INT1, ("Mode",)),
 ]
 
@@ -97,26 +86,10 @@ _MISC_COMMANDS = [
 _MOTION_PREFIXES = ("ZU", "ZD", "ZM", "ZR", "MT", "MM", "MO", "MA", "MD",
                     "FM", "MF", "HO", "J", "U", "L", "I")
 
-# Jog direction -> (dX, dY) in die coordinates.
-#
-# MEASURED ONLY FOR THE BOTTOM-RIGHT (LOAD-POSITION) DATUM. With 0,0 there,
-# the only reachable quadrant is up and to the LEFT, so increasing X moves
-# the chuck LEFT and increasing Y moves it UP - the X axis reads inverted
-# against screen intuition, which is exactly the trap these constants exist
-# to remove.
-#
-# THAT REASONING DOES NOT HOLD ONCE FIRST (FD) HAS BEEN PRESSED WITH A
-# CENTRE DATUM - see electroglas_2001x.py's module docstring ("THE DIE GRID
-# DEPENDS ENTIRELY ON WHERE THE DATUM WAS SET"). Which physical direction is
-# +X was never directly confirmed against a centre datum, only inferred from
-# the load-position case. Do not trust the arrow labels blindly once the
-# operator has re-zeroed at wafer centre - verify by eye (or against ?P)
-# before jogging for real. Flip the pair here only once the centre-datum
-# direction has actually been confirmed on the bench; do not guess.
-_JOG_LEFT = (1, 0)      # +X
-_JOG_RIGHT = (-1, 0)    # -X  (refused at the 0 edge)
-_JOG_UP = (0, 1)        # +Y
-_JOG_DOWN = (0, -1)     # -Y  (refused at the 0 edge)
+_JOG_LEFT = (1, 0)
+_JOG_RIGHT = (-1, 0)
+_JOG_UP = (0, 1)
+_JOG_DOWN = (0, -1)
 
 
 class EgProberDebugPanel(ttk.Frame):
@@ -124,19 +97,6 @@ class EgProberDebugPanel(ttk.Frame):
         super().__init__(parent)
         self.controller = controller
 
-        # ONE GPIB conversation at a time, panel-wide.
-        #
-        # Every background action here used to get its own thread, and some
-        # chain another (a motion finishes, then fires a status read). Two
-        # threads sharing one VISA session interleave their drain/write/read
-        # steps, so each collects the other's acknowledgement - which shows up
-        # as moves that execute without confirmation, mismatched replies, and
-        # eventually timeouts that persist.
-        #
-        # A scripted run doing the identical commands strictly one at a time
-        # never reproduced any of it: 12/12 acknowledged, 0.3-0.4s each, and
-        # deliberately provoking MF, an axis limit and a device clear changed
-        # nothing. The difference was concurrency, not the prober.
         self._gpib_lock = threading.Lock()
 
         self.rowconfigure(1, weight=1)
@@ -162,8 +122,6 @@ class EgProberDebugPanel(ttk.Frame):
         self._resp_var.set(f"[{label}]  {resp}")
 
     def _run_bg(self, fn, *args):
-        """Run driver work off the UI thread, serialised against every other
-        such call in this panel. See _gpib_lock in __init__ for why."""
         def _serialised():
             with self._gpib_lock:
                 fn(*args)
@@ -193,12 +151,6 @@ class EgProberDebugPanel(ttk.Frame):
         self._build_right(pane)
 
     def _cmd_recover(self):
-        """Unwedge the link after a VI_ERROR_TMO.
-
-        A timeout leaves the prober refusing every subsequent write, so without
-        this the only way out was restarting the app. Drains, then device
-        clear, then reopens the session - none of which move the machine.
-        """
         drv = self._drv()
         if not drv:
             return
@@ -218,10 +170,6 @@ class EgProberDebugPanel(ttk.Frame):
         self._run_bg(_run)
 
     def _cmd_read_telemetry(self):
-        """Read every verified '?' query and show the decoded result.
-
-        Read-only - no motion, no configuration change.
-        """
         drv = self._drv()
         if not drv:
             return
@@ -264,12 +212,6 @@ class EgProberDebugPanel(ttk.Frame):
         self._run_bg(_run)
 
     def _cmd_send_init(self):
-        """Send the 20 configuration commands LaMP applied at startup.
-
-        Configuration only - SP/SM/SO/SX/WM 'set' commands. Nothing here moves
-        the chuck, stage or handler. It does overwrite the prober's current
-        setup, so it is confirmed first.
-        """
         drv = self._drv()
         if not drv:
             return
@@ -306,19 +248,6 @@ class EgProberDebugPanel(ttk.Frame):
         self._run_bg(_run)
 
     def _build_jog(self, parent):
-        """Arrow-pad jog, the software equivalent of the prober's joystick.
-
-        XY defaults to MD (relative die), the only XY motion verified to
-        work and which ?P tracks exactly - a Die/Distance toggle switches
-        the same pad over to MM (relative microns, via move_relative_um -
-        see that method and the MM_UNIT_UM measurement note in
-        electroglas_2001x.py for the 2.5 um/count conversion this rests on).
-        Z uses ZR (relative), because ZU/ZD are no-ops while Z TRAVEL MODE
-        is auto profile.
-
-        Step sizes are read on the main thread before the worker starts -
-        Tkinter is not thread-safe.
-        """
         lf = ttk.LabelFrame(parent, text="Jog", padding=6)
         lf.pack(fill="x", padx=4, pady=(4, 6))
 
@@ -343,11 +272,6 @@ class EgProberDebugPanel(ttk.Frame):
         self._jog_z_step = tk.StringVar(value="100")
         ttk.Entry(row, textvariable=self._jog_z_step, width=6).pack(side="left", padx=2)
 
-        # One jog at a time. The prober QUEUES commands it has not finished, so
-        # repeated presses stack up and execute long afterwards - cumulative
-        # travel nobody asked for. Every button is disabled until the MC
-        # acknowledgement for the move in flight comes back. It also keeps two
-        # GPIB conversations from overlapping, which is what wedges the link.
         self._jog_busy = False
         self._jog_buttons = []
 
@@ -360,12 +284,6 @@ class EgProberDebugPanel(ttk.Frame):
             self._jog_buttons.append(b)
             return b
 
-        # Labelled for the BOTTOM-RIGHT (load-position) datum: die 0,0 there
-        # puts the reachable quadrant up and to the LEFT, so increasing X
-        # moves the chuck LEFT and increasing Y moves it UP - pressing
-        # "right" when 0,0 is already the right-hand edge is what the prober
-        # refuses with MF. See the _JOG_* comment above: this labelling is
-        # NOT confirmed once FIRST has been pressed against a centre datum.
         mk("↑ up (+Y)", 0, 1, lambda: self._jog_xy(*_JOG_UP))
         mk("← left (+X)", 1, 0, lambda: self._jog_xy(*_JOG_LEFT))
         mk("⌂ 0,0", 1, 1, self._jog_goto_origin)
@@ -381,21 +299,6 @@ class EgProberDebugPanel(ttk.Frame):
         ttk.Label(lf, textvariable=self._jog_pos, font=("Consolas", 9),
                   wraplength=380, justify="left").pack(anchor="w", pady=(4, 0))
 
-        # Arrow keys follow the physical direction, same mapping as the
-        # buttons - but ONLY while explicitly enabled below. This used to
-        # be an unconditional self.bind_all(), which grabs arrow keys for
-        # the WHOLE APPLICATION the moment this panel is built, not just
-        # while this tab is visible or focused (bind_all's own semantics -
-        # it isn't scoped by widget at all) - a real report: arrow keys
-        # pressed anywhere else in the app (e.g. Accretech's own tabs) sent
-        # a live jog command to whatever prober driver happened to be
-        # active, which is exactly how 'AccretechUF200R' object has no
-        # attribute 'move_relative_die' surfaced - this Electroglas-only
-        # jog reaching an Accretech session. Locked behind an explicit,
-        # default-OFF toggle instead of any implicit scoping (hover/focus),
-        # so a stray arrow key press can never move real hardware unless
-        # the operator deliberately turned this on for this tab, this
-        # session.
         self._jog_keys_enabled_var = tk.BooleanVar(value=False)
 
         def _jog_keys_toggled():
@@ -418,14 +321,6 @@ class EgProberDebugPanel(ttk.Frame):
         self._build_theta(parent)
 
     def _build_theta(self, parent):
-        """MT (relative rotation) - see electroglas_2001x.py's module
-        docstring for what MT is actually verified to do: the command and
-        ?T's one-for-one tracking are real, but the UNIT is not established
-        in degrees, and normal operation drives rotation through AA (Auto
-        Align), not by hand. CW/CCW here just means "increases ?T" /
-        "decreases ?T" - which physical direction that is has not been
-        checked against the machine.
-        """
         lf = ttk.LabelFrame(parent, text="Theta (rotation)", padding=6)
         lf.pack(fill="x", padx=4, pady=(0, 6))
 
@@ -464,20 +359,12 @@ class EgProberDebugPanel(ttk.Frame):
         self._jog_start(f"MT{dtheta:+d}", work)
 
     def _jog_set_busy(self, busy: bool):
-        """Lock the jog pad while a move is in flight. Main thread only."""
         self._jog_busy = busy
         state = "disabled" if busy else "normal"
         for button in self._jog_buttons:
             button.config(state=state)
 
     def _jog_start(self, label, work):
-        """Run one jog at a time, unlocking only when the prober has replied.
-
-        Presses made while busy are DROPPED, not queued: the prober already
-        queues what it has not finished, so buffering on this side too would
-        just stack up travel that arrives long after the operator stopped
-        asking for it.
-        """
         if self._jog_busy:
             return
         drv = self._drv()
@@ -485,11 +372,6 @@ class EgProberDebugPanel(ttk.Frame):
             return
         self._jog_set_busy(True)
 
-        # Tick a visible elapsed counter while waiting. The buttons are locked
-        # until the prober acknowledges, which can take many seconds when it is
-        # working through queued moves - without this the pad just sits greyed
-        # out and looks like the GUI has hung, which is exactly how it was
-        # being read.
         self._jog_done = False
         started = time.monotonic()
 
@@ -562,10 +444,6 @@ class EgProberDebugPanel(ttk.Frame):
         def work(drv):
             low, high = drv.z_limits
             here = drv._parse_z(drv.query("?Z"))
-            # Z parks at Z0, outside the limits, and a relative move from there
-            # is refused because the target is still outside. Step into range
-            # first rather than reporting a failure the operator can do nothing
-            # obvious about.
             if here is not None and not low <= here <= high:
                 entry = low if dz > 0 else high
                 ack = drv.move_z_absolute(entry)
@@ -581,13 +459,6 @@ class EgProberDebugPanel(ttk.Frame):
         self._jog_start(f"ZR {dz:+d}", work)
 
     def _jog_goto_origin(self):
-        """Walk the chuck back to die 0,0.
-
-        Steps there with MD rather than a single absolute move - see
-        goto_die(). Whether 0,0 is wafer centre or the load corner depends
-        entirely on where FIRST/FD last set the datum, so this goes to the
-        prober's current origin, not to a fixed physical place.
-        """
         def work(drv):
             here = drv.get_xy_position()
             if drv._parse_die_position(here) == (0, 0):
@@ -796,14 +667,6 @@ class EgProberDebugPanel(ttk.Frame):
             try:
                 self._log(f"[PROBER] >> {label}  args={args}")
                 getattr(drv, method)(*args)
-                # These SET PRMTR/SET MODE commands are plain writes with no
-                # MC/MF acknowledgement of their own (unlike a motion
-                # command) - so "sent" alone does not mean the prober
-                # actually accepted it. ?E is READ-AND-CLEAR (see the
-                # driver's own docstring) and reports the most recent
-                # latched error, so reading it right after is the verified
-                # way to check whether that write actually landed, without
-                # inventing a query outside the confirmed command set.
                 code = ""
                 try:
                     code = (drv.get_error_code() or "").strip()
@@ -813,10 +676,6 @@ class EgProberDebugPanel(ttk.Frame):
                 ok = code.upper() in ("E0", "")
                 verdict = "sent — no error (E0)" if ok else f"sent — ERROR: {code}"
                 self.after(0, lambda: self._show_response(label, verdict))
-                # Any of the Die Size rows just changed SP1 - re-infer it
-                # (rather than trust the raw/mm/mil input math here too) and
-                # push the result to the Run tab's own display, same as a
-                # fresh connect does. See instrument_panel._exec_refresh_die_size.
                 if method.startswith("set_die_size"):
                     self._refresh_run_tab_die_size()
             except Exception as e:

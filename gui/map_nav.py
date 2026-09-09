@@ -1,28 +1,8 @@
-"""Middle-mouse-drag panning, for both kinds of map in this GUI.
-
-Every map here is either a plain tk.Canvas (WaferMapPanel and friends) or a
-matplotlib axes (Wafer Builder's Die Map, the PMA wafer view, NanoZ). They
-pan by completely different mechanisms, so there are two functions - but the
-gesture is the same on both, which is the point: hold the middle button and
-drag, anywhere, on any map.
-
-Middle rather than left BECAUSE left is already taken on most of them - it
-picks a die, types an ID, toggles a touchdown. Adding pan to it would mean
-guessing whether a press was a click or the start of a drag. The middle
-button is unused everywhere, so this is additive: nothing that worked
-before changes.
-"""
+"""Middle-mouse-drag panning, for both kinds of map in this GUI."""
 from __future__ import annotations
 
 
 def bind_middle_pan_tk(canvas, on_pan=None):
-    """Middle-drag panning on a tk.Canvas, via its own scan_mark/scan_dragto.
-
-    scan_dragto only moves the view inside the scrollregion, and several of
-    these canvases never set one until the first zoom - so a middle drag did
-    nothing at all until you happened to scroll first. Setting it from the
-    current bbox on press fixes that without changing what zoom does.
-    """
     def press(event):
         if not canvas.cget("scrollregion"):
             bb = canvas.bbox("all")
@@ -44,22 +24,6 @@ def bind_middle_pan_tk(canvas, on_pan=None):
 
 
 def bind_middle_pan_mpl(canvas, get_ax=None, on_pan=None):
-    """Middle-drag panning on a matplotlib axes.
-
-    Shifts the limits by the drag distance, always computed from the limits
-    as they were when the button went down. Deriving each step from the
-    CURRENT limits instead would compound its own rounding every motion
-    event and let the map drift away under a slow drag.
-
-    Works with an inverted y axis - which all the wafer maps use - without a
-    special case: the stored ylim is simply high-to-low there, so the same
-    arithmetic produces the flipped sign on its own.
-
-    get_ax names the one pannable axes, or is left out on a figure with
-    several (the NanoZ chart stacks three) to pan whichever the cursor is
-    over. Either way the axes is captured on press and held for the whole
-    drag, so crossing a subplot boundary mid-drag cannot switch targets.
-    """
     state: dict = {}
 
     def press(event):

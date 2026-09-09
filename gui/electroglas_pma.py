@@ -15,16 +15,6 @@ ELECTRICAL_FIELDS = (
     "MeterDelay", "Averages", "NPLC", "MeterCurrentLimit", "MeterRange",
 )
 
-# A SECOND, SEPARATE measurement style, used by the recipes that drive an
-# external DMM instead of the SMU. "ExternalDMM2Function" is not a made-up
-# name - its values are the HP 3458A's own function commands (OHM = 2-wire
-# ohms, OHMF = 4-wire), and ExternalDMM2Range values seen in real recipes
-# (1000, 1000000) are exact members of the 3458A's ohms range list. So this
-# group means: put the 3458A in this function on this range and read it.
-#
-# The two styles are mutually exclusive in every recipe seen so far - a file
-# has ELECTRICAL_FIELDS (SMU, sourced volts, measured current) or
-# EXTERNAL_DMM_FIELDS (3458A, resistance), never both.
 EXTERNAL_DMM_FIELDS = (
     "ExternalDMM2Function", "ExternalDMM2Range", "ExternalDMM2NPLC",
     "ShortWait",
@@ -34,7 +24,6 @@ MISC_FIELDS = ("IsPicture",)
 
 ALL_FIELDS = WAFER_FIELDS + ELECTRICAL_FIELDS + EXTERNAL_DMM_FIELDS + MISC_FIELDS
 
-# 3458A function -> how many probe pins the measurement needs.
 DMM_FUNCTION_WIRES = {"OHM": 2, "OHMF": 4}
 
 _CSV_FIELDS = ("seq", "major_index", "minor_index", "device_id", "x", "y")
@@ -109,66 +98,17 @@ def _read_strings(path: str) -> list:
 
 
 def split_quad_devices(device_id: str) -> list:
-    """Split a slash-joined device ID into the dies of one touchdown.
-
-    LaMP-era recipes probe a 2x2 quad per touchdown - 4 dies contacted at once
-    through 8 probe-card pins - and record all four in a single .PMS line:
-
-        93-01/83-71/93-02/83-72
-        NA/86-14/NA/NA
-        TARGET/41-71/TARGET/41-72
-
-    'NA' marks a position with no die; 'TARGET' marks an alignment target
-    rather than a device. Recipes that probe one die per touchdown have no
-    slashes and come back as a single-element list.
-    """
     parts = [p.strip() for p in str(device_id).split("/")]
     return parts if len(parts) > 1 else [str(device_id).strip()]
 
 
-# Where each slash-separated die physically sits inside a 2x2 touchdown.
-# Confirmed on a real LaMP align site, 54-00/44-70/54-01/44-71:
-#
-#           <- x ->                 index 0  54-00   top left
-#     +---------+---------+         index 1  44-70   bottom left
-#   ^ |  54-00  |  54-01  |         index 2  54-01   top right
-#   y |  [0] TL |  [2] TR |         index 3  44-71   bottom right
-#     +---------+---------+
-#     |  44-70  |  44-71  |    i.e. COLUMN-major: down the left column
-#     |  [1] BL |  [3] BR |    first, then down the right. NOT reading
-#     +---------+---------+    order, which would give 54-00/54-01/...
-#
-# "top"/"left" here are MAP terms: the map frame runs +x right and +y DOWN
-# from the top-left origin, so TL is the low-y pair. On the stage itself +y is
-# up (MD +1 y moves up) - the two frames disagree on y, and map_to_prober_um()
-# is the only place that crosses between them.
 QUAD_ORDER = ("TL", "BL", "TR", "BR")
 QUAD_LABELS = {"TL": "top left", "TR": "top right",
                "BL": "bottom left", "BR": "bottom right"}
-# (col, row) with col 0 = left, row 0 = top.
 QUAD_GRID = {"TL": (0, 0), "TR": (1, 0), "BL": (0, 1), "BR": (1, 1)}
-
-# ---------------------------------------------------------------------------
-# SHOT GEOMETRY
-#
-# A touchdown covers a block of dies, and DieSizeX/Y is the block's PITCH, not
-# one die. The 2x2 quad above is the LaMP case; other products land 1x5 strips,
-# 3x1 columns and so on, so the layout is a parameter rather than a constant.
-#
-# QUAD_ORDER is column-major - TL, BL, TR, BR is down the left column then down
-# the right - and the generic naming keeps that, so a 2x2 shot produces exactly
-# the same slot order and offsets it always did. Existing recipes, saved pin
-# maps and stored results therefore keep working untouched.
-# ---------------------------------------------------------------------------
 
 
 def shot_geometry(n_dies: int, rows: int = 0, cols: int = 0) -> tuple:
-    """(rows, cols) of the die block a touchdown covers.
-
-    An explicit layout always wins. Without one, four dies mean the historical
-    2x2 quad and anything else is treated as a single row, which is the only
-    arrangement that can be read off a slash list without guessing.
-    """
     rows, cols = int(rows or 0), int(cols or 0)
     if rows > 0 and cols > 0:
         return rows, cols
@@ -181,14 +121,12 @@ def shot_geometry(n_dies: int, rows: int = 0, cols: int = 0) -> tuple:
 
 
 def slot_names(rows: int, cols: int) -> tuple:
-    """Slot names in the slash order a device ID lists them, column-major."""
     if (rows, cols) == (2, 2):
         return QUAD_ORDER
     return tuple(f"R{r}C{c}" for c in range(cols) for r in range(rows))
 
 
 def slot_grid(rows: int, cols: int) -> dict:
-    """slot name -> (col, row) inside the shot, col 0 left, row 0 top."""
     if (rows, cols) == (2, 2):
         return dict(QUAD_GRID)
     return {name: (i // rows, i % rows)
@@ -210,15 +148,6 @@ def slot_label(name: str, rows: int, cols: int) -> str:
 
 
 def quad_positions(device_id: str, rows: int = 0, cols: int = 0) -> list:
-    """Pair each die of a touchdown with its position inside the shot.
-
-    Returns [{"index", "pos", "label", "device", "col", "row", "present"}, ...]
-    in the recipe's own slash order. With no explicit layout a four-up shot is
-    the 2x2 quad and anything else is a single row - see shot_geometry.
-
-    A single-die touchdown still comes back with pos=None: there is only one
-    place it can be, and naming it would imply a layout nobody stated.
-    """
     dies = split_quad_devices(device_id)
     n_rows, n_cols = shot_geometry(len(dies), rows, cols)
     names = slot_names(n_rows, n_cols)
@@ -237,55 +166,21 @@ def quad_positions(device_id: str, rows: int = 0, cols: int = 0) -> list:
 
 
 def quad_die_offsets(die_size_x: float, die_size_y: float) -> dict:
-    """Micron offset from a touchdown's own coordinate to each die's corner.
-
-    DieSizeX/Y in a .PMA is the quad PITCH - twice the physical die - so the
-    four dies tile it in half-pitch steps. The touchdown coordinate is the
-    quad's top-left corner in MAP terms (+x right, +y down from the top-left
-    origin), which is how the wafer map has always drawn the shot rectangle,
-    so the offsets are all zero-or-positive.
-
-    This is the map frame, NOT the prober frame - on the stage +y is up. Only
-    map_to_prober_um() crosses between the two.
-    """
     hx, hy = float(die_size_x) / 2.0, float(die_size_y) / 2.0
     return {pos: (col * hx, row * hy) for pos, (col, row) in QUAD_GRID.items()}
 
 
 def format_quad(device_id: str, rows: int = 0, cols: int = 0) -> str:
-    """One-line 'TL:54-00  TR:54-01  BL:44-70  BR:44-71' for the UI.
-
-    Reordered into READING order - left to right, top to bottom - so it matches
-    what you see down a scope rather than the recipe's column-major storage
-    order. Works for any shot layout: the old version indexed a fixed
-    TL/TR/BL/BR list and raised KeyError the moment a shot was not a quad.
-    """
     entries = quad_positions(device_id, rows, cols)
     if len(entries) == 1:
         return entries[0]["device"]
     if not entries or entries[0]["pos"] is None:
         return "   ".join(f"{e['index'] + 1}:{e['device']}" for e in entries)
-    # Sort by (row, col) rather than naming positions explicitly.
     ordered = sorted(entries, key=lambda e: (e["row"] or 0, e["col"] or 0))
     return "   ".join(f"{e['pos']}:{e['device']}" for e in ordered)
 
 
 def load_touchdowns(pma_path: str, fields: dict) -> list:
-    """Read a .PMA plus its move/device sibling files into touchdown records.
-
-    UNITS ARE MICRONS. Verified against a real recipe: DieSizeX=7042 with a
-    measured die of 3.521mm means the .PMA's "die size" is the 2x2 QUAD pitch,
-    twice the physical die, and every move coordinate in the .PMV files is an
-    exact integer multiple of it.
-
-    Coordinates are absolute from the TOP-LEFT of the wafer grid, which the
-    original LaMP exe treated as its own 0,0. They are NOT measured from the
-    align site, and XMoveFirstFromAlignSite/Y... is the align site -> that
-    top-left origin, not align site -> first touchdown. See align_site_info().
-
-    The prober itself stores none of this - the PC holds the map and drives the
-    stage to each coordinate in turn (MA, absolute move in microns).
-    """
     major_x = _read_numbers(_moves_path(pma_path, fields, "MovesMajor", "X"))
     major_y = _read_numbers(_moves_path(pma_path, fields, "MovesMajor", "Y"))
     major_id = _read_strings(_device_id_path(pma_path, fields, "DeviceIDMajor"))
@@ -313,9 +208,6 @@ def load_touchdowns(pma_path: str, fields: dict) -> list:
                 "minor_index": j + 1,
                 "device_id": device_id,
                 "device_id_major": device_id_major,
-                # One entry per die in the touchdown - 4 for a LaMP 2x2 quad,
-                # 1 for a single-die recipe. Keeps the raw string intact above
-                # rather than replacing it, so existing callers are unaffected.
                 "devices": split_quad_devices(device_id),
                 "x": major_x[i] + mx,
                 "y": major_y[i] + my,
@@ -331,21 +223,6 @@ def fmt_num(v) -> str:
 
 
 def align_site_info(fields: dict, touchdowns: list, align_die: str = "") -> dict:
-    """Where the align site is, from the two independent sources.
-
-    The .PMA states it only indirectly: XMoveFirstFromAlignSite/Y... are the
-    offset FROM the align site TO THE MAP ORIGIN (the top-left of the grid,
-    which the original exe called 0,0), so negating them puts the align site
-    in the same frame the touchdowns use, and dividing by the quad pitch gives
-    its quad coordinates. Sanity check: that lands on the wafer's extent centre,
-    which is where an operator aligns. The recipe-generator workbook, when one is
-    loaded,
-    NAMES the die instead ("Align Die" on its first sheet) - that is stated
-    rather than derived, so it wins when the two disagree.
-
-    Returns keys: quad, offset_um, die_ids, named_touchdown, quad_touchdown,
-    touchdown (the preferred one), source, agree.
-    """
     info = {"quad": None, "offset_um": None, "die_ids": [],
             "named_touchdown": None, "quad_touchdown": None,
             "touchdown": None, "source": "", "agree": None}
@@ -390,12 +267,6 @@ def align_site_info(fields: dict, touchdowns: list, align_die: str = "") -> dict
 
 
 def measurement_plan(fields: dict) -> dict:
-    """What this recipe actually measures, and with what.
-
-    Returns keys: style ("dmm" | "smu" | "none"), summary, wires, and the
-    raw settings. "none" is a real answer, not a failure - the 21PCM recipe
-    carries no measurement fields at all and only steps the wafer.
-    """
     fn = (fields.get("ExternalDMM2Function") or "").strip().upper()
     if fn:
         rng = fields.get("ExternalDMM2Range", "")
@@ -432,8 +303,6 @@ def measurement_plan(fields: dict) -> dict:
             "summary": "No measurement fields - this recipe only steps the wafer."}
 
 
-# Mirrors instruments/hp3458a.py OHMS_TEST_CURRENT; duplicated rather than
-# imported so the recipe layer stays free of driver imports.
 _OHMS_SOURCE_CURRENT = {
     10: 10e-3, 100: 1e-3, 1e3: 1e-3, 10e3: 100e-6, 100e3: 50e-6,
     1e6: 5e-6, 10e6: 500e-9, 100e6: 500e-9, 1e9: 500e-9,
@@ -455,14 +324,6 @@ def _fmt_current(amps: float) -> str:
 
 
 def map_to_prober_um(fields: dict, map_x: float, map_y: float) -> tuple:
-    """Recipe map microns -> prober microns, with the prober zeroed on the align site.
-
-    This is what the original LaMP exe did: the operator zeros the prober on the
-    align site, the exe shifts to the top-left of the grid and works from there,
-    and every touchdown is reached with an absolute MICRON move (MA) rather than
-    a die move. Absolute micron moves do not care what die size the prober has
-    configured, which is the whole trap that MD stepping carries.
-    """
     return (float(fields["XMoveFirstFromAlignSite"]) + float(map_x),
             float(fields["YMoveFirstFromAlignSite"]) + float(map_y))
 
@@ -471,25 +332,12 @@ def touchdown_prober_um(fields: dict, touchdown: dict) -> tuple:
     return map_to_prober_um(fields, touchdown["x"], touchdown["y"])
 
 
-# row/col are the authoritative cell keys, row 0 = TOP of the wafer.
-#
-# x_um/y_um are RENDER coordinates, not recipe coordinates: WaferMapPanel maps
-# larger y to higher on screen, while the recipe frame runs +y DOWN from the
-# top-left origin. Emitting y_um = -map_y is what makes the Run tab map agree
-# with the PMA Wafer tab instead of being upside down. map_x/map_y keep the
-# recipe's own microns so the file is still traceable back to the .PMV.
 _DIE_CSV_FIELDS = ("row", "col", "seq", "quad_pos", "device_id",
                    "x_um", "y_um", "map_x", "map_y",
                    "shot_x", "shot_y", "enabled")
 
 
 def die_grid_index(dies: list) -> tuple:
-    """(x -> col, y -> row) for a die list, row 0 at the TOP.
-
-    Rows come from map y ascending because the recipe frame runs +y down, so
-    the smallest y is the top of the wafer. eg_pma_run_panel._build_rc_index
-    must agree with this exactly or the run would colour the wrong squares.
-    """
     xs = sorted({round(d["x"]) for d in dies})
     ys = sorted({round(d["y"]) for d in dies})
     return ({x: i for i, x in enumerate(xs)},
@@ -498,27 +346,12 @@ def die_grid_index(dies: list) -> tuple:
 
 def expand_touchdowns_to_dies(touchdowns: list, die_size_x, die_size_y,
                               rows: int = 0, cols: int = 0) -> list:
-    """One record per DIE, not per touchdown.
-
-    A touchdown coordinate is the corner of the 2x2 quad the same way
-    _draw_map has always treated it - the map frame runs +x right and +y down
-    from the top-left origin, so that corner is the TOP-LEFT die, and the
-    other three sit one half-pitch out. That makes QUAD_GRID's (col, row) the
-    multiplier directly.
-
-    Quads that are not four-up (single-die recipes) come back as one record
-    with quad_pos "" at the touchdown coordinate, so callers do not have to
-    special-case them.
-    """
     dx, dy = float(die_size_x), float(die_size_y)
     out = []
     for t in touchdowns:
         entries = quad_positions(t["device_id"], rows, cols)
         n_dies = len(entries)
         n_rows, n_cols = shot_geometry(n_dies, rows, cols)
-        # DieSizeX/Y is the BLOCK pitch, so one die is a fraction of it. For
-        # the 2x2 quad that is the half-pitch this always used; for a 1x5 strip
-        # it is a fifth of the pitch across and the full pitch down.
         step_x, step_y = dx / max(1, n_cols), dy / max(1, n_rows)
         grid = slot_grid(n_rows, n_cols)
         for ent in entries:
@@ -535,34 +368,14 @@ def expand_touchdowns_to_dies(touchdowns: list, die_size_x, die_size_y,
                 "y": t["y"] + oy,
                 "shot_x": t["x"],
                 "shot_y": t["y"],
-                # "enabled" is the column name WaferMapPanel already filters on, so an
-                # NA quad position is dropped from the map without extra plumbing.
                 "enabled": 1 if ent["present"] else 0,
             })
     return out
 
 
 def workbook_touchdowns(workbook_data: dict) -> list:
-    """Every shot on the wafer, from the recipe generator workbook.
-
-    The two files describe different things and the map must come from the
-    workbook: the .xls MajorMoves grid is the whole wafer, while the .PMA is
-    only the shots that recipe visits. Building the map from the .PMA is what
-    made a 15-touchdown gauge recipe draw a 15-shot "wafer".
-
-    Comes back in the same shape load_touchdowns() returns, so everything
-    downstream - expand_touchdowns_to_dies, die_grid_index, the map writer -
-    works on it unchanged. Shot x/y are already in the same map frame the
-    touchdown coordinates use, both being MajorMoves offsets from the map
-    origin, so no rebasing is needed.
-    """
     out = []
     for shot in workbook_data.get("shots", []):
-        # NOT filtered on "included". In a sampled workbook - the gauge is one
-        # - "included" marks the shots that recipe probes, 15 of 634. Those are
-        # the touchdowns, and the .PMA already lists them. Everything with a
-        # device ID in the cell is a real shot on the wafer and belongs on the
-        # map, probed or not; filtering here is what drew a 15-shot "wafer".
         text = (shot.get("raw_text") or "").strip()
         if not text:
             continue
@@ -577,13 +390,6 @@ def workbook_touchdowns(workbook_data: dict) -> list:
 
 
 def save_wafer_map_csv(folder: str, touchdowns: list, fields: dict = None) -> str:
-    """Write the Run tab's Electroglas map.
-
-    With `fields` (so the quad pitch is known) this writes one row per DIE, so
-    the map shows every die with its own ID rather than one square per 2x2
-    shot. Without it, the older per-touchdown form is written - kept so any
-    caller that has not got the .PMA header to hand still works.
-    """
     path = os.path.join(folder, "ata_wafer_map_electroglas.csv")
     if fields:
         dies = expand_touchdowns_to_dies(touchdowns, fields["DieSizeX"],
@@ -747,17 +553,6 @@ def to_shot_data(pma_path: str, fields: dict, touchdowns: list) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Recipe GENERATION (the reverse of the parsing above) -- mirrors the
-# "IMT Recipe Generation" VBA macro suite (basProbeRecipe.CreateAllFiles /
-# WriteMovesFile / Padto7Digits) embedded in the real recipe-generator .xls
-# files, which is normally run from inside Excel. A grid here is:
-#   {"x_headers": [float, ...], "y_headers": [float, ...],
-#    "cells": {(row, col): {"device_id": str, "excluded": bool}}}
-# with row 0 / col 0 at (y_headers[0], x_headers[0]), matching MajorMoves'/
-# MinorMoves' own row-1/column-A header convention.
-# ---------------------------------------------------------------------------
-
 _STRUCTURAL_FIELDS = ("DieSizeX", "DieSizeY",
                       "XMoveFirstFromAlignSite", "YMoveFirstFromAlignSite")
 
@@ -767,14 +562,6 @@ def _pad7_gen(n: int) -> str:
 
 
 def serpentine_order(y_count: int, x_count: int, cells: dict) -> list:
-    """(row, col) visiting order for a grid scan, skipping excluded cells.
-
-    Replicates WriteMovesFile's row-major "boustrophedon" scan exactly:
-    the column direction only flips after a row that actually had at
-    least one non-excluded cell -- an all-excluded row leaves the next
-    row's direction unchanged, just like the VBA's HaveWritten-gated
-    IsRightward toggle.
-    """
     order = []
     is_rightward = True
     have_written = False
@@ -793,13 +580,6 @@ def serpentine_order(y_count: int, x_count: int, cells: dict) -> list:
 
 
 def write_major_moves(dest_dir: str, recipe_name: str, grid: dict) -> dict:
-    """Writes <recipe_name>MovesMajorX.PMV / ...Y.PMV / DeviceIDMajor.PMS
-    from a spatial wafer grid (see module docstring above).
-
-    Device ids come from each cell's own text if present, else an
-    auto-incrementing zero-padded 7-digit id (Padto7Digits) -- the
-    counter only advances for auto-numbered cells, exactly like the VBA.
-    """
     x_headers = grid["x_headers"]
     y_headers = grid["y_headers"]
     cells = grid["cells"]
@@ -830,13 +610,6 @@ def write_major_moves(dest_dir: str, recipe_name: str, grid: dict) -> dict:
 
 
 def write_minor_sites(dest_dir: str, recipe_name: str, sites: list) -> dict:
-    """Writes <recipe_name>MovesMinorX.PMV / ...Y.PMV / DeviceIDMinor.PMS
-    from a flat list of per-die sub-touchdown sites (each a dict with
-    "dx"/"dy" offsets and an optional "suffix" id) -- unlike Major, minor
-    sites are just sub-positions within one die, not a second spatial
-    wafer map, so no grid/serpentine scan applies: every listed site is
-    written in list order, blank suffixes auto-numbered.
-    """
     x_path = os.path.join(dest_dir, f"{recipe_name}MovesMinorX.PMV")
     y_path = os.path.join(dest_dir, f"{recipe_name}MovesMinorY.PMV")
     id_path = os.path.join(dest_dir, f"{recipe_name}DeviceIDMinor.PMS")
@@ -853,12 +626,6 @@ def write_minor_sites(dest_dir: str, recipe_name: str, sites: list) -> dict:
 
 def write_recipe_files(dest_dir: str, recipe_name: str, main_fields: dict,
                        major: dict, minor_sites: list) -> str:
-    """Writes the full 7-file recipe set (.PMA + 3 Major + 3 Minor) and
-    returns the .PMA path. main_fields is an ordered name->value dict;
-    DieSizeX/DieSizeY/XMoveFirstFromAlignSite/YMoveFirstFromAlignSite are
-    written first (structural), then every other entry in insertion
-    order -- mirroring MainMenu's rows 35-300 free-form field loop.
-    """
     os.makedirs(dest_dir, exist_ok=True)
     maj = write_major_moves(dest_dir, recipe_name, major)
     minr = write_minor_sites(dest_dir, recipe_name, minor_sites)
@@ -890,7 +657,6 @@ def write_recipe_files(dest_dir: str, recipe_name: str, main_fields: dict,
 
 def new_grid(rows: int, cols: int, x_start: float, y_start: float,
             pitch_x: float, pitch_y: float) -> dict:
-    """A fresh, fully-included, blank-device-id grid of the given shape."""
     x_headers = [x_start + i * pitch_x for i in range(cols)]
     y_headers = [y_start + i * pitch_y for i in range(rows)]
     cells = {(r, c): {"device_id": "", "excluded": False}

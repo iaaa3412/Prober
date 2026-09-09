@@ -26,11 +26,6 @@ class PmaProcessPanel(ttk.Frame):
         self._pma_picker_var = tk.StringVar()
         self._xls_picker_var = tk.StringVar()
 
-        # MM Pitch - calculated ONCE from the loaded file (major: shot-to-
-        # shot spacing from the .xls's own touchdown positions; minor:
-        # within-shot die spacing from the .PMA's DieSizeX/Y), then left
-        # editable - the operator can correct either before it is ever
-        # wired into a real MM move. See _calc_mm_pitch.
         self._mm_major_x_var = tk.StringVar(value="")
         self._mm_major_y_var = tk.StringVar(value="")
         self._mm_minor_x_var = tk.StringVar(value="")
@@ -50,13 +45,6 @@ class PmaProcessPanel(ttk.Frame):
     def _build_toolbar(self):
         bar = ttk.Frame(self)
         bar.grid(row=0, column=0, sticky="ew", padx=6, pady=(6, 2))
-        # A .PMA is a one-time import onto the Wafer Builder tab now,
-        # nothing more - LOAD ALL used to also build a recipe and adopt
-        # the touchdown list straight onto the Run tab, but that made this
-        # tab an ongoing dependency instead of a source a project only
-        # ever needs once. The recipe and the touchdown list are built by
-        # hand on the Recipe tab against the map this produces, same as
-        # any Accretech recipe is.
         self._load_all_btn = ttk.Button(bar, text="⚙  LOAD ALL",
                                         command=self.load_all)
         self._load_all_btn.pack(side="left")
@@ -76,9 +64,6 @@ class PmaProcessPanel(ttk.Frame):
             bar, textvariable=self._pma_picker_var, state="readonly", width=28)
         self._pma_picker.pack(side="left", padx=(4, 2))
         self._pma_picker.bind("<<ComboboxSelected>>", self._on_pma_picked)
-        # Each browse button sits with the dropdown it feeds: it adds a file to
-        # that dropdown's list, which was not obvious with both stranded on a
-        # separate toolbar.
         ttk.Button(bar, text="📥 Load…", command=self._load_pma).pack(
             side="left", padx=(0, 2))
         ttk.Button(bar, text="🗑", width=3, command=self._delete_pma).pack(
@@ -94,22 +79,10 @@ class PmaProcessPanel(ttk.Frame):
         ttk.Button(bar, text="🗑", width=3, command=self._delete_xls).pack(
             side="left", padx=(0, 12))
 
-        # One default, not two. The PMA and the workbook describe the same
-        # wafer and are only correct together - defaulting them separately let
-        # a folder come up with a PMA from one product and a workbook from
-        # another, which reads as a working setup until the die IDs disagree.
         ttk.Button(bar, text="⭐ Set Both as Default",
                    command=self._set_defaults).pack(side="left")
 
     def _build_info_section(self):
-        """One read-only table for everything that used to be spread over
-        three separate LabelFrames (Run Setup, Wafer Info, Align Site) - the
-        operator never typed into any of those that actually did anything
-        (Operator/Process Step/Prober Name/Wafer Size/Test Die # were never
-        read by anything downstream; Lot ID/Wafer ID are the real toolbar
-        StringVars, editable there, not here), so there was no reason for
-        this tab to offer its own copy of edit boxes. This just shows what
-        LOAD ALL/the .PMA/the recipe generator actually produced."""
         lf = ttk.LabelFrame(self, text="Wafer / Run Info", padding=6)
         lf.grid(row=2, column=0, sticky="ew", padx=6, pady=(0, 4))
         lf.columnconfigure(0, weight=1)
@@ -162,16 +135,9 @@ class PmaProcessPanel(ttk.Frame):
         self._info_tree.item(iid, tags=(tag,))
 
     def _workbook_align_die(self) -> str:
-        """The 'Align Die' cell from the recipe-generator workbook, if loaded.
-
-        The workbook lives on the PMA Wafer tab, so it may be loaded before or
-        after the .PMA - hence the re-read in refresh_align_site() on load.
-        """
         wafer = getattr(self._main_layout, "pma_wafer", None)
         if wafer is None:
             return ""
-        # Only the wafer-defining sources. workbook_data is whichever source
-        # the Wafer Map tab is displaying, so it can be the .PMA's own data.
         for attr in ("_xls_shot_data", "_csv_shot_data"):
             data = getattr(wafer, attr, None)
             if isinstance(data, dict) and data.get("align_die"):
@@ -197,9 +163,6 @@ class PmaProcessPanel(ttk.Frame):
 
         td = info["touchdown"]
         if td is not None:
-            # The touchdown's OWN grid position, not the PMA-derived one - on
-            # a mismatch those differ, and showing the derived one next to
-            # the workbook's die would be actively misleading.
             grid_xy = ""
             try:
                 grid_xy = (f"   grid ({td['x'] / float(self._fields['DieSizeX']):.0f},"
@@ -273,14 +236,6 @@ class PmaProcessPanel(ttk.Frame):
         vsb2.pack(side="right", fill="y")
         self._move_tree.pack(fill="both", expand=True, padx=(4, 0), pady=4)
 
-        # The micron pitch "microns (MM)" motion mode (eg_pma_run_panel's
-        # Chuck Position radio button) actually uses at runtime - not a GUI
-        # setting, but whatever the loaded .xls's own MajorMoves header
-        # cells say (pma_wafer_panel.read_moves_grid). Shown here so that
-        # number is visible somewhere instead of only living inside
-        # eg_pma_run._touchdowns[i]["x"/"y"], read straight from there (the
-        # SAME list _move_um walks) rather than re-deriving it, so this
-        # table can never disagree with what a real MM run would do.
         mm_lf = ttk.LabelFrame(split, text="Move MM (µm, from the .xls)")
         split.add(mm_lf, weight=1)
 
@@ -379,7 +334,6 @@ class PmaProcessPanel(ttk.Frame):
             self._log(f"[PMA] Could not save default source selection: {exc}")
 
     def _set_defaults(self):
-        """Default the PMA and the workbook together, as one pairing."""
         pma, xls = self._pma_picker_var.get(), self._xls_picker_var.get()
         if not pma and not xls:
             self._log("[PMA] Pick a PMA file and a recipe generator file first.")
@@ -613,20 +567,6 @@ class PmaProcessPanel(ttk.Frame):
         self.refresh_align_site()
 
     def load_all(self):
-        """PMA -> a Wafer Builder map. Nothing else.
-
-        This is the ONLY thing PMA import does now - the Run tab, a
-        recipe, and the probe card's saved touchdown list are none of
-        them touched here. Mirrors recipe_gen_panel.RecipeGenPanel's own
-        Import PMA button (_import_pma) exactly, just reading the file
-        this tab already has selected (self._pma_path) instead of
-        prompting for one again: parse into local variables, hand them to
-        load_touchdowns_as_map, done - nothing kept afterward. The Wafer
-        Builder map stays in memory on that tab until the operator
-        reviews it and presses ITS OWN "Save Wafer Map" button; only that
-        explicit action publishes it to the Run tab, same as building a
-        map by hand would.
-        """
         if not self._pma_path:
             self._log("[PMA] LOAD ALL: no PMA file loaded")
             return
@@ -652,16 +592,6 @@ class PmaProcessPanel(ttk.Frame):
                   "Builder tab, then Save Wafer Map when ready.")
 
     def _refresh_move_mm_table(self):
-        """Move MM table - reads eg_pma_run._touchdowns directly (whatever
-        the Run tab currently has adopted - the published Wafer Builder
-        map, same as any other run) rather than re-deriving x_um/y_um
-        here, since that list is the exact one _move_um ("microns (MM)"
-        motion mode) walks at runtime - this table can never show a
-        number a real MM run would not actually use. This tab no longer
-        pushes its own parsed .PMA onto the Run tab (see load_path/
-        load_all), so this reflects whatever's actually loaded there, not
-        necessarily the .PMA this tab has open.
-        """
         self._move_mm_tree.delete(*self._move_mm_tree.get_children())
         run = getattr(self._main_layout, "eg_pma_run", None)
         touchdowns = getattr(run, "_touchdowns", None) or []
@@ -676,23 +606,6 @@ class PmaProcessPanel(ttk.Frame):
             prev = (x_um, y_um)
 
     def _calc_mm_pitch(self):
-        """Major/minor MM pitch, calculated ONCE from whatever is currently
-        loaded, then left in editable Entries (see the fields themselves) -
-        not re-derived per move, and not (yet) wired into a real move.
-
-        Major: smallest positive gap between distinct shot x_um/y_um
-        positions in eg_pma_run._touchdowns (the same .xls-derived list
-        the Move MM table reads) - the shot-to-shot spacing.
-
-        Minor: the .PMA's own DieSizeX/Y (the quad/shot pitch - see
-        electroglas_pma's own note that DieSizeX/Y is the BLOCK pitch, not
-        one die) divided by the shot's own dimensions, giving one die's
-        share of it - EXCEPT when a dimension's shot size is 1 (LAMP: a
-        1x1 shot), where there is no second die to step to within the shot
-        at all, so that axis is forced to 0 rather than DieSizeX/1
-        (=DieSizeX itself, wrong - there is no "minor" axis to divide a
-        single die's own pitch across).
-        """
         def _min_gap(values):
             uniq = sorted({round(v, 3) for v in values})
             gaps = [uniq[i + 1] - uniq[i] for i in range(len(uniq) - 1)
@@ -755,15 +668,6 @@ class PmaProcessPanel(ttk.Frame):
         self._refresh_move_mm_table()
         self._calc_mm_pitch()
 
-        # Display only from here down, same as the fields table above -
-        # this tab parses a .PMA and shows it in its own tables, nothing
-        # more. It used to also write a wafer-map CSV into the ATA folder,
-        # auto-select/load a matching recipe on the Recipe tab, and save
-        # the move list onto the active probe card - all removed: those
-        # are exactly the "quietly does something every time you pick a
-        # file" side effects that made a normal folder load look like it
-        # was still depending on a .PMA. Building an actual Wafer Builder
-        # map from a .PMA is LOAD ALL's job now, and only LOAD ALL's.
         move_list = egpma.build_move_list(touchdowns)
         self._move_list = move_list
         self._move_tree.delete(*self._move_tree.get_children())
