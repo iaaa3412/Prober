@@ -615,21 +615,10 @@ class EgPmaRunPanel(ttk.Frame):
         dlg.grab_set()
         dlg.resizable(False, False)
 
-        mm_mode = self._motion_var.get() == MOTION_UM
         body = (
             f"This recipe steps by {dx:.0f} x {dy:.0f} um "
             f"({dx / 1000:.3f} x {dy / 1000:.3f} mm).\n\n"
-            + ("MM moves in real microns, so a mismatch will not send a "
-               "step to the wrong place by itself - but the prober's own "
-               "?P position reply still counts in ITS die size, not this "
-               "one, and the software trusts ?P to say where the chuck "
-               "really is between every move. A mismatch there does not "
-               "break the move, it breaks the software's belief about "
-               "where the chuck is.\n\n"
-               if mm_mode else
-               "MD moves by the PROBER'S configured die size, not this "
-               "one. They must match, or every step lands between "
-               "quads.\n\n")
+            "Set Pitch Parameters (Please Confirm on Prober Screen)\n\n"
         )
         ttk.Label(dlg, text=body, wraplength=380, justify="left").pack(
             padx=16, pady=(16, 10))
