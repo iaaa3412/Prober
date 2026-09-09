@@ -1107,10 +1107,20 @@ class EgPmaRunPanel(ttk.Frame):
         drv = self._prober()
 
         dx, dy = self._die_um
-        # Only MD depends on the prober's own pitch, so only MD needs this
-        # asked. In micron mode the question is meaningless and asking it
-        # would train people to click through it.
-        if not self._size_confirmed and self._motion_var.get() == MOTION_DIE:
+        # MD moves BY the prober's own configured die size, so a mismatch
+        # sends every step to the wrong place outright. MM moves in real
+        # microns and does not have that problem - but MM still reads the
+        # prober's own ?P (in the prober's own die pitch) for the before/
+        # after verification AND for _locate_real's re-anchor-free
+        # recovery, both of which assume ?P's die counts mean the same
+        # physical distance the recipe's grid does. A mismatched pitch
+        # there does not break the MOVE, it breaks the SOFTWARE'S BELIEF
+        # about where the chuck is - confirmed live: a touchdown correctly
+        # measured only after _locate_real caught the chuck sitting nowhere
+        # near where it should have been, purely because ?P was counting
+        # in a different pitch than the recipe's. So this is asked in
+        # EITHER motion mode now, not just MD.
+        if not self._size_confirmed:
             if not self._confirm_die_size(dx, dy, drv):
                 return
             self._size_confirmed = True
@@ -1135,7 +1145,12 @@ class EgPmaRunPanel(ttk.Frame):
         infer_die_size, just never wired to this dialog) as a third
         choice alongside the original "trust me, it's already set" and
         Cancel. Returns True if the operator confirmed one way or the
-        other, False on Cancel/close."""
+        other, False on Cancel/close.
+
+        Asked in MM mode too now, not just MD - see _set_anchor's own note
+        on why: ?P itself is always in the prober's own die pitch, and
+        _move_to_index/_locate_real trust it as if it agreed with the
+        recipe's, in EITHER motion mode."""
         result = {"ok": False}
         dlg = tk.Toplevel(self)
         dlg.title("Confirm die size")
@@ -1143,12 +1158,21 @@ class EgPmaRunPanel(ttk.Frame):
         dlg.grab_set()
         dlg.resizable(False, False)
 
+        mm_mode = self._motion_var.get() == MOTION_UM
         body = (
             f"This recipe steps by {dx:.0f} x {dy:.0f} um "
             f"({dx / 1000:.3f} x {dy / 1000:.3f} mm).\n\n"
-            "MD moves by the PROBER'S configured die size, not this one. "
-            "They must match, or every step lands between quads.\n\n"
-            "(Switching 'Move by' to microns avoids this entirely.)"
+            + ("MM moves in real microns, so a mismatch will not send a "
+               "step to the wrong place by itself - but the prober's own "
+               "?P position reply still counts in ITS die size, not this "
+               "one, and the software trusts ?P to say where the chuck "
+               "really is between every move. A mismatch there does not "
+               "break the move, it breaks the software's belief about "
+               "where the chuck is.\n\n"
+               if mm_mode else
+               "MD moves by the PROBER'S configured die size, not this "
+               "one. They must match, or every step lands between "
+               "quads.\n\n")
         )
         ttk.Label(dlg, text=body, wraplength=380, justify="left").pack(
             padx=16, pady=(16, 10))
