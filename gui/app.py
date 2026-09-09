@@ -214,8 +214,8 @@ class AtomicaDashboard(tk.Tk):
         ttk.Label(
             frm, wraplength=420, justify="left",
             text=("GUI System and ATA Folders not found. Expected working "
-                  "directory is \\\\prober\\M\\ETL\\proberautomation or "
-                  "default defined in json file.")
+                  "directory is C:\\automationproject or default defined "
+                  "in json file.")
         ).pack(anchor="w", pady=(0, 12))
 
         def pick(choice):

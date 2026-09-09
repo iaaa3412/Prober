@@ -38,7 +38,7 @@ def saved_default_working_dir() -> "str | None":
 def get_default_working_dir() -> str:
     if _FORCE_TEMPORARY_DEFAULT:
         return _FORCE_TEMPORARY_DEFAULT
-    return saved_default_working_dir() or PRESETS["proberautomation"]
+    return saved_default_working_dir() or PRESETS["automationproject"]
 
 
 def set_default_working_dir(path: str) -> None:
