@@ -777,3 +777,40 @@ run engine.
   untouched - their bench/instrument mismatch makes any pin assignment a
   guess, not a fix, until the open questions above are settled on the
   bench.
+
+--- 12.5  FOLLOW-UP 2026-09-08: A FOURTH RECIPE, AND A DEAD ONE REMOVED --
+
+  A fourth LaMP-family recipe was missed in 12.3: "HP LaMP whole wafer"
+  (note the space, distinct from "HPLaMP_WHOLE_WAFER" in 12.3), living
+  in the CORRECT side file (LaMP_HP.recipes.electroglas.csv), bench
+  "Probe03New", instrument SMU, 634 sites, wafer_map "lampwhole". Its
+  steps are structurally identical to "HP LaMP electrical gauge"'s (same
+  Isolate/Bias/Measure/Release pattern, same conn 00/01/02/03 per die) -
+  this is the real, currently-selectable whole-wafer Electroglas recipe,
+  confirmed by checking the Recipe tab's own card tree (not code alone).
+  Given the exact match to the already-confirmed-correct gauge recipe,
+  its hi/lo were filled in the same way (A32/A33 die1 ... A11/A9 die4),
+  conn again verified byte-identical before/after and re-checked against
+  bench_wiring("Probe03New") live - 0 mismatches across all 8 steps.
+
+  "HPLaMP_WHOLE_WAFER" (12.3's orphaned one, living in the BARE
+  LaMP_HP.csv main file) was confirmed unreachable for Electroglas by
+  reading wafer_map_view.py's own load path: for system != "accretech",
+  card recipes are read ONLY from the .recipes.<system>.csv side file
+  (_read_side_recipes); a main file's own embedded RECIPE rows are read
+  only for Accretech, and merely round-tripped (preserved, unused) on
+  every Electroglas save. It WAS reachable from Accretech mode though
+  (shown in the card tree under Accretech > (any bench)) - since it was
+  the only recipe in LaMP_HP.csv, was superseded by the properly-wired
+  "HP LaMP whole wafer" above, and was confusing to have sitting under
+  Accretech on a card whose Accretech home is really LaMP_HP_b, it was
+  deleted outright. The card's own PIN table (16 rows) was untouched.
+
+  STILL OPEN: "Lamp 21PCM whole wafer" (probe03, DMM) - its steps are
+  tagged route="switch", but the DMM-instrument default in recipe_panel.
+  py (_default_route_for) says a step naming a 3458A should default to
+  route="direct" (matching probe03's DMM being hard-wired to the card,
+  not through the relay - section 8/"3458A is not connected" note).
+  Whether this recipe's route field is simply wrong (never had "Direct
+  wiring" checked) or the DMM genuinely is meant to go through the relay
+  here is NOT settled - nothing was changed on this recipe.
