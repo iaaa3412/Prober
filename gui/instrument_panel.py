@@ -3473,9 +3473,8 @@ class MainLayout(ttk.Frame):
         except Exception as e:
             self._exec_log(f"[RUN] Touchdown error: {e} — measuring anyway")
 
-        shot_row = shot_col = None
         if shot_geom is not None and row is not None and col is not None:
-            shot_row, shot_col = self._exec_publish_die_slots_at(shot_geom, row, col)
+            self._exec_publish_die_slots_at(shot_geom, row, col)
 
         try:
             ok = self._exec_run_steps_once(steps)
@@ -3485,8 +3484,11 @@ class MainLayout(ttk.Frame):
             # in _exec_slot_verdicts are actual dies (countable) versus
             # empty NA/TARGET corners (not), the same distinction
             # eg_pma_run_panel._measure_here already makes on the
-            # Electroglas side.
+            # Electroglas side. rc_by_slot is the matching real (row, col)
+            # per slot, captured for the same reason - see
+            # _exec_color_shot_squares's own docstring.
             ids_by_slot = list(getattr(self, "_exec_die_ids_by_slot", None) or [])
+            rc_by_slot = list(getattr(self, "_exec_die_rc_by_slot", None) or [])
             if shot_geom is not None:
                 self._exec_die_rc_by_slot = []
                 self._exec_die_ids_by_slot = []
@@ -3495,7 +3497,7 @@ class MainLayout(ttk.Frame):
             f"[RESULTS] {'PASS' if p else 'FAIL'}  {dl}"))
 
         if row is not None and col is not None:
-            self._exec_color_shot_squares(shot_geom, shot_row, shot_col, row, col, ok)
+            self._exec_color_shot_squares(rc_by_slot, row, col, ok)
         self._exec_tally_shot_result(shot_geom, ids_by_slot, ok)
 
         if self._exec_aborted:
@@ -3868,12 +3870,14 @@ class MainLayout(ttk.Frame):
                                      shot_cells, row_offset, col_offset):
         """Tell _exec_run_steps_once/_exec_slot_identity where each die #
         in shot (shot_row, shot_col) really sits, and its real die ID -
-        shared by the full Minor Moves run (_exec_minor_move_thread's own
-        publish_die_slots) and the standalone Measure button
-        (_exec_touchdown_then_measure), so a Measure press files each
-        step's reading against the die it actually measured (by the
-        step's own Die # field) instead of always the shot's landing
-        square - same bug class the run path already had this fix for."""
+        used by the full Minor Moves run (_exec_minor_move_thread's own
+        publish_die_slots), and by _exec_publish_die_slots_at's own
+        Minor-Moves branch, both of which already know the correct
+        theoretical shot bucket (Minor Moves always lands ON die #1's own
+        computed cell first - see goto_shot_die - so this grid math can't
+        disagree with reality there). Everything else (Minor Moves off)
+        goes through _exec_publish_die_slots_anchored instead - see its
+        own docstring for why."""
         present = present_slots(shot_cells, shot_rows, shot_cols)
         max_die = max(present.values()) if present else 1
         rcs, ids, shotpos = [], [], []
@@ -3896,6 +3900,61 @@ class MainLayout(ttk.Frame):
             # export format can read (see export_formats.py's
             # shot_row/shot_col/intra_row/intra_col source fields), not
             # tied to any one project's naming.
+            shotpos.append((shot_row, shot_col, r, c))
+        self._exec_die_rc_by_slot = rcs
+        self._exec_die_ids_by_slot = ids
+        self._exec_die_shotpos_by_slot = shotpos
+
+    def _exec_publish_die_slots_anchored(self, row: int, col: int, shot_rows, shot_cols,
+                                          shot_cells, row_offset, col_offset):
+        """Same job as _exec_publish_die_slots_for, but anchored at the
+        real die that was just touched instead of a theoretical,
+        Overlay-origin-quantized shot bucket - see _exec_publish_die_
+        slots_at's own note on why this is the correct one whenever
+        Minor Moves is off.
+
+        (row, col) IS die #1 of this shot, by the same convention the
+        Wafer Builder Shot tab and every quad recipe already follow (a
+        LaMP-style SITE only ever records the top-left die of its shot -
+        see recipe_gen_panel.py). Every other die # in the shot template
+        is (row, col) plus that die's own offset from die #1's cell in
+        the template, so a touchdown that landed a row or column off the
+        theoretical grid still gets every real die in its shot attributed
+        to the right square - the failure this replaces put a touchdown
+        that landed "between" two theoretical shots into whichever one
+        the floor-division happened to round to, mislabeling every die
+        in it.
+
+        shot_row/shot_col are still computed, floor-division against the
+        Overlay origin same as before, purely as descriptive bookkeeping
+        for export formats that read a shot_row/shot_col field - never
+        used here to derive a die's real position."""
+        die1_rc = shot_die_rc(shot_cells, shot_rows, shot_cols, 1)
+        if die1_rc is None:
+            self._exec_die_rc_by_slot = []
+            self._exec_die_ids_by_slot = []
+            self._exec_die_shotpos_by_slot = []
+            return
+        r1, c1 = die1_rc
+        shot_row = (row - row_offset) // shot_rows
+        shot_col = (col - col_offset) // shot_cols
+        present = present_slots(shot_cells, shot_rows, shot_cols)
+        max_die = max(present.values()) if present else 1
+        rcs, ids, shotpos = [], [], []
+        wm = self._exec_wafer_map
+        for die_num in range(1, max_die + 1):
+            rc = shot_die_rc(shot_cells, shot_rows, shot_cols, die_num)
+            if rc is None:
+                rcs.append(None)
+                ids.append("")
+                shotpos.append(None)
+                continue
+            r, c = rc
+            real_row = row + (r - r1)
+            real_col = col + (c - c1)
+            rcs.append((real_row, real_col))
+            ids.append(self._exec_overlay_die_ids.get((real_row, real_col))
+                      or wm.die_ids.get((real_row, real_col), ""))
             shotpos.append((shot_row, shot_col, r, c))
         self._exec_die_rc_by_slot = rcs
         self._exec_die_ids_by_slot = ids
@@ -3939,41 +3998,71 @@ class MainLayout(ttk.Frame):
                 self._exec_overlay_row_offset, self._exec_overlay_col_offset)
 
     def _exec_publish_die_slots_at(self, shot_geom, row: int, col: int) -> tuple:
-        """Per-touchdown: which shot (row, col) falls in (floor-divide by
-        the shot dims, same as Next Shot/Previous Shot and Minor Moves'
-        own shot_rc_for) - not necessarily die #1's own cell, any die of
-        the shot resolves to the same shot - then publish all of that
-        shot's real die slots. Pure arithmetic on plain data (shot_geom
+        """Per-touchdown: publish where every die # in this shot really
+        sits and its real die ID. Pure arithmetic on plain data (shot_geom
         was already resolved on the main thread), safe to call from a
-        background run thread. Returns (shot_row, shot_col)."""
+        background run thread. Returns (shot_row, shot_col) - descriptive
+        bookkeeping only, see below.
+
+        Minor Moves ON: unchanged from before - which theoretical shot
+        (row, col) falls in (floor-divide by the shot dims, same as Next
+        Shot/Previous Shot and Minor Moves' own shot_rc_for), then publish
+        that shot's slots. Safe here specifically because Minor Moves
+        always lands ON die #1's own computed cell first (goto_shot_die),
+        so the touched die can never disagree with the theoretical grid.
+
+        Minor Moves OFF: (row, col) is wherever the chuck actually just
+        touched down - by the same "SITE records only the top-left die"
+        convention every quad recipe follows (LaMP whole wafer, etc.),
+        THAT is die #1 of this shot, not necessarily on an exact multiple
+        of the shot dimensions from the Overlay origin. A touchdown that
+        landed between two theoretical shots used to get every die in it
+        mislabeled from whichever shot the floor-division rounded to -
+        anchoring off the real touched position instead means the dies
+        published (and later coloured/exported) always match what
+        physically just happened, however the chuck actually landed."""
         shot_rows, shot_cols, shot_cells, row_offset, col_offset = shot_geom
         shot_row = (row - row_offset) // shot_rows
         shot_col = (col - col_offset) // shot_cols
-        self._exec_publish_die_slots_for(
-            shot_row, shot_col, shot_rows, shot_cols, shot_cells,
-            row_offset, col_offset)
+        if self._exec_minor_moves_active():
+            self._exec_publish_die_slots_for(
+                shot_row, shot_col, shot_rows, shot_cols, shot_cells,
+                row_offset, col_offset)
+        else:
+            self._exec_publish_die_slots_anchored(
+                row, col, shot_rows, shot_cols, shot_cells,
+                row_offset, col_offset)
         return shot_row, shot_col
 
-    def _exec_color_shot_squares(self, shot_geom, shot_row: int, shot_col: int,
+    def _exec_color_shot_squares(self, rc_by_slot: list,
                                   fallback_row: int, fallback_col: int, fallback_ok: bool):
         """Colour every die in the shot on its OWN real square from
         _exec_slot_verdicts (each die passes/fails independently), same
         rule the Minor Moves run thread already applies - falling back to
         colouring just the touched square with the combined verdict when
         the recipe never tagged a passfail step with a Die # (or nothing
-        was published at all - shot_geom is None, the ordinary single-die
-        case)."""
-        shot_rows, shot_cols, shot_cells, row_offset, col_offset = (
-            shot_geom if shot_geom is not None else (None, None, None, None, None))
+        was published at all - rc_by_slot is empty, the ordinary
+        single-die case).
+
+        rc_by_slot is the caller's own captured copy of
+        self._exec_die_rc_by_slot from right before this touchdown's
+        per-run bookkeeping was cleared - the SAME real (row, col) list
+        _exec_run_steps_once used to look up each slot's die ID (via
+        _exec_publish_die_slots_for/_anchored, whichever applied), so a
+        die's colour on the map and the die ID its reading was filed
+        under can never disagree - previously this recomputed real_row/
+        real_col independently from shot_row/shot_col, which agreed with
+        the ID lookup only when Minor Moves was on; off, a touchdown that
+        landed between two theoretical shots got coloured on the wrong
+        squares even after _exec_publish_die_slots_anchored started
+        filing the READING under the right die."""
         slot_verdicts = dict(getattr(self, "_exec_slot_verdicts", None) or {})
-        if shot_geom is not None and slot_verdicts:
+        if rc_by_slot and slot_verdicts:
             for die_num, passed in sorted(slot_verdicts.items()):
-                rc = shot_die_rc(shot_cells, shot_rows, shot_cols, die_num)
-                if rc is None:
+                idx = die_num - 1
+                if not (0 <= idx < len(rc_by_slot)) or rc_by_slot[idx] is None:
                     continue
-                r, c = rc
-                real_row = shot_row * shot_rows + r + row_offset
-                real_col = shot_col * shot_cols + c + col_offset
+                real_row, real_col = rc_by_slot[idx]
                 self._exec_update_die_color(real_row, real_col, passed)
         else:
             self._exec_update_die_color(fallback_row, fallback_col, fallback_ok)
@@ -5584,16 +5673,17 @@ class MainLayout(ttk.Frame):
             self._exec_log("[MEASURE] Prober not connected")
 
         row = col = None
-        shot_row = shot_col = None
         if self._exec_current_rc is not None:
             row, col = self._exec_current_rc
         # File each step's reading against the die it actually measured
         # (by the step's own Die # field), not always the shot's landing
         # square - same publish-before-run pattern every real run uses
         # (_exec_zup_measure_zdown). Works with or without Minor Moves -
-        # see _exec_prepare_shot_geometry.
+        # see _exec_prepare_shot_geometry and _exec_publish_die_slots_at.
+        rc_by_slot = []
         if shot_geom is not None and row is not None:
-            shot_row, shot_col = self._exec_publish_die_slots_at(shot_geom, row, col)
+            self._exec_publish_die_slots_at(shot_geom, row, col)
+            rc_by_slot = list(getattr(self, "_exec_die_rc_by_slot", None) or [])
         try:
             overall_ok = self._exec_run_steps_once()
         finally:
@@ -5606,7 +5696,7 @@ class MainLayout(ttk.Frame):
         # used to never paint PASS/FAIL at all, only the log line showed
         # anything.
         if row is not None:
-            self._exec_color_shot_squares(shot_geom, shot_row, shot_col, row, col, overall_ok)
+            self._exec_color_shot_squares(rc_by_slot, row, col, overall_ok)
 
     def _exec_avg_spec(self, step: dict) -> tuple:
         try:
@@ -7068,6 +7158,20 @@ class MainLayout(ttk.Frame):
         against whatever's actually on screen, so a shot corner that's
         genuinely absent from the real Accretech extraction (wafer edge)
         just narrows the box instead of guessing.
+
+        Minor Moves ON: unchanged - the block is the theoretical shot the
+        current die falls in (floor-divide by the shot dims against the
+        Overlay origin), same as before. Correct there because Minor
+        Moves always lands ON die #1's own computed cell first, so the
+        touched die can never disagree with the theoretical grid.
+
+        Minor Moves OFF: the window is anchored on the current die itself
+        - treated as die #1 of the shot, same convention
+        _exec_publish_die_slots_at uses for the actual measurement/colour
+        data - rather than a theoretical grid bucket the real touchdown
+        may not land exactly on. Without this, a touchdown that landed
+        between two theoretical shots drew the outline around the WRONG
+        neighboring shot instead of the one actually under the needles.
         """
         self._exec_clear_shot_window()
         wm = getattr(self, "_exec_wafer_map", None)
@@ -7084,11 +7188,20 @@ class MainLayout(ttk.Frame):
         cur_row, cur_col = self._exec_current_rc
         row_off = self._exec_overlay_row_offset
         col_off = self._exec_overlay_col_offset
-        wb_row, wb_col = cur_row - row_off, cur_col - col_off
-        shot_r0 = (wb_row // shot_rows) * shot_rows
-        shot_c0 = (wb_col // shot_cols) * shot_cols
-        cells = [(shot_r0 + r + row_off, shot_c0 + c + col_off)
-                for r in range(shot_rows) for c in range(shot_cols)]
+        if self._exec_minor_moves_active():
+            wb_row, wb_col = cur_row - row_off, cur_col - col_off
+            shot_r0 = (wb_row // shot_rows) * shot_rows
+            shot_c0 = (wb_col // shot_cols) * shot_cols
+            cells = [(shot_r0 + r + row_off, shot_c0 + c + col_off)
+                    for r in range(shot_rows) for c in range(shot_cols)]
+        else:
+            shot_cells = dict(gen._shot_cells)
+            die1_rc = shot_die_rc(shot_cells, shot_rows, shot_cols, 1)
+            if die1_rc is None:
+                return
+            r1, c1 = die1_rc
+            cells = [(cur_row + r - r1, cur_col + c - c1)
+                    for r in range(shot_rows) for c in range(shot_cols)]
         boxes = [wm.canvas.coords(wm.dies[rc]) for rc in cells if rc in wm.dies]
         boxes = [b for b in boxes if len(b) >= 4]
         if not boxes:
