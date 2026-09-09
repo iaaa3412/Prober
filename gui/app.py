@@ -239,8 +239,24 @@ class AtomicaDashboard(tk.Tk):
         dlg.wait_window()
         return result["choice"]
 
-    def _autoload_default_ata_folders(self):
+    def _default_ata_folder_in_scope(self) -> "str | None":
         folder = app_settings.get_default_ata_folder()
+        if not folder:
+            return None
+        try:
+            wd = os.path.normcase(os.path.abspath(workdir.get_current_working_dir()))
+            fp = os.path.normcase(os.path.abspath(folder))
+            in_scope = os.path.commonpath([wd, fp]) == wd
+        except ValueError:
+            in_scope = False
+        if not in_scope:
+            self.log(f"[SYSTEM] Default ATA folder '{os.path.basename(folder)}' "
+                     f"belongs to a different working directory - not loading it.")
+            return None
+        return folder
+
+    def _autoload_default_ata_folders(self):
+        folder = self._default_ata_folder_in_scope()
         if not (folder and os.path.isdir(folder)):
             return
         for system in ("accretech", "electroglas"):
@@ -349,7 +365,7 @@ class AtomicaDashboard(tk.Tk):
             self._displayed_widget = self.ui
         self._style_system_toggle()
         if not self.ui._ata_folder:
-            default_folder = app_settings.get_default_ata_folder()
+            default_folder = self._default_ata_folder_in_scope()
             if default_folder and os.path.isdir(default_folder):
                 self._do_load_ata_folder(default_folder)
             elif carry_over_folder:
