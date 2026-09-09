@@ -257,6 +257,14 @@ class AtomicaDashboard(tk.Tk):
         if getattr(self, "_pending_setup_log", None):
             self.log(self._pending_setup_log)
             self._pending_setup_log = None
+        # What working directory this launch actually resolved to - read
+        # fresh here rather than from working_dir_var (set earlier, at
+        # __init__'s very start, before this had anywhere to log to), so it
+        # reflects workdir.get_current_working_dir()'s real fallback
+        # behavior (saved pref -> proberautomation preset -> a reachable
+        # local fallback) exactly as it applies right now, not just
+        # whatever was configured.
+        self.log(f"[SYSTEM] Working directory: {workdir.get_current_working_dir()}")
         self._autoload_default_ata_folders()
         # After the folders, so switching system finds its folder already
         # loaded; before init_hardware, so the first connect sweep runs
@@ -1924,6 +1932,7 @@ class AtomicaDashboard(tk.Tk):
             initialdir=self.ui.working_dir_var.get(), title="Select Working Directory")
         if selected_dir:
             self.ui.working_dir_var.set(selected_dir)
+            self._refresh_after_working_dir_change()
 
     def cmd_pick_working_dir_preset(self, label: str):
         """The Working Directory dropdown's named presets (see
@@ -1932,19 +1941,42 @@ class AtomicaDashboard(tk.Tk):
         path = workdir.PRESETS.get(label)
         if path:
             self.ui.working_dir_var.set(path)
+            self._refresh_after_working_dir_change()
+
+    def _refresh_after_working_dir_change(self):
+        """Make a Working Directory switch (dropdown preset, Browse, or Set
+        Default) actually visible right away, not just next launch -
+        working_dir_var's own trace (see __init__) already updated
+        workdir's in-memory "current" directory by the time this runs, but
+        nothing was re-reading it: the toolbar/ATA folder stayed on
+        whatever was loaded from the OLD directory, since only a fresh
+        launch used to re-run this. Re-loads the NEW directory's own
+        default ATA folder (app_settings.json, itself inside the new
+        directory's own GUI System) the same way startup does - a no-op if
+        that location has none configured yet, same as a fresh launch
+        there would be. Deliberately does NOT touch instrument connections
+        - those stay whatever they already are."""
+        self.log(f"[SYSTEM] Working directory switched to: "
+                f"{workdir.get_current_working_dir()}")
+        self._autoload_default_ata_folders()
 
     def cmd_set_default_working_dir(self):
         """Persist the CURRENT working directory as this PC's own default -
         stored next to the app itself (not inside GUI System), since GUI
         System now lives inside whichever working directory is picked and
-        can't record which one to start with on its own. Applies from the
-        next launch on; does not move anything already loaded this run."""
+        can't record which one to start with on its own. Also refreshes
+        the ATA folder/toolbar from that directory right now (see
+        _refresh_after_working_dir_change) - previously this only
+        persisted the preference for the NEXT launch and visibly changed
+        nothing about the current session, which read as "did that even
+        do anything"."""
         path = self.ui.working_dir_var.get()
         if not path:
             return
         workdir.set_default_working_dir(path)
         self.log(f"[SETUP] '{os.path.basename(path)}' set as this computer's default "
-                "working directory. Takes effect the next time the app is launched.")
+                "working directory (also applies to future launches).")
+        self._refresh_after_working_dir_change()
 
     # kind=META rows use these (one row, none repeated per RESULT/DIE row -
     # see cmd_import_results_csv for the matching read side). kind=RESULT
