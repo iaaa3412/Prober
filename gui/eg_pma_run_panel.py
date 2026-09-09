@@ -2351,13 +2351,20 @@ class EgPmaRunPanel(ttk.Frame):
 
         # Position in RUN order, not index order - the run follows the .PMA's
         # route over a wafer-wide position list, so "ahead" is not "> index".
-        # _needs_restart (set by _start's _settle, after a stop/finish/error
-        # - never a pause) means the LAST run reached the end of its list or
-        # was cut short - either way the next Run/Full Die/Test Selected
-        # press should start the whole list over from its first touchdown,
-        # not refuse with "already at the last touchdown" and not silently
-        # resume mid-wafer either.
-        restart = getattr(self, "_needs_restart", False)
+        # Resuming from wherever self._index happens to be is only correct
+        # when that is because the LAST run was genuinely PAUSED - self.
+        # _paused stays True from _pause() until the next _start() clears
+        # it, so it is still readable here. Every other reason self._index
+        # might not be the run's own first touchdown - a plain "Set chuck"
+        # anchor, Next/Back/Move to Selected stepping, or simply the first
+        # Run ever pressed this session - used to fall through the same
+        # "resume from here" branch (via _needs_restart happening to be
+        # unset, its default), silently starting the run partway through
+        # the list, or skipping past whatever the operator had just
+        # anchored to, instead of moving back to the run's actual first
+        # touchdown first. Restart is now the default; only a real pause
+        # opts out of it.
+        restart = not getattr(self, "_paused", False)
         if not restart:
             try:
                 ahead = enabled[enabled.index(self._index) + 1:]
