@@ -651,3 +651,129 @@ Ways to fool yourself, continued:
       HI/LO until the arithmetic is done: neither orientation reproduces
       the original's sign, because both numbers are the respective
       bench's own leakage floor rather than the die.
+
+
+======================================================================
+12. SOFTWARE SIDE: WHAT ACTUALLY CLOSES WHEN A RECIPE STEP RUNS
+    (compiled 2026-09-08, from gui/instrument_panel.py,
+    gui/eg_pma_run_panel.py, gui/recipe_panel.py, instruments/
+    hp_switchbox.py - triggered by "how does the recipe know what
+    pins to close, it has no conn shown")
+======================================================================
+
+Sections 1-11 above are the HARDWARE. This section is the SOFTWARE path
+a recipe step actually takes when Run/Measure is pressed - three
+different mechanisms exist, only one of which is wired into the live
+run engine.
+
+--- 12.1  THREE WAYS A STEP CAN NAME A CHANNEL, ONE OF THEM DEAD -------
+
+  (a) step["conn"] - a literal, hand-typed or auto-computed text field on
+      the step. generic instrument_panel.py step loop: if conn is
+      non-blank, closes exactly those channels via switch.close_channel()
+      before taking the reading; if conn is BLANK, closes nothing at
+      all - the loop `for ch in chans: ...` simply has nothing to
+      iterate.                                              [MEASURED, code]
+
+  (b) hp_switchbox.HPSwitchbox.route_die(die) - closes a die's whole
+      DIE_SETS[die] channel set in one call (open_all + close each).
+      Exists, correct, but ONLY ever called from switchbox_test_panel.py
+      (the manual debug/test tab). NOT called from instrument_panel.py's
+      run loop, NOT called from eg_pma_run_panel.py. A real recipe run
+      never reaches this function.                          [MEASURED, code]
+
+  (c) recipe_panel.py's "Compute Connection" / "Recompute Connections"
+      buttons - derive step["conn"] FROM the step's own fields and write
+      it back, so (a) has something correct to close. Accretech derives
+      it from the step's hi/lo PIN NAMES against Switch Settings'
+      crosspoint topology. Electroglas is different (see 12.2): it
+      derives conn from the step's DIE NUMBER via hp_switchbox.
+      BENCH_WIRING, NOT from hi/lo at all - this is
+      RecipePanel._step_connections_eg(), and it already existed before
+      this investigation.                                   [MEASURED, code]
+
+  So: what actually routes anything during a real run is (a) alone - a
+  plain text field that has to already be correct before Run is pressed.
+  (b) is unreachable dead code. (c) is the tool that's supposed to keep
+  (a) correct, and on Electroglas it was already fully built, just never
+  connected to the recipe's hi/lo fields for display/validation (12.3).
+
+--- 12.2  hp_switchbox.BENCH_WIRING IS THE SAME TABLE FOR ALL THREE -----
+
+  bench_wiring(name)["die_sets"] is one dict, read by:
+    - route_die() (12.1b, dead)
+    - RecipePanel._step_connections_eg() (12.1c, the Compute/Recompute
+      buttons and the Connections viewer panel)
+  and is the CODE FORM of the wiring measured in sections 8B/8C above.
+  "probe02" and "Probe03New" (the bench name after the 2026-09-07 card
+  move - see the comment above BENCH_WIRING["Probe03New"] in
+  hp_switchbox.py) carry the IDENTICAL die_sets: {1:(0,), 2:(1,), 3:(2,),
+  4:(3,)} - die N closes channel N-1, zero-padded to "00".."03".
+
+--- 12.3  WHAT WAS FOUND ON THE ACTUAL RECIPE (LaMP_HP, LaMP_HP.recipes.
+          electroglas.csv, checked 2026-09-08) --------------------------
+
+  Three LaMP-family recipes exist for Electroglas on this card. They are
+  NOT equivalent and do NOT all route:
+
+    "HP LaMP electrical gauge"  bench "Probe03New"  instrument SMU
+        conn = 00 / 01 / 02 / 03 for Die 1/2/3/4's Bias Voltage and
+        Leakage Measurement steps.  MATCHES bench_wiring("Probe03New")
+        exactly - _step_connections_eg() computes the SAME "00".."03"
+        right now, live, from the die field alone.     [MEASURED, code]
+        hi/lo were BLANK on every step before this fix (12.4) - conn was
+        hand-typed correctly, but nothing tied it back to the probe
+        card's own PIN table or to Switch Settings for display/
+        validation. This is almost certainly the recipe you get real
+        readings from when you press Run.
+
+    "Lamp 21PCM whole wafer"  bench "probe03"  instrument DMM
+        conn is BLANK on every step (Leakage Measurement, Bias Voltage).
+        Per 12.1a this closes NOTHING. Its bench tag ("probe03", not
+        "Probe03New") points at the OLD, pre-move wiring entry - a form C
+        E1364A card needing TWO channels per die (section 8) - and its
+        instrument is DMM, but bench_wiring("probe02"/"Probe03New")'s own
+        "instrument" field says the SMU is what is actually landed there
+        now, not a DMM. Whether this recipe measures anything real is
+        UNRESOLVED - if it does, it is not through conn, route_die, or
+        _step_connections_eg; none of those three paths give it a
+        channel.                                    [UNCONFIRMED - CHECK
+        WITH A SCOPE BEFORE TRUSTING A READING FROM THIS RECIPE]
+
+    "HPLaMP_WHOLE_WAFER"  (lives in the separate LaMP_HP.csv main file,
+    not the .recipes.electroglas.csv side file)  instrument SMU
+        conn is also BLANK on every step. Same as above - unresolved
+        whether/how this one measures anything, and whether it is even
+        the file Electroglas actually loads recipes from for this card
+        (recipe_panel's side-file convention is <card>.recipes.
+        <system>.csv; this recipe's presence in the bare LaMP_HP.csv
+        looks like it predates that split).                [UNCONFIRMED]
+
+--- 12.4  FIX APPLIED 2026-09-08 -----------------------------------------
+
+  "HP LaMP electrical gauge" only (the one confirmed to already route
+  correctly - see 12.3). Populated hi/lo on its 8 die-specific steps
+  (Bias Voltage + Leakage Measurement, dies 1-4) with the physical pin
+  labels from BENCH_WIRING["Probe03New"]["die_pins"] (== section 8C's
+  measured A32/A33/A34/A36/A13/A12/A11/A9):
+
+      die 1   hi A32   lo A33
+      die 2   hi A34   lo A36
+      die 3   hi A13   lo A12
+      die 4   hi A11   lo A9
+
+  conn was NOT touched - still "00"/"01"/"02"/"03", unchanged, because
+  _step_connections_eg() does not read hi/lo to compute it (12.1c). This
+  is display/validation-only: the Recipe tab now shows real pin names
+  instead of blank hi/lo, and RecipePanel.validate_recipe()'s pin-exists
+  check (which already knew to look up Electroglas hi/lo as plain pin
+  labels against the card's own PIN table, not resolve them as Accretech
+  numeric pins - recipe_panel.py already had this branch) now has
+  something to actually validate. Confirmed the card's own PIN table
+  already carried A9/A11/A12/A13/A32/A33/A34/A36 (section 8C's pins) -
+  nothing needed adding there.
+
+  "Lamp 21PCM whole wafer" and "HPLaMP_WHOLE_WAFER" (12.3) were left
+  untouched - their bench/instrument mismatch makes any pin assignment a
+  guess, not a fix, until the open questions above are settled on the
+  bench.
