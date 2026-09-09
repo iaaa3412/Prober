@@ -1828,21 +1828,54 @@ class EgPmaRunPanel(ttk.Frame):
                 wmap.canvas.tag_raise(inner)
                 self._sel_window_items.append(inner)
 
+    def _slots_anchored_at(self, rc) -> dict:
+        """{slot name: real (row, col)} for a shot anchored at `rc`, treated
+        as die #1 - not at whatever shot the Wafer Builder map's own stored
+        grouping (_slot_rc/_builder_shot_slots) happened to assign that
+        cell's die to.
+
+        The chuck can be set on any die, and the probe card's real needles
+        land in a fixed block around wherever it actually is - the map's
+        stored grouping only reflects what the Wafer Builder assumed when
+        the map was drawn, which does not have to be where an operator
+        actually anchors (two adjacent touchdowns can be corners of the
+        SAME physical shot, or of two different ones, and _slot_rc cannot
+        tell those apart from position alone). Every SITE this software
+        writes already only records the top-left die of its shot (see
+        recipe_gen_panel.py, and instrument_panel._exec_publish_die_slots_
+        anchored's own note on the Accretech side of the same fix), so `rc`
+        IS die #1 by that convention - every other slot is `rc` plus that
+        slot's own offset from die #1's cell in the shot template
+        (slot_names/slot_grid - the SAME canonical TL/BL/TR/BR-column-major
+        numbering _measure_here's step "Die #" already assumes, not
+        Accretech's separately-configurable shot_cells order).
+        """
+        if rc is None:
+            return {}
+        rows, cols = self.shot_layout()
+        if rows * cols <= 1:
+            return {}
+        order = slot_names(rows, cols)
+        grid = slot_grid(rows, cols)
+        c1, r1 = grid[order[0]]
+        row0, col0 = rc
+        out = {}
+        for name in order:
+            c, r = grid[name]
+            out[name] = (row0 + (r - r1), col0 + (c - c1))
+        return out
+
     def _shot_window_cells(self, seq) -> list:
         """The map cells the chuck's shot really covers, for drawing.
 
         A touchdown is one die, so self._cells holds one cell for it - but
         the probe card lands a whole R x C shot around that die, and that
-        block is what the window has to outline.
-
-        _slot_rc already holds exactly it: _build_rc_index fills it from
-        the map's own shot grouping, so this is the real shot the landing
-        die belongs to rather than a block guessed from its position. That
-        matters at the wafer edge and wherever a shot has NA corners, where
-        assuming the landing die is the block's top-left puts the outline
-        one slot out.
+        block is what the window has to outline. Anchored on the touchdown's
+        own real (row, col) - see _slots_anchored_at - rather than the map's
+        stored shot grouping, so the window always shows where the probe
+        card's real needles land around the chuck's actual position.
         """
-        slots = self._slot_rc.get(seq) or {}
+        slots = self._slots_anchored_at(self._anchor_rc.get(seq))
         if slots:
             return list(slots.values())
         return self._cells.get(seq) or []
@@ -1882,8 +1915,13 @@ class EgPmaRunPanel(ttk.Frame):
         painted with the shot's combined verdict, which is what a per-touchdown
         mark_result() did. Counted per die too: three probed shots is twelve
         die results, not three.
+
+        Anchored on this touchdown's own real position (die #1) rather than
+        the map's stored shot grouping - see _slots_anchored_at - so the
+        square painted always matches the die the reading was actually
+        filed under in _measure_here.
         """
-        rc = (self._slot_rc.get(seq) or {}).get(quad_pos)
+        rc = self._slots_anchored_at(self._anchor_rc.get(seq)).get(quad_pos)
         if rc is None:
             return
         key = (seq, quad_pos)
@@ -1945,7 +1983,10 @@ class EgPmaRunPanel(ttk.Frame):
             self._paint(seq, "UNTESTED", also_results=True)
         self._results.clear()
         for (seq, quad), _v in list(self._die_results.items()):
-            rc = (self._slot_rc.get(seq) or {}).get(quad)
+            # Same anchored lookup mark_die_result painted with - reading
+            # the map's stored grouping here instead would clear the wrong
+            # square whenever it disagrees with the anchor.
+            rc = self._slots_anchored_at(self._anchor_rc.get(seq)).get(quad)
             if rc is not None:
                 self._paint_cells([rc], "UNTESTED", also_results=True)
         self._die_results.clear()
@@ -1964,7 +2005,9 @@ class EgPmaRunPanel(ttk.Frame):
         because this repaint does not mirror to the Results tab - which is why
         the colours survived there and vanished here.
         """
-        slots = self._slot_rc.get(seq) or {}
+        # Same anchored lookup mark_die_result painted with - see its own
+        # note on why this must not read the map's stored shot grouping.
+        slots = self._slots_anchored_at(self._anchor_rc.get(seq))
         per_die = {quad: self._die_results.get((seq, quad)) for quad in slots}
         if any(per_die.values()):
             for quad, rc in slots.items():
@@ -2581,7 +2624,8 @@ class EgPmaRunPanel(ttk.Frame):
         """
         total = 0
         for i in self._enabled_indices():
-            slots = self._slot_rc.get(self._touchdowns[i]["seq"])
+            seq = self._touchdowns[i]["seq"]
+            slots = self._slots_anchored_at(self._anchor_rc.get(seq))
             if slots:
                 total += len(slots)
             else:
@@ -2730,9 +2774,14 @@ class EgPmaRunPanel(ttk.Frame):
         # fldSwitch N. The recipe's step names carry "(Die N)", so this is what
         # turns a result into "this reading belongs to die 83-71, at that
         # square" instead of four readings all filed under the shot's corner.
-        slots = self._slot_rc.get(seq, {})
-        layout._exec_die_ids_by_slot = list(t.get("devices") or [])
+        # Anchored on rc (this touchdown's own real position, die #1) rather
+        # than the map's stored shot grouping - see _slots_anchored_at.
+        slots = self._slots_anchored_at(rc)
         order = slot_names(*self.shot_layout())
+        wm = self._run_map()
+        layout._exec_die_ids_by_slot = [
+            (wm.die_ids.get(slots[q], "") if wm is not None and q in slots else "")
+            for q in order]
         layout._exec_die_rc_by_slot = [slots.get(q) for q in order]
         self._ui(lambda: layout._exec_die_var.set(f"Die: {dev}"))
         try:
@@ -2746,7 +2795,13 @@ class EgPmaRunPanel(ttk.Frame):
         # square goes green or red and the totals count dies rather than shots.
         slot_verdicts = dict(getattr(layout, "_exec_slot_verdicts", None) or {})
         if slot_verdicts:
-            ids = t.get("devices") or []
+            # The same anchored ids just filed under each slot for the
+            # measurement itself (layout._exec_die_ids_by_slot), not
+            # t["devices"] - that field is still whatever _build_rc_index's
+            # map-grouping lookup last set it to for the Die list/anchor
+            # dropdown text, which can disagree with what was just anchored
+            # here.
+            ids = list(getattr(layout, "_exec_die_ids_by_slot", None) or [])
 
             def _mark():
                 for slot, passed in sorted(slot_verdicts.items()):
