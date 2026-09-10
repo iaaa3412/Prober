@@ -607,6 +607,65 @@ def clone_bench_recipes(old_bench: str, new_bench: str) -> list:
     return cloned
 
 
+def remove_bench_recipes(bench: str, system: str = "accretech") -> list:
+    import workdir
+    root = workdir.get_current_working_dir()
+    removed = []
+    if not root or not os.path.isdir(root):
+        return removed
+    for proj in sorted(os.listdir(root)):
+        cards_dir = os.path.join(root, proj, "probe_cards")
+        if not os.path.isdir(cards_dir):
+            continue
+        for fname in sorted(os.listdir(cards_dir)):
+            low = fname.lower()
+            if not low.endswith(".csv"):
+                continue
+            if system == "accretech":
+                if ".recipes." in low or ".movelist." in low:
+                    continue
+            else:
+                if not low.endswith(f".recipes.{system}.csv"):
+                    continue
+            path = os.path.join(cards_dir, fname)
+            if os.path.isfile(path):
+                removed.extend(_remove_bench_recipes_in_file(path, bench))
+    return removed
+
+
+def _remove_bench_recipes_in_file(path: str, bench: str) -> list:
+    try:
+        with open(path, newline="", encoding="utf-8-sig") as f:
+            rows = list(csv.reader(f))
+    except OSError:
+        return []
+    if not rows:
+        return []
+    header = rows[0]
+    try:
+        kind_i = header.index("kind")
+        recipe_i = header.index("recipe")
+        bench_i = header.index("bench")
+    except ValueError:
+        return []
+
+    def _get(row, i):
+        return row[i] if i < len(row) else ""
+
+    to_remove = {
+        _get(r, recipe_i) for r in rows[1:]
+        if _get(r, kind_i) == "RECIPE" and _get(r, bench_i) == bench and _get(r, recipe_i)
+    }
+    if not to_remove:
+        return []
+
+    removed = [(path, name) for name in sorted(to_remove)]
+    kept = [header] + [r for r in rows[1:] if _get(r, recipe_i) not in to_remove]
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        csv.writer(f).writerows(kept)
+    return removed
+
+
 def retag_bench_recipes(old_bench: str, new_bench: str) -> list:
     import workdir
     root = workdir.get_current_working_dir()

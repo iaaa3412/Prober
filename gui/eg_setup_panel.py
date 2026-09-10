@@ -105,9 +105,10 @@ class EgSetupPanel(ttk.Frame):
         if not messagebox.askyesno(
                 "Delete Prober",
                 f"Delete prober profile {name!r}?\n\n"
-                "This removes its instrument addresses from eg_probers.yaml. "
-                "Recipes and switch wiring already tagged with this bench "
-                "name are left as they are.",
+                "This removes its instrument addresses from eg_probers.yaml "
+                "and deletes any recipes tagged to this bench (no other "
+                "recipes, and no wafer maps, are touched). Switch wiring "
+                "already tagged with this bench name is left as is.",
                 parent=self):
             return
         try:
@@ -116,6 +117,21 @@ class EgSetupPanel(ttk.Frame):
             messagebox.showerror("Delete Failed", str(exc))
             return
         self._log(f"[SETUP] Deleted prober {name!r}")
+        try:
+            from wafer_map_view import remove_bench_recipes
+            removed = remove_bench_recipes(name, system="electroglas")
+        except Exception as exc:
+            removed = []
+            self._log(f"[SETUP] Could not check for {name!r}'s recipes: {exc}")
+        if removed:
+            import os
+            by_file = {}
+            for path, recipe_name in removed:
+                by_file.setdefault(path, []).append(recipe_name)
+            for path, names in by_file.items():
+                card = os.path.splitext(os.path.basename(path))[0]
+                self._log(f"[SETUP]   {card}: {', '.join(names)}")
+            self._log(f"[SETUP] Deleted {len(removed)} recipe(s) tagged to {name!r}.")
         self._bench_var.set(eg_profiles.active_name())
         self._refresh_benches()
         try:

@@ -5598,10 +5598,6 @@ class MainLayout(ttk.Frame):
         self._build_mdb_row(export_frame)
 
         self._export_formats: list = []
-        self._export_default_lbl_var = tk.StringVar(value="")
-        ttk.Label(export_frame, textvariable=self._export_default_lbl_var,
-                 foreground="#6b7280", font=("Segoe UI", 8)).pack(
-                 anchor="w", padx=10, pady=(0, 8))
 
         def _apply_initial_results_sashes():
             h = split.winfo_height()
@@ -5659,11 +5655,6 @@ class MainLayout(ttk.Frame):
         ttk.Label(parent, textvariable=self._mdb_status_var, foreground="#6b7280",
                  font=("Segoe UI", 8), wraplength=620, justify="left").pack(
                  anchor="w", padx=10, pady=(0, 2))
-        self._mdb_default_lbl_var = tk.StringVar(value="")
-        ttk.Label(parent, textvariable=self._mdb_default_lbl_var, foreground="#6b7280",
-                 font=("Segoe UI", 8), wraplength=620, justify="left").pack(
-                 anchor="w", padx=10, pady=(0, 8))
-
     def _mdb_say(self, text: str):
         var = getattr(self, "_mdb_status_var", None)
         if var is not None:
