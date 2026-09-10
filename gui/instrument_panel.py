@@ -1296,6 +1296,9 @@ class MainLayout(ttk.Frame):
         ttk.Button(btns, text="Export", command=_export).pack(side="left", padx=(6, 0))
         unload_btn = ttk.Button(btns, text="Unload", command=_unload)
         unload_btn.pack(side="left", padx=(6, 0))
+        if self._is_cenfire_folder():
+            ttk.Button(btns, text="Transfer Cenfire",
+                      command=self._run_cenfire_transfer).pack(side="left", padx=(6, 0))
         ttk.Button(btns, text="Cancel", command=dlg.destroy).pack(side="right")
 
         dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)
