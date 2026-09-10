@@ -5523,7 +5523,7 @@ class MainLayout(ttk.Frame):
         self._build_results_wafer_map(wafer_pane)
 
         export_frame = ttk.LabelFrame(split, text="Data Export")
-        split.add(export_frame, weight=0)
+        split.add(export_frame, weight=3)
 
         ttk.Label(
             export_frame,
@@ -5603,17 +5603,11 @@ class MainLayout(ttk.Frame):
                  foreground="#6b7280", font=("Segoe UI", 8)).pack(
                  anchor="w", padx=10, pady=(0, 8))
 
-        results_lf = ttk.LabelFrame(split, text="Measurement Results")
-        split.add(results_lf, weight=2)
-        results_lf.rowconfigure(0, weight=1)
-        results_lf.columnconfigure(0, weight=1)
-
         def _apply_initial_results_sashes():
             h = split.winfo_height()
             if h <= 1:
                 return
-            split.sashpos(0, int(h * 0.55))
-            split.sashpos(1, int(h * 0.80))
+            split.sashpos(0, int(h * 0.4))
         def _set_initial_results_sashes(_event=None):
             if split.winfo_height() <= 1:
                 return
@@ -5621,9 +5615,14 @@ class MainLayout(ttk.Frame):
             split.after_idle(_apply_initial_results_sashes)
         results_sash_bind_id = [split.bind("<Configure>", _set_initial_results_sashes)]
 
+        results_area = ttk.Frame(export_frame)
+        results_area.pack(fill="both", expand=True, padx=(4, 4), pady=(0, 6))
+        results_area.rowconfigure(0, weight=1)
+        results_area.columnconfigure(0, weight=1)
+
         cols = ("timestamp", "recipe", "die", "step", "type", "value", "unit")
         self._results_tree = ttk.Treeview(
-            results_lf, columns=cols, show="headings", height=8, selectmode="browse")
+            results_area, columns=cols, show="headings", height=8, selectmode="browse")
         heads = [("timestamp", "Time", 135), ("recipe", "Recipe", 110),
                  ("die", "Die", 90), ("step", "Step", 110), ("type", "Type", 75),
                  ("value", "Value", 90), ("unit", "Unit", 45)]
@@ -5631,14 +5630,14 @@ class MainLayout(ttk.Frame):
             self._results_tree.heading(cid, text=text)
             self._results_tree.column(cid, width=width,
                                       anchor="center" if cid in ("type", "unit") else "w")
-        self._results_tree.grid(row=0, column=0, sticky="nsew", padx=(6, 0), pady=6)
-        rsb = ttk.Scrollbar(results_lf, orient="vertical",
+        self._results_tree.grid(row=0, column=0, sticky="nsew", pady=(0, 6))
+        rsb = ttk.Scrollbar(results_area, orient="vertical",
                             command=self._results_tree.yview)
-        rsb.grid(row=0, column=1, sticky="ns", pady=6)
+        rsb.grid(row=0, column=1, sticky="ns", pady=(0, 6))
         self._results_tree.configure(yscrollcommand=rsb.set)
 
-        ttk.Button(results_lf, text="Clear Results", command=self.clear_results).grid(
-            row=1, column=0, columnspan=2, sticky="e", padx=6, pady=(0, 6))
+        ttk.Button(results_area, text="Clear Results", command=self.clear_results).grid(
+            row=1, column=0, columnspan=2, sticky="e")
 
     def _build_mdb_row(self, parent):
         row = ttk.Frame(parent)
