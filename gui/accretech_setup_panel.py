@@ -45,6 +45,8 @@ class AccretechSetupPanel(ttk.Frame):
             side="left", padx=2)
         ttk.Button(bar, text="✎ Rename…", command=self._rename_prober).pack(
             side="left", padx=2)
+        ttk.Button(bar, text="🗑 Delete…", command=self._delete_prober).pack(
+            side="left", padx=2)
         self._active_lbl = tk.StringVar(value="")
         ttk.Label(bar, textvariable=self._active_lbl, foreground="#16a34a",
                  font=("Segoe UI", 8, "italic")).pack(side="left", padx=(10, 0))
@@ -129,6 +131,36 @@ class AccretechSetupPanel(ttk.Frame):
             return
         self._log(f"[SETUP] Renamed Accretech prober {old!r} -> {new!r}")
         self._bench_var.set(new)
+        self._refresh_benches()
+        try:
+            self.controller._refresh_bench_picker()
+        except Exception:
+            pass
+
+    def _delete_prober(self):
+        name = self._bench_var.get()
+        if not name:
+            messagebox.showerror("No Bench", "No prober selected to delete.")
+            return
+        if len(accretech_profiles.profile_names()) <= 1:
+            messagebox.showerror("Delete Failed",
+                                 "This is the only prober profile - at least one must remain.")
+            return
+        if not messagebox.askyesno(
+                "Delete Prober",
+                f"Delete prober profile {name!r}?\n\n"
+                "This removes its instrument addresses/models from "
+                "accretech_probers.yaml. Recipes and switch wiring already "
+                "tagged with this bench name are left as they are.",
+                parent=self):
+            return
+        try:
+            accretech_profiles.remove_profile(name)
+        except (ValueError, KeyError) as exc:
+            messagebox.showerror("Delete Failed", str(exc))
+            return
+        self._log(f"[SETUP] Deleted Accretech prober {name!r}")
+        self._bench_var.set(accretech_profiles.active_name())
         self._refresh_benches()
         try:
             self.controller._refresh_bench_picker()

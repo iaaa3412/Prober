@@ -226,6 +226,19 @@ def rename_profile(old_name: str, new_name: str) -> None:
         pass
 
 
+def remove_profile(name: str) -> None:
+    data = load()
+    probers = data.get("probers") or {}
+    if name not in probers:
+        raise KeyError(f"no Accretech profile named {name!r}")
+    if len(probers) <= 1:
+        raise ValueError("cannot remove the last remaining prober profile")
+    del probers[name]
+    if data.get("active") == name:
+        data["active"] = sorted(probers)[0]
+    _save(data)
+
+
 def set_instrument(bench: str, key: str, *, name: str = None,
                    address: str = None, timeout_ms: int = None,
                    model: str = None, fitted: bool = None) -> None:

@@ -134,6 +134,19 @@ def add_profile(new_name: str, based_on: str = None) -> None:
     _save(data)
 
 
+def remove_profile(name: str) -> None:
+    data = load()
+    probers = data.get("probers") or {}
+    if name not in probers:
+        raise KeyError(f"no Electroglas profile named {name!r}")
+    if len(probers) <= 1:
+        raise ValueError("cannot remove the last remaining prober profile")
+    del probers[name]
+    if data.get("active") == name:
+        data["active"] = sorted(probers)[0]
+    _save(data)
+
+
 def set_instrument(bench: str, key: str, *, name: str = None,
                    address: str = None, timeout_ms: int = None,
                    fitted: bool = None) -> None:
