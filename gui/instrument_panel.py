@@ -26,7 +26,8 @@ from eg_prober_debug_panel import EgProberDebugPanel
 from gpib_trace_panel import GpibTracePanel
 from eg_pma_run_panel import EgPmaRunPanel
 from accr_wafer_panel import AccrWaferPanel
-from cassette_panel import CassettePanel, save_yield_threshold, load_yield_threshold
+from cassette_panel import (CassettePanel, save_yield_threshold, load_yield_threshold,
+                            save_autoexport_settings, load_autoexport_settings)
 from recipe_panel import RecipePanel, load_default_recipe, compute_target_derived
 from pma_wafer_panel import PmaWaferPanel, centroid_offset
 from pma_process_panel import PmaProcessPanel
@@ -1125,7 +1126,38 @@ class MainLayout(ttk.Frame):
                        command=self._on_autoexport_toggle).pack(side="left", padx=(16, 6))
         self._autoexport_csv_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(lf, text="Also Save CSV",
-                       variable=self._autoexport_csv_var).pack(side="left")
+                       variable=self._autoexport_csv_var).pack(side="left", padx=(0, 6))
+        ttk.Button(lf, text="Set Default",
+                  command=self._set_default_autoexport).pack(side="left", padx=(0, 10))
+        self._autoexport_default_lbl = ttk.Label(lf, text="", foreground="#374151",
+                                                  font=("Segoe UI", 8, "italic"))
+        self._autoexport_default_lbl.pack(side="left")
+        self._update_autoexport_default_label()
+
+    def _update_autoexport_default_label(self):
+        lbl = getattr(self, "_autoexport_default_lbl", None)
+        if lbl is None:
+            return
+        if self._ata_folder:
+            auto_export, save_csv = load_autoexport_settings(self._ata_folder)
+            lbl.config(text=f"saved for this folder: AutoExport={'on' if auto_export else 'off'}, "
+                            f"Also Save CSV={'on' if save_csv else 'off'}",
+                      foreground="#166534")
+        else:
+            lbl.config(text="load an ATA folder first", foreground="#6b7280")
+
+    def _set_default_autoexport(self):
+        if not self._ata_folder:
+            messagebox.showerror("No ATA Folder", "Load an ATA folder first.")
+            return
+        save_autoexport_settings(self._ata_folder, self._autoexport_var.get(),
+                                 self._autoexport_csv_var.get())
+        self._update_autoexport_default_label()
+        self.controller.log(
+            f"[SYSTEM] AutoExport default set to AutoExport="
+            f"{'on' if self._autoexport_var.get() else 'off'}, Also Save CSV="
+            f"{'on' if self._autoexport_csv_var.get() else 'off'} for "
+            f"'{os.path.basename(self._ata_folder)}'.")
 
     def _on_autoexport_toggle(self):
         if self._autoexport_var.get():
@@ -1928,6 +1960,12 @@ class MainLayout(ttk.Frame):
         if hasattr(self, "_default_yield_var"):
             self._default_yield_var.set(f"{load_yield_threshold(folder_path):g}")
             self._update_default_yield_label()
+        if hasattr(self, "_autoexport_var"):
+            auto_export, save_csv = load_autoexport_settings(folder_path)
+            self._autoexport_var.set(auto_export)
+            self._autoexport_csv_var.set(save_csv)
+            self._on_autoexport_toggle()
+            self._update_autoexport_default_label()
 
         self._update_default_ata_label()
         return n_dies

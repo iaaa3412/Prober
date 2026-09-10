@@ -31,6 +31,31 @@ def load_yield_threshold(folder: str, default: float = 0.0) -> float:
         return default
 
 
+AUTOEXPORT_SETTINGS_FILENAME = "ata_autoexport.json"
+
+
+def save_autoexport_settings(folder: str, auto_export: bool, save_csv: bool) -> None:
+    path = os.path.join(folder, AUTOEXPORT_SETTINGS_FILENAME)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"auto_export": bool(auto_export), "save_csv": bool(save_csv)}, f)
+    except OSError:
+        pass
+
+
+def load_autoexport_settings(folder: str, default: tuple = (False, False)) -> tuple:
+    path = os.path.join(folder, AUTOEXPORT_SETTINGS_FILENAME)
+    if not os.path.isfile(path):
+        return default
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return (bool(data.get("auto_export", default[0])),
+               bool(data.get("save_csv", default[1])))
+    except (OSError, ValueError, TypeError):
+        return default
+
+
 class CassettePanel(ttk.Frame):
 
     def __init__(self, parent, controller, ui):
