@@ -441,7 +441,9 @@ class CassettePanel(ttk.Frame):
             messagebox.showerror("No Export Format", "Pick an export format above, or "
                                  "turn off auto-export.")
             return
-        if getattr(self.ui, "_exec_on_run_finished", None) not in (None, self._on_wafer_finished):
+        current_hook = getattr(self.ui, "_exec_on_run_finished", None)
+        autoexport_hook = getattr(self.ui, "_on_autoexport_run_finished", None)
+        if current_hook not in (None, self._on_wafer_finished, autoexport_hook):
             messagebox.showerror("Arm Blocked", "Another automation is already watching "
                                  "for the run to finish.")
             return
@@ -523,6 +525,9 @@ class CassettePanel(ttk.Frame):
         self._set_paused_for_error(False)
         if getattr(self.ui, "_exec_on_run_finished", None) is self._on_wafer_finished:
             self.ui._exec_on_run_finished = None
+            claim = getattr(self.ui, "_autoexport_claim_hook", None)
+            if claim is not None:
+                claim()
         self._set_locked(False)
         self._redraw_slots()
         if reason:

@@ -1119,6 +1119,157 @@ class MainLayout(ttk.Frame):
         ttk.Button(lf, text="Set Default",
                   command=self._set_default_yield).pack(side="left", padx=(0, 10))
 
+        self._autoexport_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(lf, text="AutoExport",
+                       variable=self._autoexport_var,
+                       command=self._on_autoexport_toggle).pack(side="left", padx=(16, 6))
+        self._autoexport_csv_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(lf, text="Also Save CSV",
+                       variable=self._autoexport_csv_var).pack(side="left")
+
+    def _on_autoexport_toggle(self):
+        if self._autoexport_var.get():
+            self._autoexport_claim_hook()
+        else:
+            self._autoexport_release_hook()
+
+    def _autoexport_claim_hook(self):
+        if not getattr(self, "_autoexport_var", None) or not self._autoexport_var.get():
+            return
+        current = getattr(self, "_exec_on_run_finished", None)
+        if current in (None, self._on_autoexport_run_finished):
+            self._exec_on_run_finished = self._on_autoexport_run_finished
+
+    def _autoexport_release_hook(self):
+        if getattr(self, "_exec_on_run_finished", None) is getattr(
+                self, "_on_autoexport_run_finished", None):
+            self._exec_on_run_finished = None
+
+    def _on_autoexport_run_finished(self, pass_n, fail_n, total, aborted, run_mode="full"):
+        if aborted:
+            return
+        tested = pass_n + fail_n
+        pct = (pass_n / tested * 100) if tested else 0.0
+        lot_id = self.lot_id.get().strip()
+        wafer_id = self.wafer_id_var.get().strip()
+        if not lot_id or not wafer_id:
+            self._show_autoexport_missing_ids_dialog(pass_n, fail_n, tested, pct)
+            return
+        self._autoexport_run(pass_n, fail_n, tested, pct)
+
+    def _autoexport_run(self, pass_n, fail_n, tested, pct):
+        path = self.controller.cmd_export_sql()
+        self.controller.log(
+            f"[SYSTEM] AutoExport -> {path}" if path else
+            "[SYSTEM] AutoExport produced no file - see the log above for why.")
+        csv_path = None
+        if self._autoexport_csv_var.get():
+            csv_path = self.controller.cmd_save_csv()
+            self.controller.log(
+                f"[SYSTEM] AutoExport CSV -> {csv_path}" if csv_path else
+                "[SYSTEM] AutoExport CSV produced no file - see the log above for why.")
+        self._show_autoexport_result_dialog(pass_n, fail_n, tested, pct, path, csv_path)
+
+    def _show_autoexport_result_dialog(self, pass_n, fail_n, tested, pct, path, csv_path):
+        dlg = tk.Toplevel(self)
+        dlg.title("Run Finished — Exported")
+        dlg.transient(self.winfo_toplevel())
+        dlg.resizable(False, False)
+        frm = ttk.Frame(dlg, padding=14)
+        frm.pack(fill="both", expand=True)
+
+        body = (f"{pass_n}/{tested} pass ({pct:.1f}%)\n\n"
+               f"Exported to: {self.export_path_var.get()}")
+        if path:
+            body += f"\nFile: {os.path.basename(path)}"
+        if csv_path:
+            body += f"\nCSV: {os.path.basename(csv_path)}"
+        ttk.Label(frm, text=body, justify="left").pack(anchor="w")
+
+        btns = ttk.Frame(frm)
+        btns.pack(fill="x", pady=(12, 0))
+        if self._is_cenfire_folder():
+            ttk.Button(btns, text="Transfer Cenfire",
+                      command=self._run_cenfire_transfer).pack(side="left")
+        if self._is_lamp_folder():
+            ttk.Button(btns, text="Push LaMP SQL Dump",
+                      command=self._run_lamp_sql_push).pack(side="left", padx=(6, 0))
+        ttk.Button(btns, text="Close", command=dlg.destroy).pack(side="right")
+
+        dlg.update_idletasks()
+        dlg.grab_set()
+
+    def _show_autoexport_missing_ids_dialog(self, pass_n, fail_n, tested, pct):
+        dlg = tk.Toplevel(self)
+        dlg.title("Lot/Wafer ID Not Defined")
+        dlg.transient(self.winfo_toplevel())
+        dlg.resizable(False, False)
+        frm = ttk.Frame(dlg, padding=14)
+        frm.pack(fill="both", expand=True)
+
+        ttk.Label(frm, text="Lot and wafer id not defined - Make sure to save data",
+                 font=("Segoe UI", 9, "bold"), foreground="#b45309").pack(anchor="w")
+        ttk.Label(frm, text=f"{pass_n}/{tested} pass ({pct:.1f}%)").pack(
+            anchor="w", pady=(6, 0))
+        ttk.Label(frm, text=f"Output directory: {self.export_path_var.get()}").pack(
+            anchor="w", pady=(2, 10))
+
+        idrow = ttk.Frame(frm)
+        idrow.pack(fill="x", pady=(0, 10))
+        ttk.Label(idrow, text="Lot ID:").grid(row=0, column=0, sticky="w")
+        ttk.Entry(idrow, textvariable=self.lot_id, width=18).grid(
+            row=0, column=1, padx=(4, 14))
+        ttk.Label(idrow, text="Wafer ID:").grid(row=0, column=2, sticky="w")
+        ttk.Entry(idrow, textvariable=self.wafer_id_var, width=18).grid(
+            row=0, column=3, padx=(4, 0))
+
+        status_var = tk.StringVar(value="")
+        ttk.Label(frm, textvariable=status_var, foreground="#6b7280",
+                 font=("Segoe UI", 8)).pack(anchor="w")
+
+        def _save_csv():
+            path = self.controller.cmd_save_csv()
+            status_var.set(f"Saved CSV -> {path}" if path else
+                           "CSV save failed - see the log.")
+
+        def _export():
+            path = self.controller.cmd_export_sql()
+            status_var.set(f"Exported -> {path}" if path else
+                           "Export failed - see the log.")
+
+        def _unload():
+            drv = self.controller.drivers.get("prober")
+            if not (drv and drv.inst):
+                status_var.set("Prober not connected.")
+                return
+            unload_btn.config(state="disabled")
+            status_var.set("Unloading…")
+
+            def _run():
+                self._exec_log("[RUN] >> U  (Unload)")
+                try:
+                    stb = drv.unload_wafer()
+                    msg = (f"Unloaded (STB={stb})." if stb == 71
+                          else f"Unexpected STB={stb}.")
+                except Exception as e:
+                    msg = f"Unload error: {e}"
+                self._exec_log(f"[RUN] << {msg}")
+                self._exec_safe_after(lambda: status_var.set(msg))
+                self._exec_safe_after(lambda: unload_btn.config(state="normal"))
+            threading.Thread(target=_run, daemon=True).start()
+
+        btns = ttk.Frame(frm)
+        btns.pack(fill="x", pady=(10, 0))
+        ttk.Button(btns, text="Save to CSV", command=_save_csv).pack(side="left")
+        ttk.Button(btns, text="Export", command=_export).pack(side="left", padx=(6, 0))
+        unload_btn = ttk.Button(btns, text="Unload", command=_unload)
+        unload_btn.pack(side="left", padx=(6, 0))
+        ttk.Button(btns, text="Cancel", command=dlg.destroy).pack(side="right")
+
+        dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)
+        dlg.update_idletasks()
+        dlg.grab_set()
+
     def _update_default_yield_label(self):
         lbl = getattr(self, "_default_yield_lbl", None)
         if lbl is None:
