@@ -1224,7 +1224,7 @@ class MainLayout(ttk.Frame):
             ttk.Button(btns, text="Transfer Cenfire",
                       command=self._run_cenfire_transfer).pack(side="left")
         if self._is_lamp_folder():
-            ttk.Button(btns, text="Push LaMP SQL Dump",
+            ttk.Button(btns, text="Push Lamp SQL",
                       command=self._run_lamp_sql_push).pack(side="left", padx=(6, 0))
         ttk.Button(btns, text="Close", command=dlg.destroy).pack(side="right")
 
@@ -1299,6 +1299,9 @@ class MainLayout(ttk.Frame):
         if self._is_cenfire_folder():
             ttk.Button(btns, text="Transfer Cenfire",
                       command=self._run_cenfire_transfer).pack(side="left", padx=(6, 0))
+        if self._is_lamp_folder():
+            ttk.Button(btns, text="Push Lamp SQL",
+                      command=self._run_lamp_sql_push).pack(side="left", padx=(6, 0))
         ttk.Button(btns, text="Cancel", command=dlg.destroy).pack(side="right")
 
         dlg.protocol("WM_DELETE_WINDOW", dlg.destroy)
@@ -5595,7 +5598,7 @@ class MainLayout(ttk.Frame):
             state="disabled")
         self._cenfire_transfer_btn.pack(side="left", padx=(6, 0))
         self._lamp_push_btn = ttk.Button(
-            sql_row, text="Push LaMP SQL Dump", command=self._run_lamp_sql_push,
+            sql_row, text="Push Lamp SQL", command=self._run_lamp_sql_push,
             state="disabled")
         self._lamp_push_btn.pack(side="left", padx=(6, 0))
         self._build_mdb_row(export_frame)
@@ -5959,15 +5962,15 @@ class MainLayout(ttk.Frame):
         mdb_path = mdb_export.LAMP_MDB_PATH
         if not os.path.isdir(dump_dir):
             messagebox.showerror(
-                "Push LaMP SQL Dump", f"Dump folder not found:\n{dump_dir}")
+                "Push Lamp SQL", f"Dump folder not found:\n{dump_dir}")
             return
         sql_files = [f for f in os.listdir(dump_dir) if f.lower().endswith(".sql")]
         if not sql_files:
             messagebox.showinfo(
-                "Push LaMP SQL Dump", f"No .sql files waiting in:\n{dump_dir}")
+                "Push Lamp SQL", f"No .sql files waiting in:\n{dump_dir}")
             return
         if not messagebox.askokcancel(
-                "Push LaMP SQL Dump",
+                "Push Lamp SQL",
                 f"Push {len(sql_files)} .sql file(s) from\n{dump_dir}\n"
                 f"into the database at\n{mdb_path}?\n\n"
                 "Each file's rows are inserted all-or-nothing, then the "
@@ -5977,7 +5980,7 @@ class MainLayout(ttk.Frame):
             return
         res = mdb_export.push_sql_dump_folder(mdb_path, dump_dir)
         if res.get("error") and not res["files"]:
-            messagebox.showerror("Push LaMP SQL Dump", res["error"])
+            messagebox.showerror("Push Lamp SQL", res["error"])
             self.controller.log(f"[RESULTS] Push failed — {res['error']}")
             return
         ok_files = [f for f in res["files"] if f["ok"]]
@@ -5989,9 +5992,9 @@ class MainLayout(ttk.Frame):
                     "\n".join(f"  {b['file']}: {b['error']}" for b in bad_files))
         self.controller.log("[RESULTS] " + msg.replace("\n", "  "))
         if bad_files:
-            messagebox.showwarning("Push LaMP SQL Dump", msg)
+            messagebox.showwarning("Push Lamp SQL", msg)
         else:
-            messagebox.showinfo("Push LaMP SQL Dump", msg)
+            messagebox.showinfo("Push Lamp SQL", msg)
 
     def get_selected_export_format(self):
         name = self.export_format_var.get()

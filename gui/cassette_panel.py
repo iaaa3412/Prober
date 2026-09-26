@@ -652,6 +652,14 @@ class CassettePanel(ttk.Frame):
         btns.pack(fill="x", pady=(12, 0))
         unload_btn = ttk.Button(btns, text="⏏ Unload Last Wafer", command=_unload_last)
         unload_btn.pack(side="left")
+        # Same Cenfire-only button as the per-wafer AutoExport dialogs
+        # (instrument_panel._show_autoexport_result_dialog/
+        # _show_autoexport_missing_ids_dialog) - added here too so the
+        # lot-complete popup isn't the one place an operator can't reach
+        # AzTransfer from.
+        if self.ui._is_cenfire_folder():
+            ttk.Button(btns, text="Transfer Cenfire",
+                      command=self.ui._run_cenfire_transfer).pack(side="left", padx=(6, 0))
         ttk.Button(btns, text="Close", command=dlg.destroy).pack(side="right")
 
         dlg.update_idletasks()
