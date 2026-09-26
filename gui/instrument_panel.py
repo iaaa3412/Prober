@@ -2387,6 +2387,14 @@ class MainLayout(ttk.Frame):
         self._exec_running  = False
         self._exec_aborted  = False
         self._exec_run_mode = None
+        # Only a run started via the ▶ Run button should end with the
+        # AutoExport/cassette popup - Full Die and Test Selected are quick
+        # manual checks, not "the run", and used to pop the same export
+        # dialog every time either was pressed. Set True/False at the top
+        # of each of the three button handlers (_exec_start_run/
+        # _exec_start_full_die/_exec_start_test_die); _exec_finish_run
+        # reads it once, right before resetting for the next run.
+        self._exec_run_via_run_button = False
         self._exec_die_num  = 0
         self._exec_step_config_cache = {}
         self._exec_avg_count_cache = {}
@@ -2948,7 +2956,7 @@ class MainLayout(ttk.Frame):
             on_change=self._exec_on_sites_changed))
         if not self._exec_aborted:
             self._exec_safe_after(lambda: self._exec_set_state(msg, color))
-        if self._exec_on_run_finished:
+        if self._exec_on_run_finished and self._exec_run_via_run_button:
             total = self._exec_total_dies
             aborted = self._exec_aborted
             hook = self._exec_on_run_finished
@@ -3126,6 +3134,7 @@ class MainLayout(ttk.Frame):
             return
         if not self._exec_can_start():
             return
+        self._exec_run_via_run_button = False
         if self._system == "accretech" and self._exec_minor_moves_active():
             self._exec_log("[RUN] Full Die: this recipe has Minor Moves on — "
                             "use Run instead.")
@@ -3732,6 +3741,7 @@ class MainLayout(ttk.Frame):
             return
         if not self._exec_can_start():
             return
+        self._exec_run_via_run_button = True
         sites = self.recipe_panel.get_sites()
         if self._system == "accretech" and self._exec_minor_moves_active():
             if not sites:
@@ -4141,6 +4151,7 @@ class MainLayout(ttk.Frame):
             return
         if not self._exec_can_start():
             return
+        self._exec_run_via_run_button = False
         sites = self._exec_wafer_map.get_picked()
         if not sites:
             self._exec_randomize_sites()

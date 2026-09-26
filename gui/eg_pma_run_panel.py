@@ -1495,6 +1495,8 @@ class EgPmaRunPanel(ttk.Frame):
                 self._set_run_state(f"ERROR: {error_msg[:60]}", "#dc2626")
             else:
                 self._set_run_state("FINISHED (Minor Moves)", "#16a34a")
+            if not self._abort:
+                self._fire_run_finished_popup()
 
     def _pause(self):
         if not self._running:
@@ -1602,6 +1604,8 @@ class EgPmaRunPanel(ttk.Frame):
             else:
                 word, state, colour = "finished", "FINISHED", "#16a34a"
             self._set_run_state(state, colour)
+            if not stopped and not paused:
+                self._fire_run_finished_popup()
 
             def _settle():
                 self._status_var.set(f"{word} — {done} touchdown(s)")
@@ -1612,6 +1616,29 @@ class EgPmaRunPanel(ttk.Frame):
             self._ui(_settle)
 
         threading.Thread(target=_work, daemon=True).start()
+
+    def _fire_run_finished_popup(self):
+        """Electroglas equivalent of instrument_panel._exec_finish_run's
+        end-of-run popup hook (AutoExport result/missing-IDs dialog, or
+        cassette automation's lot-complete dialog - whichever has claimed
+        _exec_on_run_finished). _exec_finish_run itself is Accretech-shaped
+        (G/J status-byte walk, _exec_wafer_map.enable_picking, ...) and
+        _start/_work here never call it, so this system's own real Run
+        never fired that popup at all. Same hook, same dialogs - just
+        invoked from this system's own finish point, gated the same way
+        _exec_finish_run is: only the real ▶ Run flow reaches here (Test
+        Selected/Test Die go through instrument_panel's own gated path),
+        and a Stop/Pause skips it exactly like Accretech's Pause never
+        reaches _exec_finish_run either.
+        """
+        layout = self._main_layout
+        hook = getattr(layout, "_exec_on_run_finished", None)
+        if hook is None:
+            return
+        pass_n = layout._exec_pass_var.get()
+        fail_n = layout._exec_fail_var.get()
+        total = getattr(layout, "_exec_total_dies", 0)
+        self._ui(lambda: hook(pass_n, fail_n, total, False, "run"))
 
     def _ensure_contact(self, drv) -> bool:
         if drv is None:
