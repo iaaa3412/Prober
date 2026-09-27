@@ -1211,6 +1211,24 @@ class RecipeGenPanel(ttk.Frame):
         if target is None:
             target = "Autoload" if "Autoload" in names else (
                 names[0] if len(names) == 1 else None)
+        if target is None:
+            # More than one saved map and no default marker/"Autoload" name
+            # to break the tie - silently giving up here used to leave
+            # _exec_overlay_offset_confirmed (and the saved row/col offset)
+            # un-restored for the whole session, which looked exactly like
+            # an unrelated bug: the Run tab's (and NanoZ's) wafer map would
+            # load fine but show no die IDs, with nothing in the log to
+            # explain why. Fall back to the most recently saved map instead
+            # of giving up, and say so - a stray extra map (e.g. an empty
+            # "New Map" someone created once) shouldn't quietly break
+            # overlay/die-ID restore for everyone after that.
+            target = max(names, key=lambda n: os.path.getmtime(
+                os.path.join(d, self._safe_map_filename(n) + ".json")))
+            self._log(
+                f"[MAP] {len(names)} saved maps in this folder and none is "
+                f"set as default - auto-loading the most recently saved "
+                f"one ('{target}'). Use Set Default above to pin a "
+                f"specific one instead.")
         if not target:
             return
         path = os.path.join(d, self._safe_map_filename(target) + ".json")
