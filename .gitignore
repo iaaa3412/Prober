@@ -4,14 +4,14 @@ __pycache__/
 *.pyc
 dist/
 build/
-gui/dist/
-gui/build/
+EngineerGUI/dist/
+EngineerGUI/build/
 *.spec
 !AtomicaATA.spec
 .idea/
-gui/app_settings.json
+EngineerGUI/app_settings.json
 
-# Per-machine: which project root this PC uses (see gui/workdir.py).
+# Per-machine: which project root this PC uses (see EngineerGUI/workdir.py).
 # Tracking it made every pull overwrite the local choice with whichever
 # machine committed last - the prober PC points at the \\prober share,
 # a laptop at its own local copy.

@@ -2,7 +2,7 @@
 import sys, os, time, itertools
 
 ROOT = r"c:\automationproject\Probe08"
-for p in (ROOT, os.path.join(ROOT, "gui")):
+for p in (ROOT, os.path.join(ROOT, "EngineerGUI")):
     if p not in sys.path:
         sys.path.insert(0, p)
 

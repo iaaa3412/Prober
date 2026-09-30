@@ -1,36 +1,39 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller build spec for the Atomica Tester GUI - a single, portable
-AtomicaProber.exe with nothing else that has to travel alongside it (see
-gui/workdir.py's own _PREF_PATH/_exe_dir comments, and gui/gds_parser_
-panel.py's _GDS_DIR comment, for why that deployment shape is safe: the
-one file that must persist across runs self-creates next to the exe on
-first use, and everything else is read-only and bundled in here).
+"""PyInstaller build spec for the Atomica Tester GUI (Engineer GUI) - a
+single, portable AtomicaProber.exe with nothing else that has to travel
+alongside it (see EngineerGUI/workdir.py's own _PREF_PATH/_exe_dir
+comments, and EngineerGUI/gds_parser_panel.py's _GDS_DIR comment, for
+why that deployment shape is safe: the one file that must persist across
+runs self-creates next to the exe on first use, and everything else is
+read-only and bundled in here).
 
 Build with:
     pyinstaller AtomicaATA.spec
 
 Output: dist/AtomicaProber.exe
 
-Entry point is gui/app.py, NOT main.py. main.py launches app.py via
-runpy.run_path() on a path computed at runtime - invisible to
+Entry point is EngineerGUI/app.py, NOT main.py. main.py launches app.py
+via runpy.run_path() on a path computed at runtime - invisible to
 PyInstaller's static import scanner, so building from main.py directly
-would produce an exe missing the whole application. gui/app.py has its
-own `if __name__ == "__main__":` block and is already designed to run
-standalone (`python gui/app.py`) - see main.py's own docstring.
+would produce an exe missing the whole application. EngineerGUI/app.py
+has its own `if __name__ == "__main__":` block and is already designed
+to run standalone (`python EngineerGUI/app.py`) - see main.py's own
+docstring.
 
-Module discovery is DYNAMIC (glob gui/*.py and instruments/*.py), not a
-hand-maintained list - the project's previous spec (gui/AtomicaTester.
-spec) hardcoded module names and had drifted badly stale (missing most
-of the app - recipe_panel, cassette_panel, switch_topology, workdir,
-export_formats, app_settings, and a dozen others - because nobody had
-to remember to add each new file to it by hand). Every gui/*.py and
-instruments/*.py file is imported BARE elsewhere in this codebase
-(`import switch_topology`, not `import gui.switch_topology`) because
-gui/ and instruments/ are both put directly on sys.path at runtime -
-PyInstaller's analyzer can't discover a bare sibling import through
-static analysis alone, so every one of those modules has to be told to
-it explicitly, and globbing is what keeps that list correct as the
-project grows instead of silently falling behind again.
+Module discovery is DYNAMIC (glob EngineerGUI/*.py and instruments/*.py),
+not a hand-maintained list - the project's previous spec (gui/
+AtomicaTester.spec) hardcoded module names and had drifted badly stale
+(missing most of the app - recipe_panel, cassette_panel, switch_topology,
+workdir, export_formats, app_settings, and a dozen others - because
+nobody had to remember to add each new file to it by hand). Every
+EngineerGUI/*.py and instruments/*.py file is imported BARE elsewhere in
+this codebase (`import switch_topology`, not
+`import EngineerGUI.switch_topology`) because EngineerGUI/ and
+instruments/ are both put directly on sys.path at runtime - PyInstaller's
+analyzer can't discover a bare sibling import through static analysis
+alone, so every one of those modules has to be told to it explicitly,
+and globbing is what keeps that list correct as the project grows instead
+of silently falling behind again.
 """
 import glob
 import os
@@ -38,7 +41,7 @@ import os
 from PyInstaller.utils.hooks import copy_metadata
 
 ROOT = os.path.abspath(os.path.dirname(os.path.abspath(SPEC)))
-GUI_DIR = os.path.join(ROOT, "gui")
+GUI_DIR = os.path.join(ROOT, "EngineerGUI")
 INSTRUMENTS_DIR = os.path.join(ROOT, "instruments")
 
 

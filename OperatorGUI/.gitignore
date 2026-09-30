@@ -1,0 +1,7 @@
+# PyInstaller output from OperatorV1.spec
+build/
+dist/
+
+# The build spec is source (the root .gitignore's *.spec rule is for
+# PyInstaller's auto-generated specs).
+!*.spec
