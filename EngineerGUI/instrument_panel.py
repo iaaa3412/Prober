@@ -4717,7 +4717,10 @@ class MainLayout(ttk.Frame):
                     verdict = ((not mn or value >= float(mn)) and
                               (not mx or value <= float(mx)))
                     overall_ok = overall_ok and verdict
-                    self._exec_slot_verdicts[die_no] = verdict
+                    # AND with any earlier check on this die - one failing
+                    # check must not be overwritten by a later passing one.
+                    self._exec_slot_verdicts[die_no] = (
+                        self._exec_slot_verdicts.get(die_no, True) and verdict)
                     spec = f"[{mn or '-inf'}, {mx or '+inf'}]"
                     self._exec_log(f"[MEASURE] {i}. {name}: "
                                     f"{'PASS' if verdict else 'FAIL'}  "

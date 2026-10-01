@@ -18,7 +18,7 @@ import os
 
 from PyInstaller.utils.hooks import copy_metadata
 
-VERSION = 1
+VERSION = 2
 
 OPERATOR_DIR = os.path.abspath(os.path.dirname(os.path.abspath(SPEC)))
 ROOT = os.path.dirname(OPERATOR_DIR)
