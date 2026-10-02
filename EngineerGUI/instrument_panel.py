@@ -1561,8 +1561,8 @@ class MainLayout(ttk.Frame):
                         marks.append(f"default card for {s.capitalize()}")
                     elif default_by_system[s][0] == base:
                         marks.append(f"default recipe's card for {s.capitalize()}")
-                mark = f"  ({'; '.join(marks)})" if marks else ""
-                card_id = tree.insert(cards_id, "end", text=base + mark,
+                card_id = tree.insert(cards_id, "end", text=base,
+                                     values=("", "; ".join(marks)),
                                      open=True, tags=("found",))
                 self._ata_tree_meta[card_id] = {"kind": "probe_card", "base": base}
                 for system in ("accretech", "electroglas"):
@@ -1586,9 +1586,9 @@ class MainLayout(ttk.Frame):
                         for name in names:
                             is_default = default_by_system[system] == (base, name)
                             recipe_item = tree.insert(
-                                bench_id, "end",
-                                text=name + (f"  (default recipe for {label})"
-                                             if is_default else ""),
+                                bench_id, "end", text=name,
+                                values=("", f"default recipe for {label}"
+                                        if is_default else ""),
                                 tags=("found",))
                             self._ata_tree_meta[recipe_item] = {
                                 "kind": "recipe", "card_base": base,
@@ -1616,8 +1616,10 @@ class MainLayout(ttk.Frame):
                               open=True, tags=("section",))
         if map_names:
             for name in map_names:
-                mark = "  (default wafer map)" if name == default_map else ""
-                map_item = tree.insert(maps_id, "end", text=name + mark, tags=("found",))
+                map_item = tree.insert(
+                    maps_id, "end", text=name,
+                    values=("", "default wafer map" if name == default_map else ""),
+                    tags=("found",))
                 self._ata_tree_meta[map_item] = {"kind": "wafer_map", "name": name}
         else:
             tree.insert(maps_id, "end", text="(none yet)",
