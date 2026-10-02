@@ -18,7 +18,7 @@ import tkinter as tk
 from tkinter import ttk
 
 import app_settings
-from eg_pma_run_panel import EgPmaRunPanel
+from operator_eg_pma_run_panel import OperatorEgPmaRunPanel
 from instrument_panel import MainLayout
 from wafer_map_view import WaferMapPanel
 
@@ -232,7 +232,7 @@ class OperatorMainLayout(MainLayout):
         body.grid(row=1, column=0, sticky="nsew", padx=6, pady=(2, 6))
 
         if self._system == "electroglas":
-            self.eg_pma_run = EgPmaRunPanel(body, controller=self.controller,
+            self.eg_pma_run = OperatorEgPmaRunPanel(body, controller=self.controller,
                                             main_layout=self)
             body.add(self.eg_pma_run, weight=25)
 
@@ -462,14 +462,17 @@ class OperatorMainLayout(MainLayout):
 
         # Same variables as the Results tab's Lot ID / Wafer ID, so the two
         # always match; exports and the cassette read them from there.
-        for col, (text, var) in enumerate((("Lot ID:", self.lot_id),
-                                           ("Wafer ID:", self.wafer_id_var))):
-            cell = ttk.Frame(pos_row)
-            cell.grid(row=3, column=col, sticky="ew", pady=(10, 0),
-                      padx=(0, 3) if col == 0 else (3, 0))
-            ttk.Label(cell, text=text).pack(side="left")
-            ttk.Entry(cell, textvariable=var).pack(side="left", fill="x",
-                                                   expand=True, padx=(6, 0))
+        # Large, one per row across both columns, so they're easy to read
+        # and fill in.
+        ids = ttk.Frame(pos_row)
+        ids.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        ids.columnconfigure(1, weight=1)
+        for r, (text, var) in enumerate((("Lot ID:", self.lot_id),
+                                         ("Wafer ID:", self.wafer_id_var))):
+            ttk.Label(ids, text=text, font=("Segoe UI", 14, "bold")).grid(
+                row=r, column=0, sticky="w", padx=(0, 10), pady=4)
+            ttk.Entry(ids, textvariable=var, font=("Segoe UI", 16)).grid(
+                row=r, column=1, sticky="ew", pady=4, ipady=6)
 
     # ---- Results tab (copied from EngineerGUI MainLayout) ----
 
