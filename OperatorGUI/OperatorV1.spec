@@ -1,4 +1,3 @@
-# -*- mode: python ; coding: utf-8 -*-
 """PyInstaller build spec for the Operator GUI - a single, portable
 OperatorV<VERSION>.exe, built the same way as the Engineer GUI's
 AtomicaATA.spec (see that file for why it's onefile and why the module list
@@ -35,15 +34,10 @@ def _module_names(directory: str, skip=("__init__",)) -> list:
     return sorted(names)
 
 
-# EngineerGUI/, OperatorGUI/ and instruments/ modules are all imported bare
-# (their folders go on sys.path at runtime), which the analyzer can't follow
-# on its own.
 hidden_gui = _module_names(GUI_DIR)
 hidden_operator = _module_names(OPERATOR_DIR, skip=("__init__", "operator_app"))
 hidden_instruments = [f"instruments.{n}" for n in _module_names(INSTRUMENTS_DIR)]
 
-# Same extras as AtomicaATA.spec: the GDS modules are reached through the
-# raw-copied gds/ data dir, and the VISA backends are loaded dynamically.
 hidden_extra = [
     "ata_gds_core",
     "ata_gds2_parser",
@@ -62,9 +56,6 @@ a = Analysis(
     pathex=[ROOT, GUI_DIR, INSTRUMENTS_DIR, OPERATOR_DIR],
     binaries=[],
     datas=[
-        # Header logos and the window icon. EngineerGUI/app.py (splash
-        # screen) and operator_app.py (header, icon) both read them from the
-        # bundle's root when frozen.
         (os.path.join(GUI_DIR, "logo2.jpg"), "."),
         (os.path.join(GUI_DIR, "logo_otto.jpg"), "."),
         (os.path.join(GUI_DIR, "app_icon.png"), "."),

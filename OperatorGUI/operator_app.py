@@ -18,8 +18,6 @@ _ENGINEER_DIR = os.path.join(_ROOT, "EngineerGUI")
 for _path in (_ROOT, _ENGINEER_DIR, _HERE):
     if _path not in sys.path:
         sys.path.insert(0, _path)
-# Logos and window icon: EngineerGUI's own files from source; a built exe
-# (OperatorV1.spec) carries them at the root of its bundle.
 _ASSET_DIR = getattr(sys, "_MEIPASS", _ENGINEER_DIR)
 
 import tkinter as tk
@@ -36,9 +34,6 @@ from operator_layout import OperatorMainLayout
 class OperatorDashboard(engineer_app.AtomicaDashboard):
 
     def __init__(self):
-        # Mirrors AtomicaDashboard.__init__ step for step, so every attribute
-        # its inherited methods rely on exists - only the layout class, header
-        # and toolbar differ.
         tk.Tk.__init__(self)
         self.title("Electrical Prober")
         self.geometry("1400x800")
@@ -151,8 +146,6 @@ class OperatorDashboard(engineer_app.AtomicaDashboard):
                  bg="#374558", fg="#f0a020",
                  font=("Arial", 13)).pack(side="left", padx=4)
 
-        # In place of the engineer's Accretech/Electroglas toggle: the system
-        # comes from this PC's default prober, so it's shown, not chosen.
         badge_frame = tk.Frame(hdr, bg="#374558")
         badge_frame.pack(side="right", padx=12, pady=10)
         tk.Label(badge_frame, text="OPERATOR", bg="#f0a020", fg="#1f2937",
@@ -170,34 +163,23 @@ class OperatorDashboard(engineer_app.AtomicaDashboard):
             badge.config(text=self.active_system.capitalize())
 
     def create_toolbar(self):
-        # No toolbar row: Abort is in the Run tab's button bar (built by the
-        # layout), and these controls sit in the Run tab's ATA Folder box.
-        # They're built once, as children of the window, and _place_controls
-        # shows them in whichever system's Run tab is displayed.
         box = self._controls_box = ttk.Frame(self)
         self._ata_picker_var = tk.StringVar()
         self._ata_picker_label_to_name = {}
-        # Narrow minimum so the box doesn't crowd the Instruments box beside
-        # it; fill="x" still stretches it across the box.
         self._ata_picker = ttk.Combobox(
             box, textvariable=self._ata_picker_var, state="readonly",
             width=12, postcommand=self._refresh_ata_picker)
         self._ata_picker.pack(fill="x", pady=(0, 4))
         self._ata_picker.bind("<<ComboboxSelected>>",
                               lambda _e: self._on_ata_picker_selected())
-        # Inherited methods write the loaded folder here; like the engineer
-        # toolbar, it isn't shown.
         self._ata_lbl = ttk.Label(box, text="No ATA loaded", foreground="gray",
                                   font=("Segoe UI", 9))
 
-        # The prober is this PC's default from the GUI System folder - shown,
-        # not chosen.
         self._bench_lbl = ttk.Label(box, text="", foreground="gray",
                                     font=("Segoe UI", 9))
         self._bench_lbl.pack(anchor="w")
         self._bench_picker_var = tk.StringVar()
         self._refresh_bench_picker()
-        # Packed only while there's something to say - see _refresh_defaults_notice.
         self._defaults_notice_lbl = ttk.Label(box, text="", foreground="#b91c1c",
                                               font=("Segoe UI", 9, "bold"),
                                               wraplength=150, justify="left")
@@ -205,11 +187,13 @@ class OperatorDashboard(engineer_app.AtomicaDashboard):
             wraplength=max(e.width - 4, 100)))
         self.after(200, self._refresh_ata_picker)
 
+    def _dismiss_splash_screen(self):
+        super()._dismiss_splash_screen()
+        if not getattr(self, "_operator_maximized", False):
+            self._operator_maximized = True
+            self.state("zoomed")
+
     def _place_controls(self):
-        # _controls_box is a child of the window, so it can be packed into a
-        # frame anywhere inside it (Tk hides it along with that frame, e.g.
-        # on another tab); lift() keeps it stacked above the pane holding the
-        # Run tab, which would otherwise draw over it.
         self._controls_box.pack_forget()
         self._controls_box.pack(in_=self.ui._operator_controls_slot, fill="x")
         self._controls_box.lift()
@@ -219,9 +203,6 @@ class OperatorDashboard(engineer_app.AtomicaDashboard):
         self._place_controls()
         self._refresh_defaults_notice()
 
-    # Operator: the Wafer ID is never auto-filled. The engineer GUI sets it
-    # to the ATA folder's name whenever a folder loads; here it keeps what
-    # the operator typed (or what the cassette slot list sets).
 
     def _autoload_default_ata_folders(self):
         kept = {system: entry["ui"].wafer_id_var.get()
@@ -248,8 +229,6 @@ class OperatorDashboard(engineer_app.AtomicaDashboard):
                      "GUI doesn't include yet - showing Run/Results/Cassette.")
 
     def _refresh_defaults_notice(self, *_):
-        # Only for what the operator can't fix from this GUI; a missing
-        # recipe shows as PENDING in the Run tab and they can pick one.
         ui = self.ui
         if not ui._ata_folder:
             msg = "No ATA folder loaded - pick one from the ATA Folder list."
@@ -266,8 +245,6 @@ class OperatorDashboard(engineer_app.AtomicaDashboard):
 
 
 def main():
-    # Same single-instance lock as the Engineer GUI, so the two can never
-    # drive the same instruments at once.
     if engineer_app._ensure_single_instance():
         OperatorDashboard().mainloop()
 

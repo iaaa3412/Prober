@@ -15,17 +15,12 @@ from cassette_panel import CassettePanel
 class OperatorCassettePanel(CassettePanel):
 
     def _operator_hidden(self):
-        # Never geometry-managed, so nothing inside it is ever drawn.
         holder = getattr(self, "_operator_hidden_holder", None)
         if holder is None:
             holder = self._operator_hidden_holder = ttk.Frame(self)
         return holder
 
     def _disarm(self, reason: str = ""):
-        # CassettePanel's version compares with "is", but a bound method is a
-        # new object on every access, so it never matched: the cassette's
-        # run-finished hook stayed attached after automation stopped and
-        # single ▶ Runs lost their end-of-run popup until a restart.
         self._armed = False
         self._set_paused_for_yield(False)
         self._set_paused_for_error(False)
@@ -49,10 +44,6 @@ class OperatorCassettePanel(CassettePanel):
         self._stop_btn = ttk.Button(bar, text="⏹  Stop Automation", state="disabled",
                                     command=lambda: self._disarm("Stopped by user."))
         self._stop_btn.pack(side="left", padx=4)
-        # Operator: no Reset to Slot #1, Move to Selected Slot, Load Next
-        # Wafer or pass-yield setting. The yield threshold still loads from
-        # the ATA folder, and Continue still resumes after a yield or error
-        # pause.
         self._move_slot_btn = ttk.Button(self._operator_hidden(),
                                          text="Move to Selected Slot",
                                          command=self._move_selected_slot_button)
@@ -110,9 +101,6 @@ class OperatorCassettePanel(CassettePanel):
         ttk.Checkbutton(ef, text="Also Save CSV",
                        variable=self._auto_export_csv_var).pack(side="left", padx=(0, 16))
 
-        # Operator: no export directory or format pickers - cassette exports
-        # use the Results tab's export path and format (the same variables).
-        # The engineer code still refreshes this hidden format dropdown.
         self._export_format_cb = ttk.Combobox(
             self._operator_hidden(), textvariable=self.ui.export_format_var,
             state="readonly", width=32)

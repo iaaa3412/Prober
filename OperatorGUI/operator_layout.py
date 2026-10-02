@@ -28,18 +28,13 @@ from operator_cassette_panel import OperatorCassettePanel
 class OperatorMainLayout(MainLayout):
 
     def _operator_hidden(self):
-        # Never geometry-managed, so nothing inside it is ever drawn.
         holder = getattr(self, "_operator_hidden_holder", None)
         if holder is None:
             holder = self._operator_hidden_holder = ttk.Frame(self)
         return holder
 
-    # ---- Sidebar (replaces EngineerGUI MainLayout._build_sidebar) ----
 
     def _build_sidebar(self, paned):
-        # Operator: no sidebar. Its status line and Instruments box are in the
-        # Run tab (_build_operator_bar); the rest is still built for the
-        # engine, hidden - the Execution Log too (everything still logs to it).
         hidden = self._operator_hidden()
         self.prober_status_label = ttk.Label(
             hidden, text="Prober: —", foreground="orange",
@@ -67,7 +62,6 @@ class OperatorMainLayout(MainLayout):
         self.log_text.pack(fill="both", expand=True, padx=(2, 0), pady=2)
 
     def _build_notebook(self, paned):
-        # Operator: larger tabs than the engineer's default.
         ttk.Style().configure("Operator.TNotebook.Tab", font=("Segoe UI", 11),
                               padding=(14, 5))
         visible_nb = ttk.Notebook(paned, style="Operator.TNotebook")
@@ -76,8 +70,6 @@ class OperatorMainLayout(MainLayout):
         hidden_nb = ttk.Notebook(self._operator_hidden())
         hidden_nb.pack(fill="both", expand=True)
 
-        # Same construction order as MainLayout._build_notebook: later tabs
-        # read state the earlier ones create.
         self._tab_execution2(visible_nb)
         if self._system == "accretech":
             self._tab_pma_wafer(hidden_nb)
@@ -107,9 +99,6 @@ class OperatorMainLayout(MainLayout):
         self._tab_nanoz_switch(hidden_nb)
 
     def _autoexport_release_hook(self):
-        # MainLayout's version compares with "is", but a bound method is a new
-        # object on every access, so it never matched: AutoExport (and its
-        # end-of-run popup) stayed on after loading a folder that has it off.
         if getattr(self, "_exec_on_run_finished", None) == getattr(
                 self, "_on_autoexport_run_finished", None):
             self._exec_on_run_finished = None
@@ -122,7 +111,6 @@ class OperatorMainLayout(MainLayout):
         self.cassette_panel = OperatorCassettePanel(tab, controller=self.controller, ui=self)
         self.cassette_panel.grid(row=0, column=0, sticky="nsew")
 
-    # ---- Run tab (copied from EngineerGUI MainLayout._tab_execution2) ----
 
     def _tab_execution2(self, nb):
         tab = ttk.Frame(nb)
@@ -133,13 +121,6 @@ class OperatorMainLayout(MainLayout):
         self._exec_running  = False
         self._exec_aborted  = False
         self._exec_run_mode = None
-        # Only a run started via the ▶ Run button should end with the
-        # AutoExport/cassette popup - Full Die and Test Selected are quick
-        # manual checks, not "the run", and used to pop the same export
-        # dialog every time either was pressed. Set True/False at the top
-        # of each of the three button handlers (_exec_start_run/
-        # _exec_start_full_die/_exec_start_test_die); _exec_finish_run
-        # reads it once, right before resetting for the next run.
         self._exec_run_via_run_button = False
         self._exec_die_num  = 0
         self._exec_step_config_cache = {}
@@ -189,8 +170,6 @@ class OperatorMainLayout(MainLayout):
 
         tk.Label(ctrl, text="Wafer Map:", bg="#f1f5f9").pack(side="left", padx=(10, 2), pady=6)
         self._exec_wafer_map_var = tk.StringVar(value="")
-        # Operator: read-only. The map is the ATA folder's default, or the one
-        # the chosen recipe names.
         ttk.Entry(ctrl, textvariable=self._exec_wafer_map_var, width=16,
                   state="readonly").pack(side="left", pady=6)
 
@@ -217,7 +196,6 @@ class OperatorMainLayout(MainLayout):
             btn.pack(side="left", padx=3, pady=5)
             if attr:
                 setattr(self, attr, btn)
-        # Operator: the window's Abort (the engineer toolbar's), next to Stop Run.
         ttk.Style().configure("Abort.TButton", foreground="red", font=("Arial", 9, "bold"))
         ttk.Button(ctrl, text="⏹ Abort", style="Abort.TButton",
                    command=self.controller.cmd_abort).pack(side="left", padx=3, pady=5)
@@ -248,8 +226,6 @@ class OperatorMainLayout(MainLayout):
         pos_row.columnconfigure(1, weight=1)
         pos_row.rowconfigure(2, weight=1)
 
-        # Operator: Chuck Position and Pass / Fail sit in row 2, under the
-        # Instruments and ATA Folder boxes (_build_operator_bar).
         pos_lf = ttk.LabelFrame(pos_row, text="Chuck Position", padding=6)
         pos_lf.grid(row=2, column=0, sticky="nsew", padx=(0, 3), pady=(6, 0))
         pos_lf.columnconfigure(0, weight=1)
@@ -275,10 +251,6 @@ class OperatorMainLayout(MainLayout):
         ttk.Separator(pos_lf, orient="horizontal").grid(
             row=3, column=0, columnspan=2, sticky="ew", pady=3)
 
-        # Operator: only First Die and Refresh XY are shown. The other manual
-        # moves, the Recipe Steps table and its buttons, and Select All are
-        # built into the hidden frame - the run engine still enables/disables
-        # and fills them.
         hidden = self._operator_hidden()
         self._exec_first_die_btn = ttk.Button(
             pos_lf, text="◀ First Die", command=self._exec_manual_go_to_start)
@@ -433,11 +405,6 @@ class OperatorMainLayout(MainLayout):
                   font=("Consolas", 13, "bold"), foreground="#374151").pack()
 
     def _build_operator_bar(self, pos_row):
-        # What was the sidebar: the status line across the top, then the
-        # Instruments box (left) and an ATA Folder box (right) above Chuck
-        # Position / Pass-Fail, then Lot ID / Wafer ID below them.
-        # OperatorDashboard packs the ATA Folder dropdown, prober and
-        # defaults warning into the displayed system's ATA Folder box.
         self.status_label = ttk.Label(
             pos_row, text="INITIALIZING", foreground="orange",
             font=("Arial", 11, "bold")
@@ -460,10 +427,6 @@ class OperatorMainLayout(MainLayout):
                                                       padding=6)
         self._operator_controls_slot.grid(row=1, column=1, sticky="nsew", padx=(3, 0))
 
-        # Same variables as the Results tab's Lot ID / Wafer ID, so the two
-        # always match; exports and the cassette read them from there.
-        # Large, one per row across both columns, so they're easy to read
-        # and fill in.
         ids = ttk.Frame(pos_row)
         ids.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         ids.columnconfigure(1, weight=1)
@@ -474,7 +437,6 @@ class OperatorMainLayout(MainLayout):
             ttk.Entry(ids, textvariable=var, font=("Segoe UI", 16)).grid(
                 row=r, column=1, sticky="ew", pady=4, ipady=6)
 
-    # ---- Results tab (copied from EngineerGUI MainLayout) ----
 
     def _tab_results(self, nb):
         page = ttk.Frame(nb)
@@ -508,8 +470,6 @@ class OperatorMainLayout(MainLayout):
         path_row = ttk.Frame(export_frame)
         path_row.pack(fill="x", padx=10, pady=(4, 12))
         ttk.Label(path_row, text="Export Path:").pack(side="left")
-        # Operator: the path can only be picked from the dropdown - no typing
-        # or Browse. Electroglas has no dropdown, so its path is read-only.
         if self._system == "accretech":
             self._export_dir_choices = {
                 "PROBE08 (network)": r"\\prober\NewData\ETL\RAWDATA\PROBE08",
@@ -542,8 +502,6 @@ class OperatorMainLayout(MainLayout):
         sql_row.pack(fill="x", padx=10, pady=(0, 12))
         ttk.Label(sql_row, text="Export Format:").pack(side="left")
         self.export_format_var = tk.StringVar()
-        # Operator: the format is the ATA folder's default, shown read-only.
-        # The engineer code still fills its (hidden) dropdown.
         self._export_format_cb = ttk.Combobox(
             self._operator_hidden(), textvariable=self.export_format_var,
             state="readonly", width=42)
@@ -601,10 +559,6 @@ class OperatorMainLayout(MainLayout):
             row=1, column=0, columnspan=2, sticky="e")
 
     def _operator_follow_export_path(self, label_var):
-        # With the path entry gone the dropdown is the only place the export
-        # path shows, so keep it naming where exports really go - loading an
-        # ATA folder applies that project's saved export path, which may not
-        # be one of the dropdown's choices (then the path itself is shown).
         def sync(*_):
             path = self.export_path_var.get()
             key = os.path.normcase(os.path.normpath(path)) if path else ""
@@ -622,7 +576,6 @@ class OperatorMainLayout(MainLayout):
         ttk.Label(row, text="Access DB (.mdb):").pack(side="left")
         self.mdb_path_var = tk.StringVar(
             value=app_settings.load_settings().get("mdb_path", ""))
-        # Operator: the .mdb path is read-only (no Browse / Set Default).
         ttk.Entry(row, textvariable=self.mdb_path_var, width=38,
                   state="readonly").pack(side="left", padx=6)
         ttk.Button(row, text="Check", command=self._mdb_check).pack(

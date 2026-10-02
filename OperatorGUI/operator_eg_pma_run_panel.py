@@ -58,7 +58,6 @@ class OperatorEgPmaRunPanel(EgPmaRunPanel):
             result["ok"] = False
             dlg.destroy()
 
-        # Operator: plain labels, no icons.
         ttk.Button(btns, text="Send Pitch", command=_send_now).pack(
             side="left", padx=(0, 6))
         ttk.Button(btns, text="Already Set", command=_already_set).pack(
