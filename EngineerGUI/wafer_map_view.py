@@ -100,8 +100,11 @@ class WaferMapPanel(ttk.LabelFrame):
         self.on_redraw = None
         self.on_zoom = None
         self.on_reset_request = None
+        self._drawn_size = None
+        self._resize_after_id = None
         self.canvas.create_text(150, 100, text="Waiting for Wafer Map...", fill="gray")
         _pz_bind(self.canvas, self._reset_view, self._fire_zoom)
+        self.canvas.bind("<Configure>", self._on_canvas_resize, add="+")
 
         self._picked = set()
         self._picking_enabled = False
@@ -189,6 +192,29 @@ class WaferMapPanel(ttk.LabelFrame):
             self._draw_from_die_list(self._last_dies)
         else:
             self.draw_map()
+
+    def _on_canvas_resize(self, e):
+        if self._last_dies is None or self._drawn_size is None:
+            return
+        if e.width < 50 or e.height < 50:
+            return
+        if (abs(e.width - self._drawn_size[0]) <= 2
+                and abs(e.height - self._drawn_size[1]) <= 2):
+            return
+        if self._resize_after_id is not None:
+            try:
+                self.after_cancel(self._resize_after_id)
+            except tk.TclError:
+                pass
+        self._resize_after_id = self.after(150, self._redraw_for_new_size)
+
+    def _redraw_for_new_size(self):
+        self._resize_after_id = None
+        try:
+            if self.winfo_exists() and self._last_dies is not None:
+                self._draw_from_die_list(self._last_dies)
+        except tk.TclError:
+            pass
 
     def _center_view(self):
         bbox = self.canvas.bbox("all")
@@ -428,6 +454,7 @@ class WaferMapPanel(ttk.LabelFrame):
                 W, H = size_hint
         if W < 50:
             W, H = 400, 400
+        self._drawn_size = (W, H)
 
         xs = [d["x_um"] for d in dies]
         ys = [d["y_um"] for d in dies]
