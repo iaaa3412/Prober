@@ -82,6 +82,20 @@ def save_default_recipe(folder: str, card: str, recipe: str, system: str = None)
         return False
 
 
+def save_default_card(folder: str, card: str, system: str) -> bool:
+    if not folder or not card or not system:
+        return False
+    cards_dir = os.path.join(folder, "probe_cards")
+    try:
+        os.makedirs(cards_dir, exist_ok=True)
+        with open(os.path.join(cards_dir, f"_default_{system}.txt"), "w",
+                  encoding="utf-8") as f:
+            f.write(card)
+        return True
+    except OSError:
+        return False
+
+
 def _normalize_numeric_field(text: str) -> str:
     try:
         float(text)
@@ -2788,6 +2802,14 @@ class RecipePanel(ttk.Frame):
             self.controller.log(
                 f"[RECIPE] '{name}' (probe card '{card}') set as default — will "
                 "auto-load on the Run tab whenever this ATA folder is opened.")
+            if save_default_card(folder, card, self._system):
+                self.controller.log(
+                    f"[PROBE CARD] '{card}' set as the default {self._system} "
+                    "probe card for this ATA folder.")
+            else:
+                self.controller.log(
+                    f"[PROBE CARD] Could not save '{card}' as the default "
+                    f"{self._system} probe card.")
             self._update_default_label()
         else:
             messagebox.showerror("Save Failed", "Could not write ata_default_recipe.json.")

@@ -1543,10 +1543,25 @@ class MainLayout(ttk.Frame):
         cards_id = tree.insert(root_id, "end",
                                text=f"🎫 Probe Cards & Recipes ({len(card_bases)})",
                                open=True, tags=("section",))
+        default_by_system = {s: load_default_recipe(folder_path, system=s)
+                             for s in ("accretech", "electroglas")}
+        default_card_by_system = {}
+        for s in ("accretech", "electroglas"):
+            try:
+                with open(os.path.join(cards_dir, f"_default_{s}.txt"), encoding="utf-8") as f:
+                    default_card_by_system[s] = f.read().strip()
+            except OSError:
+                pass
         if card_bases:
             active_card = self.pin_wiring.get_active_card() if hasattr(self, "pin_wiring") else ""
             for base in sorted(card_bases):
-                mark = "  (active)" if base == active_card else ""
+                marks = ["active"] if base == active_card else []
+                for s in ("accretech", "electroglas"):
+                    if default_card_by_system.get(s) == base:
+                        marks.append(f"default card for {s.capitalize()}")
+                    elif default_by_system[s][0] == base:
+                        marks.append(f"default recipe's card for {s.capitalize()}")
+                mark = f"  ({'; '.join(marks)})" if marks else ""
                 card_id = tree.insert(cards_id, "end", text=base + mark,
                                      open=True, tags=("found",))
                 self._ata_tree_meta[card_id] = {"kind": "probe_card", "base": base}
@@ -1569,8 +1584,12 @@ class MainLayout(ttk.Frame):
                             sys_id, "end", text=bench_label, open=True,
                             values=("✔", f"{len(names)} recipe(s)"), tags=("found",))
                         for name in names:
-                            recipe_item = tree.insert(bench_id, "end", text=name,
-                                                     tags=("found",))
+                            is_default = default_by_system[system] == (base, name)
+                            recipe_item = tree.insert(
+                                bench_id, "end",
+                                text=name + (f"  (default recipe for {label})"
+                                             if is_default else ""),
+                                tags=("found",))
                             self._ata_tree_meta[recipe_item] = {
                                 "kind": "recipe", "card_base": base,
                                 "system": system, "name": name}
@@ -1597,7 +1616,7 @@ class MainLayout(ttk.Frame):
                               open=True, tags=("section",))
         if map_names:
             for name in map_names:
-                mark = "  (default)" if name == default_map else ""
+                mark = "  (default wafer map)" if name == default_map else ""
                 map_item = tree.insert(maps_id, "end", text=name + mark, tags=("found",))
                 self._ata_tree_meta[map_item] = {"kind": "wafer_map", "name": name}
         else:
