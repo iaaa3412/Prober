@@ -586,6 +586,9 @@ class AtomicaDashboard(tk.Tk):
                 pass
         self.deiconify()
         self.lift()
+        if not getattr(self, "_maximized_once", False):
+            self._maximized_once = True
+            self.state("zoomed")
 
     def _show_switch_splash(self, message):
         if not SHOW_SPLASH_SCREEN:

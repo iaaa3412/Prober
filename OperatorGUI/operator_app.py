@@ -187,12 +187,6 @@ class OperatorDashboard(engineer_app.AtomicaDashboard):
             wraplength=max(e.width - 4, 100)))
         self.after(200, self._refresh_ata_picker)
 
-    def _dismiss_splash_screen(self):
-        super()._dismiss_splash_screen()
-        if not getattr(self, "_operator_maximized", False):
-            self._operator_maximized = True
-            self.state("zoomed")
-
     def _place_controls(self):
         self._controls_box.pack_forget()
         self._controls_box.pack(in_=self.ui._operator_controls_slot, fill="x")
