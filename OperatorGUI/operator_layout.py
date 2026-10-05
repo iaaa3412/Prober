@@ -188,7 +188,8 @@ class OperatorMainLayout(MainLayout):
         self._exec_run_btn.pack(padx=2, pady=2)
 
         for label, cmd, attr in [
-            ("⏏  Unload (U)",  self._exec_manual_unload, "_exec_unload_btn"),
+            ("⏏  Unload" if self._system == "electroglas" else "⏏  Unload (U)",
+             self._exec_manual_unload, "_exec_unload_btn"),
             ("⏸  Pause",       self._exec_pause, "_exec_pause_btn"),
             ("⏹  Stop Run",       self._exec_abort, "_exec_stop_btn"),
         ]:
@@ -196,9 +197,10 @@ class OperatorMainLayout(MainLayout):
             btn.pack(side="left", padx=3, pady=5)
             if attr:
                 setattr(self, attr, btn)
-        ttk.Style().configure("Abort.TButton", foreground="red", font=("Arial", 9, "bold"))
-        ttk.Button(ctrl, text="⏹ Abort", style="Abort.TButton",
-                   command=self.controller.cmd_abort).pack(side="left", padx=3, pady=5)
+        if self._system != "electroglas":
+            ttk.Style().configure("Abort.TButton", foreground="red", font=("Arial", 9, "bold"))
+            ttk.Button(ctrl, text="⏹ Abort", style="Abort.TButton",
+                       command=self.controller.cmd_abort).pack(side="left", padx=3, pady=5)
         self._exec_set_running_buttons(False)
 
         self._exec_state_lbl = tk.Label(
@@ -254,8 +256,9 @@ class OperatorMainLayout(MainLayout):
         hidden = self._operator_hidden()
         self._exec_first_die_btn = ttk.Button(
             pos_lf, text="◀ First Die", command=self._exec_manual_go_to_start)
-        self._exec_first_die_btn.grid(
-                   row=4, column=0, columnspan=2, sticky="ew", pady=1)
+        if self._system != "electroglas":
+            self._exec_first_die_btn.grid(
+                       row=4, column=0, columnspan=2, sticky="ew", pady=1)
         self._exec_zup_btn = ttk.Button(
             hidden, text="↑ Z Up", command=self._exec_manual_z_up)
         self._exec_zdown_btn = ttk.Button(

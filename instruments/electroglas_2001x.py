@@ -540,9 +540,7 @@ class Electroglas2001X(GPIBInstrument):
         self._not_implemented("emergency_stop")
 
     def unload_wafer(self):
-        status = self._motion("U")
-        self.z_is_up = False
-        return status
+        return self.move_to_home()
 
     def load_wafer(self):
         status = self._motion("L")

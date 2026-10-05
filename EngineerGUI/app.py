@@ -380,6 +380,7 @@ class AtomicaDashboard(tk.Tk):
             self._ata_picker_var.set("")
         self._refresh_bench_picker()
         self._refresh_routing_button()
+        self._refresh_abort_button()
         self._refresh_buzzer_clear_button()
         self.update_statistics_visuals()
         self.check_system_ready()
@@ -713,6 +714,19 @@ class AtomicaDashboard(tk.Tk):
             return
         self.log(f"[SYSTEM] Default prober: {system} / {bench}")
         self.apply_prober(system, bench)
+
+    def _refresh_abort_button(self):
+        btn = getattr(self, "_abort_btn", None)
+        if btn is None:
+            return
+        if self.active_system == "electroglas":
+            btn.pack_forget()
+        elif not btn.winfo_manager():
+            others = btn.master.pack_slaves()
+            if others:
+                btn.pack(side="left", padx=6, pady=2, before=others[0])
+            else:
+                btn.pack(side="left", padx=6, pady=2)
 
     def _refresh_buzzer_clear_button(self):
         btn = getattr(self, "_buzzer_clear_btn", None)

@@ -2488,7 +2488,8 @@ class MainLayout(ttk.Frame):
         self._exec_run_btn.pack(padx=2, pady=2)
 
         for label, cmd, attr in [
-            ("⏏  Unload (U)",  self._exec_manual_unload, "_exec_unload_btn"),
+            ("⏏  Unload" if self._system == "electroglas" else "⏏  Unload (U)",
+             self._exec_manual_unload, "_exec_unload_btn"),
             ("⏸  Pause",       self._exec_pause, "_exec_pause_btn"),
             ("⏹  Stop Run",       self._exec_abort, "_exec_stop_btn"),
         ]:
@@ -2550,8 +2551,9 @@ class MainLayout(ttk.Frame):
 
         self._exec_first_die_btn = ttk.Button(
             pos_lf, text="◀ First Die", command=self._exec_manual_go_to_start)
-        self._exec_first_die_btn.grid(
-                   row=4, column=0, columnspan=2, sticky="ew", pady=1)
+        if self._system != "electroglas":
+            self._exec_first_die_btn.grid(
+                       row=4, column=0, columnspan=2, sticky="ew", pady=1)
         self._exec_zup_btn = ttk.Button(
             pos_lf, text="↑ Z Up", command=self._exec_manual_z_up)
         self._exec_zup_btn.grid(
@@ -5185,7 +5187,8 @@ class MainLayout(ttk.Frame):
 
     def _exec_unload_thread(self, prober):
         try:
-            self._exec_log("[RUN] >> U  (Unload wafer)")
+            self._exec_log("[RUN] >> HO  (Unload: move to home)" if self._system == "electroglas"
+                           else "[RUN] >> U  (Unload wafer)")
             stb = prober.unload_wafer()
             self._exec_log(f"[RUN] << STB={stb}  (wafer unloaded)")
         except Exception as e:
