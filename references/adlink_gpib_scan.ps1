@@ -23,7 +23,7 @@ $errNames = @('EDVR/system call','ECIC/not CIC','ENOL/no listener','EADR/address
 function Err([int]$e) { if ($e -ge 0 -and $e -lt $errNames.Count) { $errNames[$e] } else { "err$e" } }
 
 foreach ($boardName in @('GPIB0','GPIB1','GPIB2')) {
-    $ud = [Gpib]::ibfind($boardName)
+    $ud = [Gpib]::ibfind($boardName)                        
     if ($ud -lt 0) { Write-Output ("{0}: not found (ibfind={1})" -f $boardName, $ud); continue }
 
     Write-Output ("{0}: OPENED  ud={1}  ibsta=0x{2:X4}" -f $boardName, $ud, [Gpib]::ThreadIbsta())
