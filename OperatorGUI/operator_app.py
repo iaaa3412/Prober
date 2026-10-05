@@ -14,7 +14,7 @@ import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
-_ENGINEER_DIR = os.path.join(_ROOT, "EngineerGUI")
+_ENGINEER_DIR = os.path.join(_ROOT, "EngineerGUI")  
 for _path in (_ROOT, _ENGINEER_DIR, _HERE):
     if _path not in sys.path:
         sys.path.insert(0, _path)
@@ -27,7 +27,6 @@ import app as engineer_app
 import app_settings
 import workdir
 from instruments import accretech_profiles
-
 from operator_layout import OperatorMainLayout
 
 

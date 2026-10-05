@@ -11,6 +11,10 @@ MainLayout so operator-facing controls can be removed in this file. All the
 behaviour behind those widgets is inherited from MainLayout. Controls the
 engineer code still reads or enables/disables are built into a hidden frame
 rather than deleted, so that code never finds them missing.
+
+Pressing Run starts a new run with an empty Results tab (same as Clear
+Results); runs that cassette automation starts for later wafers and a resumed
+Electroglas run keep the results they already have.
 """
 import os
 import threading
@@ -103,6 +107,22 @@ class OperatorMainLayout(MainLayout):
                 self, "_on_autoexport_run_finished", None):
             self._exec_on_run_finished = None
 
+    def _operator_run(self):
+        self._operator_new_run = True
+        try:
+            if self._system == "electroglas":
+                self.eg_pma_run._run_all()
+            else:
+                self._exec_start_run()
+        finally:
+            self._operator_new_run = False
+
+    def _exec_set_running_buttons(self, running: bool):
+        if running and getattr(self, "_operator_new_run", False):
+            self._operator_new_run = False
+            self.clear_results()
+        super()._exec_set_running_buttons(running)
+
     def _tab_cassette(self, nb):
         tab = ttk.Frame(nb)
         nb.add(tab, text="Cassette")
@@ -181,10 +201,7 @@ class OperatorMainLayout(MainLayout):
         run_border = tk.Frame(ctrl, background="#15803d")
         run_border.pack(side="left", padx=(2, 6), pady=5)
         self._exec_run_btn = ttk.Button(
-            run_border, text="▶  Run",
-            command=(lambda: self.eg_pma_run._run_all())
-                    if self._system == "electroglas"
-                    else self._exec_start_run)
+            run_border, text="▶  Run", command=self._operator_run)
         self._exec_run_btn.pack(padx=2, pady=2)
 
         for label, cmd, attr in [

@@ -2,7 +2,8 @@
 
 Everything is inherited from EngineerGUI's EgPmaRunPanel; only the die-size
 confirmation dialog shown on the first Set is copied here, with plain button
-labels ("Send Pitch" instead of "📤 Send to Prober Now", no icons).
+labels ("Send Pitch" instead of "📤 Send to Prober Now", no icons). _start
+tells the layout when Run is resuming a paused run, so its results are kept.
 """
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -11,6 +12,11 @@ from eg_pma_run_panel import EgPmaRunPanel
 
 
 class OperatorEgPmaRunPanel(EgPmaRunPanel):
+
+    def _start(self, count: int):
+        if not getattr(self, "_needs_restart", False):
+            self._main_layout._operator_new_run = False
+        super()._start(count)
 
     def _confirm_die_size(self, dx: float, dy: float, drv) -> bool:
         result = {"ok": False}
