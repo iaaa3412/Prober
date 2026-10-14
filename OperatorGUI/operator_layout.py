@@ -102,11 +102,6 @@ class OperatorMainLayout(MainLayout):
         self._tab_gpib_trace(hidden_nb)
         self._tab_nanoz_switch(hidden_nb)
 
-    def _autoexport_release_hook(self):
-        if getattr(self, "_exec_on_run_finished", None) == getattr(
-                self, "_on_autoexport_run_finished", None):
-            self._exec_on_run_finished = None
-
     def _operator_run(self):
         self._operator_new_run = True
         try:

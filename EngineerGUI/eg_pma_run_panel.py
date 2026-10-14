@@ -1377,7 +1377,8 @@ class EgPmaRunPanel(ttk.Frame):
             return
         if restart:
             self._needs_restart = True
-        self._start(remaining)
+            self._main_layout._exec_reset_counts()
+        self._start(remaining, from_run=True)
 
 
     def _run_minor_moves(self):
@@ -1415,6 +1416,7 @@ class EgPmaRunPanel(ttk.Frame):
         if not messagebox.askokcancel(
                 "Run (Minor Moves)", f"Probe {len(shots)} Shots?"):
             return
+        self._main_layout._exec_reset_counts()
         self._running = True
         try:
             self._main_layout._exec_set_running_buttons(True)
@@ -1557,7 +1559,7 @@ class EgPmaRunPanel(ttk.Frame):
                       f"{type(e).__name__}: {e}")
         return total
 
-    def _start(self, count: int):
+    def _start(self, count: int, from_run: bool = False):
         self._running = True
         try:
             self._main_layout._exec_set_running_buttons(True)
@@ -1604,7 +1606,7 @@ class EgPmaRunPanel(ttk.Frame):
             else:
                 word, state, colour = "finished", "FINISHED", "#16a34a"
             self._set_run_state(state, colour)
-            if not stopped and not paused:
+            if from_run and not stopped and not paused:
                 self._fire_run_finished_popup()
 
             def _settle():

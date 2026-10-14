@@ -1112,18 +1112,20 @@ class MainLayout(ttk.Frame):
         lf = ttk.Frame(parent)
         lf.pack(fill="x", pady=(0, 4))
 
-        ttk.Label(lf, text="Cassette pass-yield default — "
-                          "Pass yield ≥").pack(side="left", padx=(0, 2))
-        self._default_yield_var = tk.StringVar(value="0")
-        ttk.Entry(lf, textvariable=self._default_yield_var, width=5).pack(
-            side="left", padx=(0, 8))
-        ttk.Button(lf, text="Set Default",
-                  command=self._set_default_yield).pack(side="left", padx=(0, 10))
+        if self._system == "accretech":
+            ttk.Label(lf, text="Cassette pass-yield default — "
+                              "Pass yield ≥").pack(side="left", padx=(0, 2))
+            self._default_yield_var = tk.StringVar(value="0")
+            ttk.Entry(lf, textvariable=self._default_yield_var, width=5).pack(
+                side="left", padx=(0, 8))
+            ttk.Button(lf, text="Set Default",
+                      command=self._set_default_yield).pack(side="left", padx=(0, 10))
 
         self._autoexport_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(lf, text="AutoExport",
                        variable=self._autoexport_var,
-                       command=self._on_autoexport_toggle).pack(side="left", padx=(16, 6))
+                       command=self._on_autoexport_toggle).pack(
+            side="left", padx=(16, 6) if self._system == "accretech" else (0, 6))
         self._autoexport_csv_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(lf, text="Also Save CSV",
                        variable=self._autoexport_csv_var).pack(side="left", padx=(0, 6))
@@ -1173,7 +1175,7 @@ class MainLayout(ttk.Frame):
             self._exec_on_run_finished = self._on_autoexport_run_finished
 
     def _autoexport_release_hook(self):
-        if getattr(self, "_exec_on_run_finished", None) is getattr(
+        if getattr(self, "_exec_on_run_finished", None) == getattr(
                 self, "_on_autoexport_run_finished", None):
             self._exec_on_run_finished = None
 
@@ -1278,11 +1280,16 @@ class MainLayout(ttk.Frame):
             status_var.set("Unloading…")
 
             def _run():
-                self._exec_log("[RUN] >> U  (Unload)")
+                eg = self._system == "electroglas"
+                self._exec_log("[RUN] >> HO  (Unload: move to home)" if eg
+                               else "[RUN] >> U  (Unload)")
                 try:
                     stb = drv.unload_wafer()
-                    msg = (f"Unloaded (STB={stb})." if stb == 71
-                          else f"Unexpected STB={stb}.")
+                    if eg:
+                        msg = "Unloaded (moved to home)."
+                    else:
+                        msg = (f"Unloaded (STB={stb})." if stb == 71
+                              else f"Unexpected STB={stb}.")
                 except Exception as e:
                     msg = f"Unload error: {e}"
                 self._exec_log(f"[RUN] << {msg}")
@@ -1436,8 +1443,7 @@ class MainLayout(ttk.Frame):
         settings_lf.grid(row=1, column=0, sticky="ew", padx=6, pady=(0, 4))
         self._build_working_dir_row(settings_lf)
         self._build_default_prober_row(settings_lf)
-        if self._system == "accretech":
-            self._build_default_yield_row(settings_lf)
+        self._build_default_yield_row(settings_lf)
 
         self._map_source_var = tk.StringVar(
             value="Accretech" if self._system == "accretech" else "Wafer Builder")

@@ -20,20 +20,6 @@ class OperatorCassettePanel(CassettePanel):
             holder = self._operator_hidden_holder = ttk.Frame(self)
         return holder
 
-    def _disarm(self, reason: str = ""):
-        self._armed = False
-        self._set_paused_for_yield(False)
-        self._set_paused_for_error(False)
-        if getattr(self.ui, "_exec_on_run_finished", None) == self._on_wafer_finished:
-            self.ui._exec_on_run_finished = None
-            claim = getattr(self.ui, "_autoexport_claim_hook", None)
-            if claim is not None:
-                claim()
-        self._set_locked(False)
-        self._redraw_slots()
-        if reason:
-            self._log_event(self._slot_idx + 1, "", reason)
-
     def _build_topbar(self):
         bar = ttk.Frame(self, padding=(6, 4))
         bar.grid(row=0, column=0, sticky="ew")
@@ -94,12 +80,7 @@ class OperatorCassettePanel(CassettePanel):
         ef = ttk.Frame(self._slots_lf)
         ef.grid(row=2, column=0, sticky="ew", pady=(6, 0))
 
-        self._auto_export_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(ef, text="Auto Export",
-                       variable=self._auto_export_var).pack(side="left", padx=(0, 16))
-        self._auto_export_csv_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(ef, text="Also Save CSV",
-                       variable=self._auto_export_csv_var).pack(side="left", padx=(0, 16))
+        self._build_autoexport_checks(ef)
 
         self._export_format_cb = ttk.Combobox(
             self._operator_hidden(), textvariable=self.ui.export_format_var,

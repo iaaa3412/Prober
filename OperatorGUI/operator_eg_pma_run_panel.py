@@ -13,10 +13,10 @@ from eg_pma_run_panel import EgPmaRunPanel
 
 class OperatorEgPmaRunPanel(EgPmaRunPanel):
 
-    def _start(self, count: int):
+    def _start(self, count: int, from_run: bool = False):
         if not getattr(self, "_needs_restart", False):
             self._main_layout._operator_new_run = False
-        super()._start(count)
+        super()._start(count, from_run=from_run)
 
     def _confirm_die_size(self, dx: float, dy: float, drv) -> bool:
         result = {"ok": False}

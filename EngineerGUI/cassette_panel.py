@@ -154,12 +154,7 @@ class CassettePanel(ttk.Frame):
         ef = ttk.Frame(self._slots_lf)
         ef.grid(row=2, column=0, sticky="ew", pady=(6, 0))
 
-        self._auto_export_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(ef, text="Auto Export",
-                       variable=self._auto_export_var).pack(side="left", padx=(0, 16))
-        self._auto_export_csv_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(ef, text="Also Save CSV",
-                       variable=self._auto_export_csv_var).pack(side="left", padx=(0, 16))
+        self._build_autoexport_checks(ef)
 
         ttk.Label(ef, text="Export Directory:").pack(side="left")
         ttk.Entry(ef, textvariable=self.ui.export_path_var, width=32).pack(
@@ -183,6 +178,18 @@ class CassettePanel(ttk.Frame):
         self._export_format_cb.pack(side="left", padx=(0, 4))
         self._export_format_cb.bind("<<ComboboxSelected>>", lambda _e: None)
         ttk.Button(ef, text="↻", width=3, command=self._refresh_export_formats).pack(side="left")
+
+    def _build_autoexport_checks(self, parent):
+        shared = getattr(self.ui, "_autoexport_var", None)
+        shared_csv = getattr(self.ui, "_autoexport_csv_var", None)
+        self._auto_export_var = shared if shared is not None else tk.BooleanVar(value=True)
+        self._auto_export_csv_var = (shared_csv if shared_csv is not None
+                                     else tk.BooleanVar(value=False))
+        ttk.Checkbutton(parent, text="Auto Export", variable=self._auto_export_var,
+                       command=getattr(self.ui, "_on_autoexport_toggle", None)).pack(
+            side="left", padx=(0, 16))
+        ttk.Checkbutton(parent, text="Also Save CSV",
+                       variable=self._auto_export_csv_var).pack(side="left", padx=(0, 16))
 
     def _build_progress(self):
         pf = ttk.LabelFrame(self, text="Cassette Automation Log", padding=6)
@@ -548,7 +555,7 @@ class CassettePanel(ttk.Frame):
         self._armed = False
         self._set_paused_for_yield(False)
         self._set_paused_for_error(False)
-        if getattr(self.ui, "_exec_on_run_finished", None) is self._on_wafer_finished:
+        if getattr(self.ui, "_exec_on_run_finished", None) == self._on_wafer_finished:
             self.ui._exec_on_run_finished = None
             claim = getattr(self.ui, "_autoexport_claim_hook", None)
             if claim is not None:
